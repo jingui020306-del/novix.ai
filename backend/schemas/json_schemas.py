@@ -6,41 +6,7 @@ CARD_TYPE_SCHEMAS = {
             "id": {"type": "string"}, "type": {"const": "character"}, "title": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
             "links": {"type": "array", "items": {"type": "string"}},
-            "payload": {
-                "type": "object",
-                "required": ["name", "identity", "appearance", "core_motivation", "personality_traits", "family_background", "voice", "boundaries", "relationships", "arc"],
-                "properties": {
-                    "name": {"type": "string"},
-                    "identity": {"type": "string"},
-                    "appearance": {"type": "string"},
-                    "core_motivation": {"type": "string"},
-                    "personality_traits": {"type": "array", "items": {"type": "string"}},
-                    "family_background": {"type": "string"},
-                    "voice": {"type": "string"},
-                    "boundaries": {"type": "array", "items": {"type": "string"}},
-                    "relationships": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"target": {"type": "string"}, "type": {"type": "string"}},
-                        },
-                    },
-                    "arc": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"beat": {"type": "string"}, "goal": {"type": "string"}},
-                        },
-                    },
-                    "role": {
-                        "type": "string",
-                        "enum": ["protagonist", "supporting", "antagonist", "other"],
-                        "default": "other",
-                    },
-                    "importance": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
-                    "age": {"type": "integer", "minimum": 0, "maximum": 200},
-                },
-            },
+            "payload": {"type": "object", "required": ["name", "identity", "appearance", "core_motivation", "personality_traits", "family_background", "voice", "boundaries", "relationships", "arc"]},
         },
     },
     "world": {"type": "object", "required": ["id", "type", "title", "payload"], "properties": {"id": {"type": "string"}, "type": {"const": "world"}, "title": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}}, "payload": {"type": "object"}}},
