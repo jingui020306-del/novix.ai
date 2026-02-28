@@ -1,0 +1,14 @@
+{
+  "id": "style_001",
+  "type": "style",
+  "title": "冷峻现实",
+  "tags": [],
+  "links": [],
+  "payload": {
+    "tone": "冷峻",
+    "rules": [
+      "短句为主",
+      "场景先行"
+    ]
+  }
+}
