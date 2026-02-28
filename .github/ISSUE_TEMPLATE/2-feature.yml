@@ -1,0 +1,36 @@
+name: "2) Feature request"
+description: Propose an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What pain point are you solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe desired behavior, API/UI touchpoints
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Impacted scope
+      description: frontend / backend / storage / docs / ci
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete testable outcomes
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / compatibility notes

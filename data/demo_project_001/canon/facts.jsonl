@@ -1,0 +1,1 @@
+{"id": "fact_world_state_001", "scope": "world_state", "key": "harbor_lockdown", "value": "港区进入三级封锁，货运延迟。", "confidence": 0.9, "evidence": {"chapter_id": "chapter_001", "quote": "雨夜封港"}, "sources": [{"path": "cards/world_rule_001.yaml"}]}

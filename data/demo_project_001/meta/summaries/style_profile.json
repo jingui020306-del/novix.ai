@@ -1,0 +1,18 @@
+{
+  "style_card_id": "style_001",
+  "mode": "fast",
+  "assets": [
+    "style_sample_f3b665238c"
+  ],
+  "stats": {
+    "avg_sentence_len": 24.0,
+    "avg_dialogue_ratio": 0.03,
+    "avg_exclamation": 0.001
+  },
+  "guide": {
+    "sentence_length": "推荐句长约 24 字",
+    "dialogue_ratio": "对白占比中低",
+    "punctuation": "尽量减少感叹号",
+    "notes": "保持冷静观察视角，优先动作与细节。"
+  }
+}
