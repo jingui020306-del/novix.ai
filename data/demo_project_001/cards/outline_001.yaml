@@ -1,0 +1,17 @@
+{
+  "id": "outline_001",
+  "type": "outline",
+  "title": "第一卷提纲",
+  "tags": [],
+  "links": [
+    "character_001"
+  ],
+  "payload": {
+    "beats": [
+      {
+        "id": "beat_1",
+        "summary": "匿名线索出现"
+      }
+    ]
+  }
+}
