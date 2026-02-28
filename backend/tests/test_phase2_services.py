@@ -1,12 +1,15 @@
 from pathlib import Path
 import sys
 
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from context_engine.budget_manager import BudgetManager
 from jobs.manager import JobManager
 from services.context_engine import ContextEngine
 from services.kb_service import KBService
 from services.llm_gateway import LLMGateway
+from services.wiki_import_service import WikiImportService
 from services.editing_service import (
     add_message_version,
     activate_message_version,
@@ -23,6 +26,16 @@ def make_store(tmp_path: Path) -> FSStore:
     store = FSStore(tmp_path / "data")
     store.init_demo_project("p1")
     return store
+
+
+def test_budget_manager_allocation(tmp_path: Path):
+    s = make_store(tmp_path)
+    cfg = s.read_yaml("p1", "project.yaml")
+    bm = BudgetManager.from_project(cfg)
+    limits = bm.bucket_limits()
+    assert limits["system_rules"] > 0 and limits["output_reserve"] > 0
+    report = bm.build_report({"cards": limits["cards"] + 1}, ["style_examples"])
+    assert report["over_limit"]["cards"].startswith("over_limit")
 
 
 def test_patch_accept_reject_and_versions_and_rollback(tmp_path: Path):
@@ -80,9 +93,23 @@ def test_docs_and_manuscript_query_multi_and_manifest_trace(tmp_path: Path):
     manifest = ctx.build_manifest("p1", "chapter_001", scene, {"max_tokens": 1200})
     assert manifest.get("citation_map")
     assert any(e.get("kb_id") == "kb_manuscript" for e in manifest.get("evidence", []))
+    assert manifest.get("budget")
 
 
-def test_provider_fallback_to_mock(tmp_path: Path):
+def test_wiki_import_and_world_query(tmp_path: Path):
+    s = make_store(tmp_path)
+    wiki = WikiImportService(s)
+    result = wiki.import_html("p1", "<html><head><title>测试页面</title></head><body><table class='infobox'><tr><th>别名</th><td>夜港</td></tr></table><h2>能力</h2><p>潮汐术。</p></body></html>")
+    assert result["parsed"]["infobox"].get("别名") == "夜港"
+    assert s.read_jsonl("p1", "canon/proposals.jsonl")
+
+    kb = KBService(s)
+    kb.reindex("p1", "kb_world")
+    rows = kb.query("p1", "kb_world", "封锁 临港城", 5)
+    assert rows and rows[0]["source"].get("path")
+
+
+def test_provider_fallback_to_mock_and_canon_append(tmp_path: Path):
     s = make_store(tmp_path)
     project = s.read_yaml("p1", "project.yaml")
     project["llm_profiles"]["bad_provider"] = {
@@ -112,3 +139,51 @@ def test_provider_fallback_to_mock(tmp_path: Path):
     assert any(e["event"] == "ERROR" for e in events)
     wd = [e for e in events if e["event"] == "WRITER_DRAFT"][0]["data"]
     assert wd["provider"] == "mock"
+    assert s.read_jsonl("p1", "canon/facts.jsonl")
+    assert s.read_jsonl("p1", "canon/proposals.jsonl")
+
+
+def test_character_schema_exposes_role_importance_age(tmp_path: Path):
+    from schemas.json_schemas import CARD_TYPE_SCHEMAS
+
+    schema = CARD_TYPE_SCHEMAS['character']
+    payload_props = schema['properties']['payload']['properties']
+
+    assert payload_props['role']['enum'] == ['protagonist', 'supporting', 'antagonist', 'other']
+    assert payload_props['importance']['type'] == 'integer'
+    assert payload_props['age']['type'] == 'integer'
+
+
+def test_cards_api_roundtrip_character_role_importance_age(tmp_path: Path):
+    from routers.cards import create_card, get_card
+
+    s = make_store(tmp_path)
+
+    card = {
+        'id': 'character_test_001',
+        'type': 'character',
+        'title': 'Alice',
+        'tags': ['主角', 'protagonist'],
+        'links': [],
+        'payload': {
+            'name': 'Alice',
+            'identity': '医学院研究生',
+            'appearance': '短发',
+            'core_motivation': '守护家人',
+            'personality_traits': ['冷静', '克制'],
+            'family_background': '普通家庭',
+            'voice': '短句',
+            'boundaries': ['不伤及无辜'],
+            'relationships': [],
+            'arc': [],
+            'role': 'protagonist',
+            'importance': 5,
+            'age': 24,
+        },
+    }
+
+    create_card('p1', card, s)
+    got = get_card('p1', 'character_test_001', s)
+    assert got['payload']['role'] == 'protagonist'
+    assert got['payload']['importance'] == 5
+    assert got['payload']['age'] == 24

@@ -16,7 +16,7 @@ INJECTION_PATTERNS = [
     re.compile(r"忽略之前"),
 ]
 
-KB_IDS = {"kb_style", "kb_docs", "kb_manuscript"}
+KB_IDS = {"kb_style", "kb_docs", "kb_manuscript", "kb_world"}
 
 
 def sanitize_for_index(text: str) -> tuple[str, list[str]]:
@@ -151,12 +151,36 @@ class KBService:
     def reindex(self, project_id: str, kb_id: str) -> dict[str, Any]:
         if kb_id == "all":
             self.reindex_manuscript(project_id)
-            parts = [self._reindex_kb(project_id, x) for x in ["kb_style", "kb_docs", "kb_manuscript"]]
+            parts = [self._reindex_kb(project_id, x) for x in ["kb_style", "kb_docs", "kb_manuscript", "kb_world"]]
             return {"ok": True, "kb_id": "all", "parts": parts}
         if kb_id == "kb_manuscript":
             self.reindex_manuscript(project_id)
+        if kb_id == "kb_world":
+            self.reindex_world(project_id)
         return {"ok": True, **self._reindex_kb(project_id, kb_id)}
 
+
+
+    def reindex_world(self, project_id: str) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        cards_dir = self.store._safe_path(project_id, "cards")
+        for y in sorted(cards_dir.glob("world_rule_*.yaml")) + sorted(cards_dir.glob("lore_*.yaml")) + sorted(cards_dir.glob("worldview_*.yaml")):
+            data = self.store.read_yaml(project_id, f"cards/{y.name}")
+            text = str(data.get("payload", {}))
+            chunk_id = f"{y.stem}_c0000"
+            rows.append({"chunk_id": chunk_id, "kb_id": "kb_world", "asset_id": None, "ordinal": 0, "text": text, "cleaned_text": text, "features": text_features(text), "source": {"path": f"cards/{y.name}", "kind": "world_card", "card_id": data.get("id", y.stem), "field_path": "payload"}})
+        for fact in self.store.read_jsonl(project_id, "canon/facts.jsonl"):
+            if fact.get("scope") not in {"world_state", "world_event", "world_rule"}:
+                continue
+            txt = str(fact.get("value") or fact.get("fact") or "")
+            if not txt:
+                continue
+            cid = fact.get("id") or f"worldfact_{len(rows):04d}"
+            rows.append({"chunk_id": f"{cid}_c0000", "kb_id": "kb_world", "asset_id": None, "ordinal": len(rows), "text": txt, "cleaned_text": txt, "features": text_features(txt), "source": {"path": "canon/facts.jsonl", "kind": "world_fact", "fact_id": fact.get("id", cid), "field_path": "value"}})
+        self.store.write_md(project_id, _kb_rel("kb_world", "chunks.jsonl"), "")
+        for r in rows:
+            self.store.append_jsonl(project_id, _kb_rel("kb_world", "chunks.jsonl"), r)
+        return {"ok": True, "kb_id": "kb_world", "chunks": len(rows)}
     def reindex_manuscript(self, project_id: str) -> dict[str, Any]:
         drafts_dir = self.store._safe_path(project_id, "drafts")
         rows: list[dict[str, Any]] = []

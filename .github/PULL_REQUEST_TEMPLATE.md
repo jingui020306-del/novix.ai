@@ -1,22 +1,34 @@
 ## Summary
 
-- 
+-
 
 ## Motivation
 
-- 
+-
 
-## Changes
+## Scope
 
-- 
+- [ ] frontend
+- [ ] backend
+- [ ] storage
+- [ ] docs
+- [ ] ci
 
 ## Validation
 
-- [ ] Backend tests pass
-- [ ] Frontend smoke/build check (if applicable)
+- [ ] `cd backend && pytest -q`
+- [ ] `./scripts/smoke_frontend.sh`
+- [ ] `cd frontend && npm run build`
 
-### Commands run
+## Logs / outputs
 
 ```bash
-# paste commands and outputs
+# paste key commands + outputs
 ```
+
+## Acceptance checklist
+
+- [ ] No unrelated file changes
+- [ ] Data layout semantics unchanged
+- [ ] Backward compatibility reviewed
+- [ ] Docs updated where needed

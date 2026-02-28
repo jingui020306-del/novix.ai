@@ -1,26 +1,59 @@
 # Architecture (WenShape-aligned)
 
-## Why this aligns to WenShape
+## Alignment goals
 
-The backend storage layer enforces immutable WenShape paths under `data/{project_id}` with fixed `project.yaml`, `cards/`, `canon/`, `drafts/`, `sessions/` semantics.
+This repository keeps WenShape-compatible data semantics while providing a practical local workbench for authoring pipelines.
 
-- Static setup is in cards.
-- Dynamic timeline/facts/issues are append-only JSONL in canon.
-- Chapter modifications are tracked in patch logs.
+Core invariant:
 
-## Directory responsibilities
+```text
+data/{project_id}/
+  project.yaml
+  cards/
+  canon/
+  drafts/
+  sessions/
+```
 
-- `backend/`: FastAPI API + storage + mock/LLM jobs pipeline.
-- `frontend/`: React IDE (SidePanel / Editor / AgentConsole), schema-driven forms.
-- `data/`: demo and runtime project data (single WenShape layout).
-- `docs/`: audit and architecture specs.
+## High-level components
 
-## MVP flow (write-review-edit-merge-canon)
+- **backend/**
+  - FastAPI APIs
+  - storage + context + KB + jobs pipeline
+- **frontend/**
+  - IDE-like React shell (left nav / editor / console)
+- **data/**
+  - demo + runtime project data
+- **docs/**
+  - architecture and parity documents
 
-1. Director reads blueprint scene and outline beats.
-2. Context Engine assembles style + scene + canon + evidence manifest.
-3. Writer (MockProvider / real LLM with fallback) drafts chapter text.
-4. Critic produces issues with evidence pointers.
-5. Editor creates patch ops + unified diff.
-6. Merge applies patch and logs `chapter_*.patch.jsonl`.
-7. Archivist appends facts into canon JSONL.
+## Data semantics
+
+- **Cards** (`cards/*.yaml`): static setup/config cards.
+- **Canon** (`canon/*.jsonl`): append-only dynamic timeline/facts/issues/proposals.
+- **Drafts** (`drafts/*.md` + patch logs): chapter content and revision history.
+- **Sessions** (`sessions/*.jsonl` + meta): append-only event stream + UI pointers.
+
+## Pipeline stages
+
+1. `DIRECTOR_PLAN`
+2. `CONTEXT_MANIFEST`
+3. `WRITER_TOKEN / WRITER_DRAFT`
+4. `CRITIC_REVIEW`
+5. `EDITOR_PATCH`
+6. `DIFF`
+7. `MERGE_RESULT`
+8. `CANON_UPDATES`
+
+## Context assembly principles
+
+- Deterministic packing order.
+- Budget-aware bucket limits.
+- Evidence traceability (`citation_map`).
+- Degradation path when model/network is unavailable.
+
+## Operational notes
+
+- Backend default: `127.0.0.1:8000`
+- Frontend default: `127.0.0.1:5173`
+- Startup: `start.sh` / `start.bat`

@@ -9,6 +9,7 @@ from typing import Any
 from services.context_engine import ContextEngine
 from services.llm_gateway import LLMGateway
 from services.summary_service import make_summaries
+from services.canon_extractor_service import CanonExtractorService
 from storage.fs_store import FSStore, apply_patch_ops
 
 
@@ -18,6 +19,7 @@ class JobManager:
         self.context_engine = context_engine
         self.llm_gateway = llm_gateway
         self.queues: dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
+        self.canon_extractor = CanonExtractorService(llm_gateway)
 
     async def emit(self, project_id: str, job_id: str, event: str, data: Any) -> None:
         payload = {"event": event, "data": data}
@@ -75,9 +77,10 @@ class JobManager:
         await self.emit(project_id, job_id, "CONTEXT_MANIFEST", manifest)
 
         guide_text = str(manifest["fixed_blocks"].get("style_guide", {}))
+        world_facts = manifest.get("world_facts", [])[:5]
         writer_messages = [
-            {"role": "system", "content": "你是长篇小说写作助手，按提供文风与场景目标写作。"},
-            {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\n请写一段章节草稿。"},
+            {"role": "system", "content": "你是长篇小说写作助手，按提供文风与场景目标写作，必须遵守style locks。"},
+            {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\n请写一段章节草稿。"},
         ]
         writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
         draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
@@ -91,6 +94,9 @@ class JobManager:
         critic_messages = [{"role": "system", "content": "你是审稿人，输出一句主要问题。"}, {"role": "user", "content": draft[:900] + "\n证据:" + str(manifest.get("critic_evidence", [])[:3])}]
         critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, selected, fallback)
         issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
+        style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
+        if style_locks.get("punctuation") and ("!" in draft or "！" in draft):
+            issues.append({"issue": "style_drift: punctuation lock violated", "evidence": {"chapter_id": chapter_id, "quote": "!"}})
         for issue in issues:
             self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
         await self.emit(project_id, job_id, "CRITIC_REVIEW", {"issues": issues, "provider": critic_used.get("provider"), "model": critic_used.get("model")})
@@ -130,11 +136,20 @@ class JobManager:
             self.store.write_md(project_id, f"meta/summaries/{chapter_id}.summary.md", summary["chapter_summary"])
             self.store.write_json(project_id, f"meta/summaries/{chapter_id}.scene_summaries.json", summary["scene_summaries"])
 
-            chapter_fact = {"scope": "chapter_summary", "fact": summary["chapter_summary"], "evidence": {"chapter_id": chapter_id}}
+            chapter_fact = {"id": f"fact_{job_id}", "scope": "chapter_summary", "key": "summary", "value": summary["chapter_summary"], "confidence": 0.8, "evidence": {"chapter_id": chapter_id}, "sources": [{"path": f"drafts/{chapter_id}.md"}]}
             self.store.append_jsonl(project_id, "canon/facts.jsonl", chapter_fact)
             for s in summary["scene_summaries"]:
-                self.store.append_jsonl(project_id, "canon/facts.jsonl", {"scope": "scene_summary", "fact": s["summary"], "evidence": {"chapter_id": chapter_id}})
-            await self.emit(project_id, job_id, "CANON_UPDATES", {"facts": [chapter_fact], "summary": summary, "provider": writer_used.get("provider")})
+                self.store.append_jsonl(project_id, "canon/facts.jsonl", {"id": f"fact_{uuid.uuid4().hex[:10]}", "scope": "scene_summary", "key": "scene", "value": s["summary"], "confidence": 0.7, "evidence": {"chapter_id": chapter_id}, "sources": [{"path": f"drafts/{chapter_id}.md"}]})
+            extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": payload.get("scene_index", 0), "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, writer_used)
+            for fact in extracted.get("facts", []):
+                self.store.append_jsonl(project_id, "canon/facts.jsonl", fact)
+            for issue in extracted.get("issues", []):
+                self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
+            for proposal in extracted.get("new_entity_proposals", []):
+                self.store.append_jsonl(project_id, "canon/proposals.jsonl", proposal)
+            meta["proposals"] = extracted.get("new_entity_proposals", [])
+            self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", meta)
+            await self.emit(project_id, job_id, "CANON_UPDATES", {"facts": [chapter_fact, *extracted.get("facts", [])], "proposals": extracted.get("new_entity_proposals", []), "summary": summary, "provider": writer_used.get("provider")})
         else:
             await self.emit(project_id, job_id, "DIFF", {"diff": ""})
             await self.emit(project_id, job_id, "MERGE_RESULT", {"chapter_id": chapter_id, "applied": False, "pending_patch": True})

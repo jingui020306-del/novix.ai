@@ -1,0 +1,51 @@
+name: "1) Bug report"
+description: Report a reproducible defect
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Exact steps/commands to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS / Python / Node / Browser / runtime mode
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and traces
+      description: Relevant terminal/API/UI logs
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact scope
+      options:
+        - frontend
+        - backend
+        - storage
+        - ci
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What should be true after fix?

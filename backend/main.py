@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from jobs.manager import JobManager
-from routers import blueprints, canon, cards, drafts, health, jobs, kb, projects, schema, sessions, style, uploads
+from routers import blueprints, canon, cards, drafts, health, jobs, kb, projects, schema, sessions, style, uploads, wiki, world
 from services.context_engine import ContextEngine
 from services.kb_service import KBService
 from services.style_service import StyleService
 from services.llm_gateway import LLMGateway
+from services.world_facts_service import WorldFactsService
+from services.wiki_import_service import WikiImportService
 from storage.fs_store import FSStore
 
 DATA_DIR = Path(__file__).resolve().parents[1] / 'data'
@@ -18,6 +20,8 @@ kb_service = KBService(store)
 context_engine = ContextEngine(store, kb_service)
 style_service = StyleService(store, kb_service)
 llm_gateway = LLMGateway()
+world_facts_service = WorldFactsService(store, kb_service)
+wiki_import_service = WikiImportService(store)
 job_manager = JobManager(store, context_engine, llm_gateway)
 
 app = FastAPI(title='AI Longform Novel Workbench API')
@@ -41,3 +45,6 @@ app.include_router(uploads.router)
 app.include_router(kb.router)
 app.include_router(style.router)
 app.include_router(jobs.router)
+
+app.include_router(world.router)
+app.include_router(wiki.router)

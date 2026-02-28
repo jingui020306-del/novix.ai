@@ -66,24 +66,34 @@ class ContextEngine:
             "included_canon": {"facts": canon_facts, "issues": canon_issues},
             "included_evidence_chunks": {"style_examples": style_examples, "draft_summaries": chapter_meta.get("scene_summaries", [])},
             "evidence": evidence,
+            "world_facts": world_facts,
             "citation_map": citation_map,
             "critic_evidence": critic_evidence,
-            "dropped_items": [],
-            "compression_steps": [],
+            "dropped_items": dropped_items,
+            "compression_steps": compression_steps,
         }
 
-        used = approx_tokens(str(fixed_blocks)) + approx_tokens(str(cards)) + approx_tokens(str(canon_facts) + str(canon_issues))
-        if used > budget:
-            manifest["compression_steps"].append("trim_cards_fields")
+        usage = {
+            "system_rules": approx_tokens(str(fixed_blocks)),
+            "cards": approx_tokens(str(cards)),
+            "canon": approx_tokens(str(canon_facts) + str(canon_issues)),
+            "summaries": approx_tokens(str(chapter_meta.get("scene_summaries", []))),
+            "current_draft": approx_tokens(self.store.read_md(project_id, f"drafts/{chapter_id}.md")),
+            "world": approx_tokens(str(world_facts)),
+            "output_reserve": limits.get("output_reserve", 0),
+        }
+
+        if usage["cards"] > limits["cards"]:
+            compression_steps.append("trim_cards_fields")
             trimmed_cards = []
             for c in cards:
                 p = c.get("payload", {})
                 trimmed_cards.append({"id": c.get("id"), "type": c.get("type"), "payload": {"identity": p.get("identity"), "voice": p.get("voice"), "boundaries": p.get("boundaries")}})
             manifest["included_cards"] = trimmed_cards
-            used = approx_tokens(str(fixed_blocks)) + approx_tokens(str(trimmed_cards)) + approx_tokens(str(canon_facts) + str(canon_issues))
+            usage["cards"] = approx_tokens(str(trimmed_cards))
 
-        if used > budget:
-            manifest["compression_steps"].append("prefer_manuscript_summary")
+        if usage["current_draft"] + usage["canon"] > limits["current_draft"] + limits["canon"]:
+            compression_steps.append("prefer_manuscript_summary")
             man = [e for e in manifest["evidence"] if e.get("kb_id") == "kb_manuscript"][:2]
             docs = [e for e in manifest["evidence"] if e.get("kb_id") == "kb_docs"][:1]
             manifest["evidence"] = man + docs

@@ -1,118 +1,151 @@
-# novix.ai - AI 长篇小说工作台（Phase 2）
+# novix.ai
 
-[![CI](https://github.com/jingui020306-del/novix.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/ci.yml)
+WenShape-parity Context Engineering workbench for longform fiction: **World Facts + Multi-KB retrieval + Talk-style editing + provider fallback pipeline**.
 
-## 端口约定
+[![Backend Tests](https://github.com/jingui020306-del/novix.ai/actions/workflows/backend.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/backend.yml)
+[![Frontend Build](https://github.com/jingui020306-del/novix.ai/actions/workflows/frontend.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/frontend.yml)
+[![Smoke](https://github.com/jingui020306-del/novix.ai/actions/workflows/smoke.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/smoke.yml)
 
-- backend: `8000`
-- frontend: `5173`
+---
 
-## 一键启动
+## What this project is
 
-- Linux/macOS: `./start.sh`
-- Windows: `start.bat`
+`novix.ai` is an open, Git-native writing workbench that keeps WenShape-compatible storage semantics while providing:
 
-## 手动启动（最短命令）
+- deterministic context assembly (`BudgetManager` + manifest),
+- append-only canon/session/patch history,
+- multi-knowledge-base retrieval (`kb_style`, `kb_docs`, `kb_manuscript`, `kb_world`),
+- proposal-driven canon confirmation,
+- and a talk-like editing workflow with patch accept/reject and rollback.
 
-```bash
-cd backend && pip install -r requirements.txt && uvicorn main:app --reload --port 8000
-cd frontend && npm install && npm run dev
-```
+## Quickstart
 
-## 真实 LLM 接入（可选，失败自动回退 Mock）
+### One-command startup
 
-后端支持 `mock | ollama | llama_cpp | openai_compat`，统一经 `llm_gateway` 调用。外部 provider 不可达时会写入 sessions `ERROR` 事件并自动回退 mock，pipeline 不中断。
-
-### 环境变量
-
-```bash
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-LLAMA_CPP_BASE_URL=http://127.0.0.1:8080
-OPENAI_COMPAT_BASE_URL=http://127.0.0.1:8001
-OPENAI_COMPAT_API_KEY=
-DEFAULT_LLM_PROVIDER=mock
-DEFAULT_LLM_MODEL=mock-writer-v1
-```
-
-### 最小启动示例
-
-- Ollama:
+- Linux / macOS
 
   ```bash
-  ollama serve
-  # 可选：ollama pull qwen2.5:7b
+  ./start.sh
   ```
 
-- llama.cpp（OpenAI 兼容模式）:
+- Windows
+
+  ```bat
+  start.bat
+  ```
+
+### Manual startup
+
+- Backend (`:8000`)
 
   ```bash
-  ./server -m /path/to/model.gguf --host 127.0.0.1 --port 8080
+  cd backend
+  pip install -r requirements.txt
+  uvicorn main:app --reload --port 8000
   ```
 
-`jobs/write` 可传 `llm_profile_id` 选择项目内 profile；前端 ChapterEditor 提供模型选择器。
+- Frontend (`:5173`)
 
-## npm E403 排查
+  ```bash
+  cd frontend
+  npm install
+  npm run dev
+  ```
 
-- 先检查当前源：`npm config get registry`
-- 可通过环境变量覆盖：`NPM_REGISTRY=https://registry.npmjs.org/ ./start.sh`（Windows 可先 `set NPM_REGISTRY=https://registry.npmjs.org/`）
-- 若安装报 `E403` 或出现 `registry.npmmirror.com`，脚本会自动切回 npmjs 并重试一次。
+## Demo walkthrough
 
-## 后端测试
+1. Create/select a project in UI (`demo_project_001` exists by default).
+2. Upload style samples in **Style Studio** and run style analysis.
+3. Import wiki content via **Wiki Import** (URL or HTML).
+4. Run **Generate Chapter** in ChapterEditor.
+5. Review patch ops, then apply selected ops.
+6. Open **Canon / Proposals** and accept/reject proposals.
+7. Inspect context evidence and world facts from Context/World panels.
 
-```bash
-cd backend
-python -m pytest -q
-```
+### Example curl snippets
 
-## 前端 smoke 检查
+- Create project:
 
-```bash
-./scripts/smoke_frontend.sh
-```
+  ```bash
+  curl -X POST http://127.0.0.1:8000/api/projects \
+    -H 'content-type: application/json' \
+    -d '{"title":"My Project"}'
+  ```
 
-## WenShape 主结构（不可变）
-
-```text
-data/{project_id}/
-  project.yaml
-  cards/
-  canon/
-  drafts/
-  sessions/
-```
-
-## Phase2 新增（可重建扩展）
-
-- `assets/style_samples`：上传文风样本 txt/md。
-- `meta/kb/kb_style`：chunks + bm25 索引。
-- `meta/summaries`：style profile、章节摘要副本。
-
-## KB 扩展（Docs + Manuscript + 跨库检索）
-
-- `kb_docs`: 上传参考资料 `kind=doc` 后入库。
-- `kb_manuscript`: 保存章节/应用 patch 后自动增量重建（含 `chapter_id/start_line/end_line`）。
-- 跨库检索 API:
+- Multi-KB query:
 
   ```bash
   curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/kb/query_multi \
     -H 'content-type: application/json' \
-    -d '{"query":"雨夜 抉择","top_k":12,"kb":[{"kb_id":"kb_style","weight":0.5},{"kb_id":"kb_docs","weight":1.0},{"kb_id":"kb_manuscript","weight":1.2}]}'
+    -d '{"query":"港区 封锁","top_k":12,"kb":[{"kb_id":"kb_style","weight":0.5},{"kb_id":"kb_docs","weight":1.0},{"kb_id":"kb_manuscript","weight":1.2},{"kb_id":"kb_world","weight":1.1}]}'
   ```
 
-- 证据跳转 API:
-  - `GET /api/projects/{id}/assets/{asset_id}?kind=style_sample|doc`
-  - `GET /api/projects/{id}/drafts/{chapter_id}/lines?start=..&end=..`
+- Import wiki HTML:
 
-## Talk 式编辑增强
+  ```bash
+  curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/wiki/import \
+    -F kind=auto \
+    -F file=@sample.html
+  ```
 
-- 章节版本树：
-  - `GET /api/projects/{id}/drafts/{chapter_id}/versions`
-  - `POST /api/projects/{id}/drafts/{chapter_id}/rollback`
-- Patch 逐条 accept/reject：
-  - `POST /api/projects/{id}/drafts/{chapter_id}/apply-patch`
-  - body: `{patch_ops:[...], accept_op_ids:[...]}`
-- Session message 版本与 Undo/Redo：
-  - `POST /api/projects/{id}/sessions/{sid}/messages/{message_id}/versions`
-  - `POST /api/projects/{id}/sessions/{sid}/messages/{message_id}/activate`
-  - `POST /api/projects/{id}/sessions/{sid}/undo`
-  - `POST /api/projects/{id}/sessions/{sid}/redo`
+
+## UI tip
+
+Use **⌘K / Ctrl+K** to open Command Palette for quick navigation/actions, and `+` / `create` CLI-style syntax for direct creation (project/card/blueprint/chapter).
+
+## Features
+
+| Capability | Status | Notes |
+|---|---|---|
+| WenShape parity storage | ✅ | `project.yaml + cards + canon + drafts + sessions` immutable semantics |
+| BudgetManager | ✅ | proportional token buckets + budget report in manifest |
+| Canon proposals | ✅ | append-only proposals + accept/reject flow |
+| Wiki import | ✅ | URL/HTML -> parsed meta -> proposals |
+| World facts | ✅ | world cards + world state query |
+| Multi-KB retrieval | ✅ | BM25 + overlap + weighted merge |
+| Evidence jump | ✅ | asset/chapter trace with source metadata |
+| Providers | ✅ | mock / ollama / llama.cpp / openai-compat fallback |
+| Talk-style editing | ✅ | patch accept/reject + versions + undo/redo |
+
+## Ports
+
+- Backend API: `127.0.0.1:8000`
+- Frontend Vite dev server: `127.0.0.1:5173`
+
+## Docs index
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
+- [Frontend Debug Guide](docs/FRONTEND_DEBUG.md)
+- [Repository agent constraints](AGENTS.md)
+
+## FAQ
+
+### npm install fails with E403
+
+1. Check registry:
+
+   ```bash
+   npm config get registry
+   ```
+
+2. Override with environment variable:
+
+   ```bash
+   NPM_REGISTRY=https://registry.npmjs.org/ ./start.sh
+   ```
+
+3. In restricted environments, smoke script may return a policy SKIP instead of hard fail.
+
+### Playwright/browser checks are flaky in restricted runtime
+
+That does not block backend logic or pipeline correctness. Use smoke + pytest as baseline validation.
+
+### Can this run without external LLM connectivity?
+
+Yes. Provider failures are captured and pipeline falls back to Mock provider.
+
+## Contributing & License
+
+- See [CONTRIBUTING.md](CONTRIBUTING.md)
+- See [LICENSE](LICENSE)

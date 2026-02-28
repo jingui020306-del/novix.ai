@@ -9,7 +9,18 @@ from typing import Any
 
 
 WENSHAPE_SUBDIRS = ["cards", "canon", "drafts", "sessions"]
-EXT_SUBDIRS = ["assets/style_samples", "assets/docs", "assets/images", "meta/kb/kb_style", "meta/kb/kb_docs", "meta/kb/kb_manuscript", "meta/summaries"]
+EXT_SUBDIRS = [
+    "assets/style_samples",
+    "assets/docs",
+    "assets/images",
+    "assets/wiki",
+    "meta/kb/kb_style",
+    "meta/kb/kb_docs",
+    "meta/kb/kb_manuscript",
+    "meta/kb/kb_world",
+    "meta/summaries",
+    "meta/wiki",
+]
 
 
 def now_iso() -> str:
@@ -45,7 +56,20 @@ class FSStore:
         project = self.read_yaml(project_id, "project.yaml")
         if not project:
             project = {"id": project_id, "title": title, "created_at": now_iso()}
-        project.setdefault("token_budgets", {"default": 2400, "style_examples": 1000, "canon": 700, "evidence": 600})
+        project.setdefault("token_budgets", {
+            "total": 131072,
+            "allocation": {
+                "system_rules_pct": 0.05,
+                "cards_pct": 0.15,
+                "canon_pct": 0.10,
+                "summaries_pct": 0.20,
+                "current_draft_pct": 0.30,
+                "output_reserve_pct": 0.20,
+                "world_pct": 0.10,
+            },
+            "caps": {"max_items_per_bucket": 50, "max_examples_style": 5},
+        })
+        project.setdefault("world_sources", ["project_local"])
         project.setdefault("default_llm_profile_id", "mock_default")
         project.setdefault("llm_profiles", {
             "mock_default": {"provider": "mock", "model": "mock-writer-v1", "base_url": "", "api_key": "", "timeout_s": 60, "stream": True},
@@ -152,6 +176,33 @@ class FSStore:
         self.write_json(project_id, "meta/kb/kb_style/bm25.json", {"vocab": {}, "doc_freq": {}, "doc_len": {}, "avg_len": 0})
         self.write_json(project_id, "meta/kb/kb_docs/bm25.json", {"vocab": {}, "doc_freq": {}, "doc_len": {}, "avg_len": 0})
         self.write_json(project_id, "meta/kb/kb_manuscript/bm25.json", {"vocab": {}, "doc_freq": {}, "doc_len": {}, "avg_len": 0})
+        self.write_json(project_id, "meta/kb/kb_world/bm25.json", {"vocab": {}, "doc_freq": {}, "doc_len": {}, "avg_len": 0})
+        self.write_yaml(project_id, "cards/world_rule_001.yaml", {
+            "id": "world_rule_001", "type": "world_rule", "title": "潮汐封港法", "tags": ["rule"], "links": [],
+            "payload": {"rule": "风暴红色预警期间，临港城外港全面封锁。", "level": "hard"},
+        })
+        self.write_yaml(project_id, "cards/lore_001.yaml", {
+            "id": "lore_001", "type": "lore", "title": "黑潮同盟", "tags": ["faction"], "links": [],
+            "payload": {"summary": "控制临港城灰色航运网络的地下同盟。"},
+        })
+        self.append_jsonl(project_id, "canon/facts.jsonl", {
+            "id": "fact_world_state_001",
+            "scope": "world_state",
+            "key": "harbor_lockdown",
+            "value": "港区进入三级封锁，货运延迟。",
+            "confidence": 0.9,
+            "evidence": {"chapter_id": "chapter_001", "quote": "雨夜封港"},
+            "sources": [{"path": "cards/world_rule_001.yaml"}],
+        })
+        sample_wiki = "<html><head><title>临港城</title></head><body><table class='infobox'><tr><th>别名</th><td>海雾之城</td></tr></table><h2>设定</h2><p>临港城由七个港区组成。</p></body></html>"
+        self.write_md(project_id, "assets/wiki/wiki_demo_001.html", sample_wiki)
+        self.write_json(project_id, "meta/wiki/wiki_demo_001.json", {
+            "title": "临港城",
+            "url": "",
+            "infobox": {"别名": "海雾之城"},
+            "sections": [{"h": "设定", "text": "临港城由七个港区组成。"}],
+            "candidates": {"characters": [], "world": ["临港城"], "items": []},
+        })
 
 
 def apply_patch_ops(original: str, ops: list[dict[str, Any]]) -> tuple[str, str]:

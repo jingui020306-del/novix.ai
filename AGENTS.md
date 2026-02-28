@@ -13,31 +13,40 @@ data/{project_id}/
   sessions/
 ```
 
-Do not rename paths, alter semantics, or introduce a second parallel storage layout.
+### Hard constraints
 
-## StoryMode / scenario-card-spec-v1 Blueprint
+- Do not rename these paths.
+- Do not alter these semantics.
+- Do not introduce a second parallel storage layout.
 
-Blueprints must be persisted as:
+## StoryMode / scenario-card-spec-v1 blueprint
+
+Blueprints must be stored as:
 
 ```text
 data/{project_id}/cards/blueprint_*.json
 ```
 
-Blueprint JSON must remain compatible with scenario-card-spec-v1, including Story → Scenes → Beats semantics and fields such as `story_type_id`, `scene_plan`, and `choice_points`.
+Blueprint JSON must remain compatible with scenario-card-spec-v1, including:
+
+- Story → Scenes → Beats structure,
+- `story_type_id`,
+- `scene_plan`,
+- `choice_points`.
 
 Allowed optional control signals:
 
 - `@@BEAT:N@@`
 - `@@NEXT_SCENE@@`
 
-## Cards vs Canon
+## Cards vs Canon boundary
 
-- `cards/*.yaml`: static setup cards (`character/world/style/outline`).
-- `canon/*.jsonl`: dynamic facts, conflicts, timeline, append-only.
+- `cards/*.yaml`: static setup cards (`character/world/style/outline`)
+- `canon/*.jsonl`: dynamic facts, conflicts, timeline (**append-only**)
 
 Dynamic state is forbidden from being written back into character cards.
 
-## Patch/Diff
+## Patch / Diff invariants
 
 - Chapter revision must produce patch ops + unified diff.
 - Patch history must be written to `drafts/chapter_*.patch.jsonl`.
@@ -46,4 +55,4 @@ Dynamic state is forbidden from being written back into character cards.
 
 - `start.sh` and `start.bat` must work.
 - Backend `pytest` must pass.
-- Provide `data/demo_project_001/` sample data.
+- `data/demo_project_001/` sample data must exist.
