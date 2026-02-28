@@ -1,0 +1,39 @@
+{
+  "id": "character_001",
+  "type": "character",
+  "title": "林秋",
+  "tags": [
+    "protagonist"
+  ],
+  "links": [
+    "worldview_001",
+    "outline_001"
+  ],
+  "payload": {
+    "name": "林秋",
+    "identity": "调查记者",
+    "appearance": "短发、灰色风衣",
+    "core_motivation": "查明父亲死亡真相",
+    "personality_traits": [
+      "冷静",
+      "执拗"
+    ],
+    "family_background": "单亲家庭",
+    "voice": "克制冷峻",
+    "boundaries": [
+      "不伤及无辜"
+    ],
+    "relationships": [
+      {
+        "target": "character_002",
+        "type": "mentor"
+      }
+    ],
+    "arc": [
+      {
+        "beat": "beat_1",
+        "goal": "追索真相"
+      }
+    ]
+  }
+}
