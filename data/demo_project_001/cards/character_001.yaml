@@ -12,30 +12,27 @@
   "payload": {
     "name": "林秋",
     "identity": "调查记者",
-    "appearance": "短发、灰色风衣、左手虎口有旧伤",
+    "appearance": "短发、灰色风衣",
     "core_motivation": "查明父亲死亡真相",
     "personality_traits": [
       "冷静",
-      "执拗",
-      "共情力强"
+      "执拗"
     ],
-    "family_background": "单亲家庭，母亲长期卧病",
-    "voice": "克制、观察细腻、偶有尖锐讽刺",
+    "family_background": "单亲家庭",
+    "voice": "克制冷峻",
     "boundaries": [
-      "不伤及无辜",
-      "拒绝伪造证据"
+      "不伤及无辜"
     ],
     "relationships": [
       {
         "target": "character_002",
-        "type": "mentor",
-        "status": "疏远"
+        "type": "mentor"
       }
     ],
     "arc": [
       {
         "beat": "beat_1",
-        "goal": "从逃避真相转向主动追索"
+        "goal": "追索真相"
       }
     ]
   }

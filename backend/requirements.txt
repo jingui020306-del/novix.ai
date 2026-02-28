@@ -2,9 +2,7 @@ fastapi==0.115.6
 uvicorn==0.32.1
 pydantic==2.10.3
 aiofiles==24.1.0
-pyyaml==6.0.2
-filelock==3.16.1
 pytest==8.3.4
 httpx==0.28.1
 websockets==14.1
-jsonschema==4.23.0
+python-multipart==0.0.18

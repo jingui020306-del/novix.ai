@@ -2,6 +2,10 @@
   "id": "blueprint_001",
   "story_type_id": "longform_novel",
   "title": "第一章蓝图",
+  "signals": [
+    "@@BEAT:N@@",
+    "@@NEXT_SCENE@@"
+  ],
   "scene_plan": [
     {
       "scene_id": "scene_1",
@@ -9,7 +13,7 @@
       "purpose": "引入线索",
       "situation": "雨夜收到匿名短信",
       "choice_points": [
-        "是否立即赴约"
+        "是否赴约"
       ],
       "cast": [
         "character_001"

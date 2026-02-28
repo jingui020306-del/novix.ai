@@ -1,5 +1,7 @@
 {
   "id": "session_001",
   "undo_index": 0,
-  "versions": []
+  "versions": [],
+  "rolling_summary": "",
+  "last_summarized_message_id": ""
 }
