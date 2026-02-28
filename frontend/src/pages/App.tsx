@@ -229,6 +229,15 @@ export default function App() {
     cur[parts[parts.length - 1]] = value
   }
 
+  const uniq = (arr: string[]) => {
+    const out: string[] = []
+    for (const x of arr) {
+      if (!x || out.includes(x)) continue
+      out.push(x)
+    }
+    return out
+  }
+
   const mapCreateCard = (parsed: ParsedCreate): { card: any; warnings: string[] } => {
     const warnings: string[] = []
     const ts = Date.now()
@@ -245,24 +254,47 @@ export default function App() {
       id: `${cardType}_${ts}`,
       type: cardType,
       title: parsed.title,
-      tags: parsed.tags,
+      tags: uniq(parsed.tags),
       links: [],
       payload: {},
     }
 
     if (parsed.type === 'character') {
       const schema = schemaCacheRef.current.cardSchemas.character
+      const rawTags = uniq(parsed.tags)
+      const canonical: string[] = []
+      if (rawTags.includes('主角')) canonical.push('protagonist')
+      if (rawTags.includes('配角')) canonical.push('supporting')
+      if (rawTags.includes('反派')) canonical.push('antagonist')
+      card.tags = uniq([...rawTags, ...canonical])
+
       const setMaybe = (k: string, path: string, value: any) => {
         if (value === undefined || value === null || value === '') return
         if (schemaHasPath(schema, path)) setByPath(card, path, value)
         else warnings.push(`Ignored --${k} (schema path ${path} missing)`)
       }
-      setMaybe('age', 'payload.identity.age', parsed.opts.age)
-      setMaybe('gender', 'payload.identity.gender', parsed.opts.gender)
-      if (parsed.opts.alias) setMaybe('alias', 'payload.meta.aliases', [parsed.opts.alias])
-      if (parsed.tags.length) setMaybe('tag', 'payload.meta.tags', parsed.tags)
-      setMaybe('importance', 'payload.meta.importance', parsed.opts.importance)
-      setMaybe('note', 'payload.meta.note', parsed.opts.note)
+      setMaybe('name', 'payload.name', parsed.title)
+      setMaybe('identity', 'payload.identity', parsed.opts.identity)
+      setMaybe('appearance', 'payload.appearance', parsed.opts.appearance)
+      setMaybe('motivation', 'payload.core_motivation', parsed.opts.motivation)
+      setMaybe('family', 'payload.family_background', parsed.opts.family)
+      setMaybe('voice', 'payload.voice', parsed.opts.voice)
+      setMaybe('personality_traits', 'payload.personality_traits', uniq((parsed.opts.trait as string[]) || []))
+      setMaybe('boundaries', 'payload.boundaries', uniq((parsed.opts.boundary as string[]) || []))
+
+      const rel = ((parsed.opts.rel as any[]) || []).map((x: any) => ({ target: x?.map?.target, type: x?.map?.type })).filter((x: any) => x.target || x.type)
+      const arc = ((parsed.opts.arc as any[]) || []).map((x: any) => ({ beat: x?.map?.beat, goal: x?.map?.goal })).filter((x: any) => x.beat || x.goal)
+      setMaybe('rel', 'payload.relationships', rel)
+      setMaybe('arc', 'payload.arc', arc)
+
+      const explicitRole = typeof parsed.opts.role === 'string' ? String(parsed.opts.role) : ''
+      const roleFromTag = canonical[0] || ''
+      const resolvedRole = explicitRole || roleFromTag || undefined
+      const explicitImportance = parsed.opts.importance as number | undefined
+      const inferredImportance = roleFromTag === 'protagonist' ? 5 : roleFromTag === 'antagonist' ? 4 : roleFromTag === 'supporting' ? 3 : undefined
+      setMaybe('role', 'payload.role', resolvedRole)
+      setMaybe('importance', 'payload.importance', explicitImportance ?? inferredImportance)
+      setMaybe('age', 'payload.age', parsed.opts.age)
     }
 
     if (parsed.type === 'world' || parsed.type === 'lore' || parsed.type === 'world_rule') {
@@ -738,10 +770,59 @@ export default function App() {
     }
 
     if (view === 'characters') {
+      const payload = characterForm?.payload || {}
       return (
         <div className='space-y-3 density-space'>
+          <Card title='Profile / Importance'>
+            <div className='grid grid-cols-12 gap-3'>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>Role</label>
+                <Select
+                  value={payload.role || 'other'}
+                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, role: e.target.value } })}
+                >
+                  <option value='protagonist'>protagonist</option>
+                  <option value='supporting'>supporting</option>
+                  <option value='antagonist'>antagonist</option>
+                  <option value='other'>other</option>
+                </Select>
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>Importance (1-5)</label>
+                <Input
+                  type='number'
+                  min={1}
+                  max={5}
+                  value={payload.importance ?? 3}
+                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, importance: Number(e.target.value || 3) } })}
+                />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>Age</label>
+                <Input
+                  type='number'
+                  min={0}
+                  max={200}
+                  value={payload.age ?? ''}
+                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, age: e.target.value === '' ? undefined : Number(e.target.value) } })}
+                />
+              </div>
+            </div>
+          </Card>
           <SchemaForm schema={charSchema} value={characterForm} onChange={setCharacterForm} />
-          <Button variant='primary' onClick={async () => { await api.post(`/api/projects/${project}/cards`, characterForm); mutateCards(); push('Character saved') }}>保存角色</Button>
+          <Button
+            variant='primary'
+            onClick={async () => {
+              const id = characterForm?.id || `character_${Date.now()}`
+              const body = { ...characterForm, id, type: 'character' }
+              await api.put(`/api/projects/${project}/cards/${id}`, body)
+              setCharacterForm(body)
+              mutateCards()
+              push('Character saved')
+            }}
+          >
+            保存角色
+          </Button>
           <Card title='Character Cards'>
             <pre className='mono text-xs overflow-auto'>{JSON.stringify(chars, null, 2)}</pre>
           </Card>

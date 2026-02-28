@@ -1,6 +1,6 @@
 import React from 'react'
 import { Card } from './ui/Card'
-import { Input, Textarea } from './ui/Fields'
+import { Input, Select, Textarea } from './ui/Fields'
 
 export function SchemaForm({ schema, value, onChange }: { schema: any; value: any; onChange: (v: any) => void }) {
   const props = schema?.properties || {}
@@ -44,6 +44,43 @@ export function SchemaForm({ schema, value, onChange }: { schema: any; value: an
                       }
                     }}
                   />
+                  {helper && <p className='mt-1 text-xs text-muted'>{helper}</p>}
+                </div>
+              </div>
+            )
+          }
+
+          if (Array.isArray(v?.enum)) {
+            return (
+              <div key={k} className='grid grid-cols-12 items-start gap-3'>
+                <label className='col-span-3 text-sm text-muted pt-2'>{label}</label>
+                <div className='col-span-9'>
+                  <Select value={value[k] || ''} onChange={(e) => onChange({ ...value, [k]: e.target.value })}>
+                    <option value=''>-- select --</option>
+                    {v.enum.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                  </Select>
+                  {helper && <p className='mt-1 text-xs text-muted'>{helper}</p>}
+                </div>
+              </div>
+            )
+          }
+
+          if (v?.type === 'integer' || v?.type === 'number') {
+            const min = v?.minimum ?? v?.min
+            const max = v?.maximum ?? v?.max
+            return (
+              <div key={k} className='grid grid-cols-12 items-start gap-3'>
+                <label className='col-span-3 text-sm text-muted pt-2'>{label}</label>
+                <div className='col-span-9'>
+                  <Input
+                    type='number'
+                    min={min}
+                    max={max}
+                    placeholder={k}
+                    value={value[k] ?? ''}
+                    onChange={(e) => onChange({ ...value, [k]: e.target.value === '' ? '' : Number(e.target.value) })}
+                  />
+                  {(min !== undefined || max !== undefined) && <p className='mt-1 text-xs text-muted'>range: {min ?? '-∞'} ~ {max ?? '∞'}</p>}
                   {helper && <p className='mt-1 text-xs text-muted'>{helper}</p>}
                 </div>
               </div>

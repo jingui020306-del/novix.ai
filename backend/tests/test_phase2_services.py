@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from context_engine.budget_manager import BudgetManager
@@ -140,3 +141,49 @@ def test_provider_fallback_to_mock_and_canon_append(tmp_path: Path):
     assert wd["provider"] == "mock"
     assert s.read_jsonl("p1", "canon/facts.jsonl")
     assert s.read_jsonl("p1", "canon/proposals.jsonl")
+
+
+def test_character_schema_exposes_role_importance_age(tmp_path: Path):
+    from schemas.json_schemas import CARD_TYPE_SCHEMAS
+
+    schema = CARD_TYPE_SCHEMAS['character']
+    payload_props = schema['properties']['payload']['properties']
+
+    assert payload_props['role']['enum'] == ['protagonist', 'supporting', 'antagonist', 'other']
+    assert payload_props['importance']['type'] == 'integer'
+    assert payload_props['age']['type'] == 'integer'
+
+
+def test_cards_api_roundtrip_character_role_importance_age(tmp_path: Path):
+    from routers.cards import create_card, get_card
+
+    s = make_store(tmp_path)
+
+    card = {
+        'id': 'character_test_001',
+        'type': 'character',
+        'title': 'Alice',
+        'tags': ['主角', 'protagonist'],
+        'links': [],
+        'payload': {
+            'name': 'Alice',
+            'identity': '医学院研究生',
+            'appearance': '短发',
+            'core_motivation': '守护家人',
+            'personality_traits': ['冷静', '克制'],
+            'family_background': '普通家庭',
+            'voice': '短句',
+            'boundaries': ['不伤及无辜'],
+            'relationships': [],
+            'arc': [],
+            'role': 'protagonist',
+            'importance': 5,
+            'age': 24,
+        },
+    }
+
+    create_card('p1', card, s)
+    got = get_card('p1', 'character_test_001', s)
+    assert got['payload']['role'] == 'protagonist'
+    assert got['payload']['importance'] == 5
+    assert got['payload']['age'] == 24
