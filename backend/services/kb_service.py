@@ -36,10 +36,18 @@ def sanitize_for_index(text: str) -> tuple[str, list[str]]:
 def split_chunks(text: str) -> list[str]:
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     chunks: list[str] = []
+
+    def flush_buffer(buf: str) -> str:
+        while len(buf) > 800:
+            chunks.append(buf[:800].strip())
+            buf = buf[800:]
+        return buf
+
     for p in paragraphs:
         if len(p) <= 800:
             chunks.append(p)
             continue
+
         pieces = re.split(r"(?<=[。！？!?])|\n", p)
         buf = ""
         for s in pieces:
@@ -48,11 +56,20 @@ def split_chunks(text: str) -> list[str]:
                 continue
             if len(buf) + len(s) <= 800:
                 buf += s
+                continue
+
+            if buf:
+                chunks.append(buf.strip())
+                buf = ""
+
+            if len(s) <= 800:
+                buf = s
             else:
-                chunks.append((buf or s).strip())
-                buf = "" if buf else ""
+                buf = flush_buffer(s)
+
         if buf.strip():
             chunks.append(buf.strip())
+
     return chunks or [text[:800]]
 
 

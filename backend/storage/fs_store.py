@@ -37,14 +37,14 @@ class FSStore:
     def _project_dir(self, project_id: str) -> Path:
         base = self.data_dir.resolve()
         target = (base / project_id).resolve()
-        if not str(target).startswith(str(base)):
+        if target == base or base not in target.parents:
             raise ValueError("Invalid project path")
         return target
 
     def _safe_path(self, project_id: str, *parts: str) -> Path:
         pdir = self._project_dir(project_id)
         target = (pdir.joinpath(*parts)).resolve()
-        if not str(target).startswith(str(pdir)):
+        if target == pdir or pdir not in target.parents:
             raise ValueError("Path traversal blocked")
         return target
 

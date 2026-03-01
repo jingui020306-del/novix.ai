@@ -288,8 +288,13 @@ def test_job_emits_technique_brief_and_manifest_fixed_block(tmp_path: Path):
 
     events = asyncio.run(_run())
     assert any(e["event"] == "TECHNIQUE_BRIEF" for e in events)
+    brief = [e for e in events if e["event"] == "TECHNIQUE_BRIEF"][0]["data"]
+    assert brief.get("technique_agent_tags")
+    assert any(row.get("agent_tags") for row in brief.get("technique_checklist", []))
+
     manifest = [e for e in events if e["event"] == "CONTEXT_MANIFEST"][0]["data"]
     assert "technique_brief" in manifest.get("fixed_blocks", {})
+    assert manifest.get("fixed_blocks", {}).get("technique_agent_tags")
 
 
 def test_critic_adds_technique_adherence_issue(tmp_path: Path):
@@ -594,3 +599,52 @@ def test_canon_fact_revise_and_composed_view(tmp_path: Path):
     assert row['value'] == '解除封锁'
     assert row['_revised'] is True
     assert row['_original']['value'] == '封锁中'
+
+
+def test_fsstore_rejects_project_id_outside_data_root(tmp_path: Path):
+    store = FSStore(tmp_path / "data")
+    try:
+        store._project_dir("../data_hijack")
+        assert False, "expected ValueError for traversal project id"
+    except ValueError:
+        pass
+
+
+def test_split_chunks_preserves_overflow_sentence_content():
+    from services.kb_service import split_chunks
+
+    long_sentence = "甲" * 900
+    text = f"第一段。\n\n{long_sentence}。结尾。"
+    chunks = split_chunks(text)
+    merged = "".join(chunks)
+    assert "第一段" in merged
+    assert "结尾" in merged
+    assert len(merged) >= len("第一段。" + long_sentence + "。结尾。")
+
+
+def test_create_job_invalid_payload_returns_400_and_stream_not_hanging(tmp_path: Path):
+    store = make_store(tmp_path)
+    kb = KBService(store)
+    ctx = ContextEngine(store, kb)
+    jm = JobManager(store, ctx, LLMGateway())
+
+    import main as app_main
+
+    old_store = app_main.store
+    old_kb = app_main.kb_service
+    old_ctx = app_main.context_engine
+    old_jm = app_main.job_manager
+    app_main.store = store
+    app_main.kb_service = kb
+    app_main.context_engine = ctx
+    app_main.job_manager = jm
+    try:
+        client = TestClient(app_main.app)
+        resp = client.post('/api/projects/p1/jobs/write', json={'blueprint_id': 'blueprint_001'})
+        assert resp.status_code == 400
+        assert 'chapter_id' in resp.text
+    finally:
+        app_main.store = old_store
+        app_main.kb_service = old_kb
+        app_main.context_engine = old_ctx
+        app_main.job_manager = old_jm

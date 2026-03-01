@@ -95,6 +95,19 @@ def upsert_pinned_technique_rows(rows: list[dict[str, Any]], item: dict[str, Any
     return out
 
 
+def _normalize_tags(*tag_lists: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for tags in tag_lists:
+        for t in tags or []:
+            ts = str(t).strip()
+            if not ts or ts in seen:
+                continue
+            seen.add(ts)
+            out.append(ts)
+    return out
+
+
 class TechniqueDirector:
     def __init__(self, store: FSStore):
         self.store = store
@@ -166,8 +179,14 @@ class TechniqueDirector:
         cards = self._load_technique_cards(project_id)
         checklist: list[dict[str, Any]] = []
         lines = [f"场景目标: {plan.get('scene', {}).get('purpose', '')}"]
+        category_cards = self._load_category_cards(project_id)
+        category_tags: list[str] = []
         if selected_categories:
             lines.append(f"宏观分类: {[c.get('category_id') for c in selected_categories]}")
+            for c in selected_categories:
+                card = category_cards.get(c.get("category_id"), {})
+                payload_tags = (card.get("payload", {}) or {}).get("tags", [])
+                category_tags.extend(_normalize_tags(card.get("tags", []), payload_tags))
         if style_guide:
             lines.append(f"文风约束: {style_guide}")
         if world_facts:
@@ -180,6 +199,7 @@ class TechniqueDirector:
             name = p.get("name") or card.get("title") or tid
             signals = (p.get("signals") or [])[:3]
             avoid = (p.get("do_dont", {}).get("dont") or [])[:2]
+            tag_bundle = _normalize_tags(card.get("tags", []), (p.get("tags") or []), category_tags)
             checklist.append(
                 {
                     "technique_id": tid,
@@ -188,6 +208,7 @@ class TechniqueDirector:
                     "source": s.get("source", "outline:arc"),
                     "effective_intensity": s.get("effective_intensity", s.get("intensity", "med")),
                     "effective_weight": s.get("effective_weight", s.get("weight", 1.0)),
+                    "agent_tags": tag_bundle,
                 }
             )
             steps = (p.get("apply_steps") or [])[:3]
@@ -203,11 +224,16 @@ class TechniqueDirector:
             for k, v in metrics.items():
                 constraints[k] = v
 
+        technique_agent_tags = _normalize_tags(*[row.get("agent_tags", []) for row in checklist])
+        if technique_agent_tags:
+            lines.append(f"技法Agent标签: {technique_agent_tags}")
+
         brief = "\n".join(lines)[:1200]
         return {
             "technique_brief": brief,
             "technique_checklist": checklist,
             "technique_style_constraints": constraints,
+            "technique_agent_tags": technique_agent_tags,
             "selected_techniques": selected_techniques,
             "selected_categories": selected_categories or [],
         }

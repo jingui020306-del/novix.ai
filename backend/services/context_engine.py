@@ -86,6 +86,8 @@ class ContextEngine:
             fixed_blocks["technique_checklist"] = technique_data.get("technique_checklist", [])
             if technique_data.get("technique_style_constraints"):
                 fixed_blocks["technique_style_constraints"] = technique_data.get("technique_style_constraints", {})
+            if technique_data.get("technique_agent_tags"):
+                fixed_blocks["technique_agent_tags"] = technique_data.get("technique_agent_tags", [])
         manifest = {
             "token_budgets": {"max_tokens": bm.total},
             "fixed_blocks": fixed_blocks,

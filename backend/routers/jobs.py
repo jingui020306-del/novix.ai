@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
 
 from jobs.manager import JobManager
 
@@ -14,7 +14,10 @@ router = APIRouter(prefix='/api')
 
 @router.post('/projects/{project_id}/jobs/write')
 async def create_job(project_id: str, body: dict, jm: JobManager = Depends(get_manager)):
-    job_id = await jm.run_write_job(project_id, body)
+    try:
+        job_id = await jm.run_write_job(project_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"job_id": job_id}
 
 

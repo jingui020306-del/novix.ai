@@ -41,6 +41,7 @@ WenShape-parity context-engineering workbench for longform fiction.
 - **KB Retrieval**：`kb_style / kb_docs / kb_manuscript / kb_world` 多源检索。
 - **World Model**：世界卡 + 世界状态事实联合查询。
 - **Techniques**：macro category + micro technique 双层挂载与继承。
+- **Technique Agent Tags**：自动汇总 technique/category 标签，并注入 `TECHNIQUE_BRIEF` 与 Context Manifest（`fixed_blocks.technique_agent_tags`）供 Writer/Reviewer 管道消费。
 - **Talk editing**：审稿问题 -> patch ops -> selective apply/rollback。
 
 ## Quickstart
