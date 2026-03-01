@@ -1,0 +1,52 @@
+{
+  "id": "outline_001",
+  "type": "outline",
+  "title": "第一卷提纲",
+  "tags": [],
+  "links": [
+    "character_001"
+  ],
+  "payload": {
+    "beats": [
+      {
+        "id": "beat_1",
+        "summary": "匿名线索出现"
+      }
+    ],
+    "technique_prefs": [
+      {
+        "scope": "arc",
+        "ref": "arc_main",
+        "techniques": [
+          {
+            "technique_id": "technique_001",
+            "intensity": "med",
+            "notes": "全卷冷笔触基调"
+          }
+        ]
+      },
+      {
+        "scope": "chapter",
+        "ref": "chapter_001",
+        "techniques": [
+          {
+            "technique_id": "technique_051",
+            "intensity": "med",
+            "notes": "章节结构采用蒙太奇"
+          }
+        ]
+      },
+      {
+        "scope": "beat",
+        "ref": "chapter_001.b0",
+        "techniques": [
+          {
+            "technique_id": "technique_004",
+            "intensity": "high",
+            "notes": "关键段落保留信息留白"
+          }
+        ]
+      }
+    ]
+  }
+}

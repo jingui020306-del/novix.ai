@@ -1,0 +1,19 @@
+{
+  "id": "technique_category_description",
+  "type": "technique_category",
+  "title": "描写方法",
+  "tags": [
+    "technique",
+    "category"
+  ],
+  "links": [],
+  "payload": {
+    "name": "描写方法",
+    "description": "场景/人物/动作描写策略",
+    "sort_order": 4,
+    "tags": [
+      "技法",
+      "分类"
+    ]
+  }
+}

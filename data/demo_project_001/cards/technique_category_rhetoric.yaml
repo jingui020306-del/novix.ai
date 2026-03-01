@@ -1,0 +1,19 @@
+{
+  "id": "technique_category_rhetoric",
+  "type": "technique_category",
+  "title": "修辞手法",
+  "tags": [
+    "technique",
+    "category"
+  ],
+  "links": [],
+  "payload": {
+    "name": "修辞手法",
+    "description": "修辞与语义强化",
+    "sort_order": 2,
+    "tags": [
+      "技法",
+      "分类"
+    ]
+  }
+}

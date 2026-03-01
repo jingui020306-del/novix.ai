@@ -1,0 +1,19 @@
+{
+  "id": "technique_category_structure",
+  "type": "technique_category",
+  "title": "结构手法",
+  "tags": [
+    "technique",
+    "category"
+  ],
+  "links": [],
+  "payload": {
+    "name": "结构手法",
+    "description": "时间线、镜头、结构编排",
+    "sort_order": 3,
+    "tags": [
+      "技法",
+      "分类"
+    ]
+  }
+}

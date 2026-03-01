@@ -1,0 +1,49 @@
+id: demo_project_001
+title: Demo Novel Project
+created_at: '2026-02-28T12:31:39.849769+00:00'
+token_budgets:
+  total: 131072
+  allocation:
+    system_rules_pct: 0.05
+    cards_pct: 0.15
+    canon_pct: 0.10
+    summaries_pct: 0.20
+    current_draft_pct: 0.30
+    output_reserve_pct: 0.20
+    world_pct: 0.10
+  caps:
+    max_items_per_bucket: 50
+    max_examples_style: 5
+world_sources:
+  - project_local
+  - global_world
+default_llm_profile_id: mock_default
+llm_profiles:
+  mock_default:
+    provider: mock
+    model: mock-writer-v1
+    base_url: ''
+    api_key: ''
+    timeout_s: 60
+    stream: true
+  ollama_default:
+    provider: ollama
+    model: qwen2.5:7b
+    base_url: http://127.0.0.1:11434
+    api_key: ''
+    timeout_s: 60
+    stream: true
+  llama_cpp_default:
+    provider: llama_cpp
+    model: local-gguf
+    base_url: http://127.0.0.1:8080
+    api_key: ''
+    timeout_s: 60
+    stream: true
+  openai_compat_default:
+    provider: openai_compat
+    model: gpt-4o-mini
+    base_url: http://127.0.0.1:8001
+    api_key: ''
+    timeout_s: 60
+    stream: true

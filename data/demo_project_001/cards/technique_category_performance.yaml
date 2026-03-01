@@ -1,0 +1,19 @@
+{
+  "id": "technique_category_performance",
+  "type": "technique_category",
+  "title": "表现手法",
+  "tags": [
+    "technique",
+    "category"
+  ],
+  "links": [],
+  "payload": {
+    "name": "表现手法",
+    "description": "节奏控制与情绪呈现",
+    "sort_order": 5,
+    "tags": [
+      "技法",
+      "分类"
+    ]
+  }
+}

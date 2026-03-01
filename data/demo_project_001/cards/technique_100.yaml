@@ -1,0 +1,55 @@
+{
+  "id": "technique_100",
+  "type": "technique",
+  "title": "场景回声",
+  "tags": [
+    "technique",
+    "description"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "场景回声",
+    "category_id": "technique_category_description",
+    "aliases": [
+      "场景回声"
+    ],
+    "description": "场景回声用于提升叙事可读性与可检验性。",
+    "apply_steps": [
+      "明确场景目标与情绪方向",
+      "在关键句应用场景回声并保持一致",
+      "收束段落并回看是否过度"
+    ],
+    "signals": [
+      "出现场景回声相关的语言痕迹",
+      "段落节奏与目标强度一致"
+    ],
+    "intensity_levels": {
+      "low": "点到即止，单段使用",
+      "med": "贯穿场景关键段",
+      "high": "成为本场景主导手法"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.08
+    },
+    "do_dont": {
+      "do": [
+        "围绕目标服务",
+        "保持信号可观察"
+      ],
+      "dont": [
+        "连续堆叠导致噪音",
+        "破坏角色一致性"
+      ]
+    },
+    "examples": [
+      "示例：用场景回声重写一句关键动作。"
+    ]
+  }
+}
