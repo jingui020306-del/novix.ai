@@ -1724,7 +1724,7 @@ export default function App() {
           </Card>
 
           <Card title='LLM Assignments (Global)'>
-            <p className='text-xs text-muted mb-2'>Module -> profile_id mapping. Priority: request.llm_profile_id > assignment[module] > project default.</p>
+            <p className='text-xs text-muted mb-2'>Module {'->'} profile_id mapping. Priority: request.llm_profile_id {'>'} assignment[module] {'>'} project default.</p>
             <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
               <Button variant='primary' onClick={async () => {
