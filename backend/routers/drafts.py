@@ -45,6 +45,25 @@ def _save_snapshot(s: FSStore, project_id: str, chapter_id: str, content: str, r
     return node
 
 
+
+
+def _validate_selection_bounds(ops: list[dict], selection_range: dict | None) -> None:
+    if not isinstance(selection_range, dict):
+        return
+    try:
+        sel_start = int(selection_range.get('start', 0))
+        sel_end = int(selection_range.get('end', 0))
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid selection_range')
+    if sel_start < 1 or sel_end < sel_start:
+        raise HTTPException(status_code=400, detail='invalid selection_range')
+    for op in ops:
+        tr = op.get('target_range', {})
+        start = int(tr.get('start', 0))
+        end = int(tr.get('end', start))
+        if start < sel_start or end > sel_end:
+            raise HTTPException(status_code=400, detail=f"op {op.get('op_id')} out of selection_range")
+
 def _normalize_ops(patch_ops: list[dict]) -> list[dict]:
     out = []
     for i, op in enumerate(patch_ops):
@@ -140,6 +159,8 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
     accept_ids = set(body.get('accept_op_ids', [o['op_id'] for o in norm]))
     accepted = [o for o in norm if o['op_id'] in accept_ids]
     rejected = [o for o in norm if o['op_id'] not in accept_ids]
+
+    _validate_selection_bounds(accepted, body.get('selection_range'))
 
     _save_snapshot(s, project_id, chapter_id, original, reason='before_apply_patch', patch_id=body.get('patch_id'))
     apply_ops = [o['raw'] for o in accepted]

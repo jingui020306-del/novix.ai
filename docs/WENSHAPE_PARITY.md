@@ -1,21 +1,22 @@
-# WenShape README Parity Matrix
+# WenShape Parity Matrix
 
-Status: **Parity completed at behavior level (without copying WenShape source code).**
+Status: **Behavior-level parity implemented in this repository (without copying WenShape source code).**
 
 ## 1) Orchestration flow
 
 - Implementation: `backend/jobs/manager.py`
 - Event order:
-  - `DIRECTOR_PLAN`
-  - `CONTEXT_MANIFEST`
-  - `WRITER_TOKEN / WRITER_DRAFT`
-  - `CRITIC_REVIEW`
-  - `EDITOR_PATCH`
-  - `DIFF`
-  - `MERGE_RESULT`
-  - `CANON_UPDATES`
+  1. `DIRECTOR_PLAN`
+  2. `TECHNIQUE_BRIEF`
+  3. `CONTEXT_MANIFEST`
+  4. `WRITER_TOKEN / WRITER_DRAFT`
+  5. `CRITIC_REVIEW`
+  6. `EDITOR_PATCH`
+  7. `DIFF`
+  8. `MERGE_RESULT`
+  9. `CANON_UPDATES`
 
-Acceptance:
+Acceptance endpoints:
 
 - `POST /api/projects/{id}/jobs/write`
 - `WS /api/jobs/{job_id}/stream`
@@ -31,7 +32,7 @@ Acceptance:
   - dropped/compression records,
   - `context_manifest.budget` output.
 
-## 3) Retrieval/selection engine
+## 3) Retrieval and selection
 
 - Implementation: `backend/services/kb_service.py`
 - Behavior:
@@ -70,15 +71,13 @@ Acceptance:
   - world cards (`world_rule_*`, `lore_*`),
   - world state/event facts in canon.
 
-## 7) Degradation + traceability
+## 7) Traceability and fallback
 
-- Degradation:
-  - provider failure emits `ERROR` event and falls back to mock.
-- Traceability:
-  - `context_manifest.citation_map` points to source metadata.
+- Provider failure emits `ERROR` and falls back to mock.
+- `context_manifest.citation_map` keeps source traceability.
 
 ## 8) Validation entry points
 
-- Backend: `cd backend && pytest -q`
-- Frontend smoke: `./scripts/smoke_frontend.sh`
-- UI path: `frontend/src/pages/App.tsx`
+- `pytest -q`
+- `cd backend && pytest -q`
+- `./scripts/smoke_frontend.sh`

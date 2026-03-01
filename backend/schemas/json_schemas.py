@@ -163,3 +163,14 @@ BLUEPRINT_SCHEMA = {
         },
     },
 }
+
+
+COMMON_CARD_OPTIONAL_PROPERTIES = {
+    "stars": {"type": "integer", "minimum": 0, "maximum": 5, "description": "Optional card star rating used for retrieval weighting."},
+    "importance": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Optional card importance used for retrieval weighting (default neutral=3)."},
+}
+
+for _schema in CARD_TYPE_SCHEMAS.values():
+    props = _schema.setdefault("properties", {})
+    for _k, _v in COMMON_CARD_OPTIONAL_PROPERTIES.items():
+        props.setdefault(_k, _v)

@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 
+from fastapi.testclient import TestClient
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -152,6 +153,8 @@ def test_character_schema_exposes_role_importance_age(tmp_path: Path):
     assert payload_props['role']['enum'] == ['protagonist', 'supporting', 'antagonist', 'other']
     assert payload_props['importance']['type'] == 'integer'
     assert payload_props['age']['type'] == 'integer'
+    assert schema['properties']['stars']['minimum'] == 0
+    assert schema['properties']['importance']['minimum'] == 1
 
 
 def test_cards_api_roundtrip_character_role_importance_age(tmp_path: Path):
@@ -298,3 +301,296 @@ def test_critic_adds_technique_adherence_issue(tmp_path: Path):
         [{"technique_id": "technique_001", "must_have_signals": ["镜头切换", "留白"]}],
     )
     assert issues and issues[0]["type"] == "technique_adherence"
+
+
+def test_llm_config_profiles_assignments_crud(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.job_manager.store = app_main.store
+    app_main.job_manager.context_engine.store = app_main.store
+    app_main.job_manager.context_engine.kb = KBService(app_main.store)
+    app_main.job_manager.technique_director.store = app_main.store
+    app_main.llm_config_service = __import__("services.llm_config_service", fromlist=["LLMConfigService"]).LLMConfigService(app_main.store.data_dir)
+
+    client = TestClient(app_main.app)
+
+    rp = client.get('/api/config/llm/profiles')
+    assert rp.status_code == 200 and 'profiles' in rp.json()
+
+    up = client.post('/api/config/llm/profiles', json={
+        'mode': 'upsert',
+        'id': 'test_profile',
+        'profile': {'provider': 'mock', 'model': 'mock-writer-v2', 'stream': True},
+    })
+    assert up.status_code == 200
+    assert up.json()['profiles']['test_profile']['model'] == 'mock-writer-v2'
+
+    ra = client.get('/api/config/llm/assignments')
+    assert ra.status_code == 200 and 'assignments' in ra.json()
+
+    ua = client.post('/api/config/llm/assignments', json={'mode': 'upsert', 'module': 'critic', 'profile_id': 'test_profile'})
+    assert ua.status_code == 200
+    assert ua.json()['assignments']['critic'] == 'test_profile'
+
+    meta = client.get('/api/config/llm/providers_meta')
+    assert meta.status_code == 200
+    providers = meta.json()['providers']
+    provider_ids = {p['provider_id'] for p in providers}
+    for expected in {
+        'mock',
+        'ollama',
+        'llama_cpp',
+        'openai_compat:deepseek',
+        'openai_compat:qwen',
+        'openai_compat:kimi',
+        'openai_compat:glm',
+        'openai_compat:gemini',
+        'openai_compat:grok',
+        'openai_compat:custom',
+    }:
+        assert expected in provider_ids
+    deepseek = [p for p in providers if p['provider_id'] == 'openai_compat:deepseek'][0]
+    assert deepseek['display_name']
+    assert 'provider' in deepseek['required_fields']
+    assert 'api_key' in deepseek['optional_fields']
+    assert deepseek['supports_stream'] is True
+
+
+def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):
+    s = make_store(tmp_path)
+    cfg_mod = __import__('services.llm_config_service', fromlist=['LLMConfigService'])
+    cfg = cfg_mod.LLMConfigService(s.data_dir)
+
+    profiles = cfg.read_profiles()
+    profiles['bad_profile'] = {
+        'provider': 'openai_compat',
+        'model': 'bad-model',
+        'base_url': 'http://127.0.0.1:9',
+        'api_key': '',
+        'timeout_s': 1,
+        'stream': True,
+    }
+    cfg.write_profiles(profiles)
+    cfg.write_assignments({'writer': 'bad_profile', 'critic': 'mock_default', 'editor': 'mock_default', 'canon_extractor': 'mock_default'})
+
+    kb = KBService(s)
+    ctx = ContextEngine(s, kb)
+    jm = JobManager(s, ctx, LLMGateway())
+
+    import asyncio
+
+    async def _run():
+        jid = await jm.run_write_job('p1', {'chapter_id': 'chapter_001', 'blueprint_id': 'blueprint_001', 'scene_index': 0, 'auto_apply_patch': False})
+        events = []
+        async for e in jm.stream(jid):
+            events.append(e)
+        return events
+
+    events = asyncio.run(_run())
+    manifest = [e for e in events if e['event'] == 'CONTEXT_MANIFEST'][0]['data']
+    assert manifest['llm']['requested_profile_id'] == 'bad_profile'
+    assert any(e['event'] == 'ERROR' and e['data'].get('stage') == 'writer' for e in events)
+    wd = [e for e in events if e['event'] == 'WRITER_DRAFT'][0]['data']
+    assert wd['provider'] == 'mock' and wd['fallback'] is True
+
+
+def test_memory_pack_generated_and_readable(tmp_path: Path):
+    import main as app_main
+    import asyncio
+
+    app_main.store = make_store(tmp_path)
+    app_main.job_manager.store = app_main.store
+    app_main.job_manager.context_engine.store = app_main.store
+    app_main.job_manager.context_engine.kb = KBService(app_main.store)
+    app_main.job_manager.technique_director.store = app_main.store
+
+    async def _run():
+        jid = await app_main.job_manager.run_write_job('p1', {
+            'chapter_id': 'chapter_001',
+            'blueprint_id': 'blueprint_001',
+            'scene_index': 0,
+            'llm_profile_id': 'mock_default',
+            'auto_apply_patch': False,
+        })
+        async for _ in app_main.job_manager.stream(jid):
+            pass
+        return jid
+
+    job_id = asyncio.run(_run())
+
+    client = TestClient(app_main.app)
+    packs = client.get('/api/projects/p1/memory_packs?chapter_id=chapter_001')
+    assert packs.status_code == 200
+    rows = packs.json()
+    assert rows and rows[0]['pack_id'].startswith('chapter_001:job_')
+
+    detail = client.get(f"/api/projects/p1/memory_packs/{rows[0]['pack_id']}")
+    assert detail.status_code == 200
+    pack = detail.json()
+    assert pack['job_id'] == job_id
+    assert 'budget_report' in pack and isinstance(pack['budget_report'], dict)
+    assert 'evidence' in pack and isinstance(pack['evidence'], list)
+
+
+def test_kb_query_card_stars_importance_weighting_affects_rank(tmp_path: Path):
+    s = make_store(tmp_path)
+    kb = KBService(s)
+
+    s.write_yaml('p1', 'cards/character_rank_a.yaml', {
+        'id': 'character_rank_a',
+        'type': 'character',
+        'title': 'A',
+        'stars': 5,
+        'importance': 5,
+        'payload': {},
+    })
+    s.write_yaml('p1', 'cards/character_rank_b.yaml', {
+        'id': 'character_rank_b',
+        'type': 'character',
+        'title': 'B',
+        'stars': 0,
+        'importance': 3,
+        'payload': {},
+    })
+
+    rows = [
+        {
+            'chunk_id': 'a_0001',
+            'kb_id': 'kb_docs',
+            'asset_id': None,
+            'ordinal': 0,
+            'text': '临港城 封锁',
+            'cleaned_text': '临港城 封锁',
+            'features': {},
+            'source': {'path': 'cards/character_rank_a.yaml', 'kind': 'card'},
+        },
+        {
+            'chunk_id': 'b_0001',
+            'kb_id': 'kb_docs',
+            'asset_id': None,
+            'ordinal': 1,
+            'text': '临港城 封锁',
+            'cleaned_text': '临港城 封锁',
+            'features': {},
+            'source': {'path': 'cards/character_rank_b.yaml', 'kind': 'card'},
+        },
+    ]
+    for r in rows:
+        s.append_jsonl('p1', 'meta/kb/kb_docs/chunks.jsonl', r)
+    kb.reindex('p1', 'kb_docs')
+
+    out = kb.query('p1', 'kb_docs', '临港城 封锁', top_k=2)
+    assert len(out) == 2
+    assert out[0]['chunk_id'] == 'a_0001'
+    assert out[0]['score'] > out[1]['score']
+    assert out[0]['retrieval_score'] == out[1]['retrieval_score']
+
+
+def test_apply_patch_rejects_out_of_selection_range(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.job_manager.store = app_main.store
+    app_main.job_manager.context_engine.store = app_main.store
+    app_main.job_manager.context_engine.kb = KBService(app_main.store)
+
+    app_main.store.write_md('p1', 'drafts/chapter_001.md', 'L1\nL2\nL3\nL4')
+    client = TestClient(app_main.app)
+
+    bad = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+        'patch_id': 'p_bad',
+        'patch_ops': [
+            {'op_id': 'op_bad', 'type': 'replace', 'target_range': {'start': 1, 'end': 1}, 'after': 'X'}
+        ],
+        'accept_op_ids': ['op_bad'],
+        'selection_range': {'start': 2, 'end': 3},
+    })
+    assert bad.status_code == 400
+
+    good = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+        'patch_id': 'p_good',
+        'patch_ops': [
+            {'op_id': 'op_ok', 'type': 'replace', 'target_range': {'start': 2, 'end': 2}, 'after': 'L2X'}
+        ],
+        'accept_op_ids': ['op_ok'],
+        'selection_range': {'start': 2, 'end': 3},
+    })
+    assert good.status_code == 200
+    assert 'L2X' in app_main.store.read_md('p1', 'drafts/chapter_001.md')
+
+
+def test_analyze_endpoint_appends_facts_proposals_and_session_events(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.job_manager.store = app_main.store
+    app_main.job_manager.context_engine.store = app_main.store
+    app_main.job_manager.context_engine.kb = KBService(app_main.store)
+
+    s = app_main.store
+    s.write_md('p1', 'drafts/chapter_001.md', '# chapter_001\n\n临港城夜色沉下去。林秋看见黑潮同盟的标记。')
+
+    facts_before = s.read_jsonl('p1', 'canon/facts.jsonl')
+    proposals_before = s.read_jsonl('p1', 'canon/proposals.jsonl')
+
+    client = TestClient(app_main.app)
+    res = client.post('/api/projects/p1/analyze/chapter_001', json={'reason': 'test'})
+    assert res.status_code == 200
+    body = res.json()
+    assert body['new_facts_count'] >= 1
+    assert body['new_proposals_count'] >= 1
+
+    facts_after = s.read_jsonl('p1', 'canon/facts.jsonl')
+    proposals_after = s.read_jsonl('p1', 'canon/proposals.jsonl')
+    assert len(facts_after) >= len(facts_before)
+    assert len(proposals_after) >= len(proposals_before)
+    assert facts_after[:len(facts_before)] == facts_before
+    assert proposals_after[:len(proposals_before)] == proposals_before
+
+    sess = s.read_jsonl('p1', 'sessions/session_001.jsonl')
+    events = [x.get('event') for x in sess]
+    assert 'ANALYZE_TRIGGERED' in events
+    assert 'ANALYZE_RESULT' in events
+
+
+def test_canon_fact_revise_and_composed_view(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.job_manager.store = app_main.store
+    app_main.job_manager.context_engine.store = app_main.store
+    app_main.job_manager.context_engine.kb = KBService(app_main.store)
+
+    s = app_main.store
+    s.append_jsonl('p1', 'canon/facts.jsonl', {
+        'id': 'fact_test_001',
+        'scope': 'world_state',
+        'key': 'status',
+        'value': '封锁中',
+        'confidence': 0.8,
+        'evidence': {'chapter_id': 'chapter_001', 'quote': '封锁'},
+        'sources': [{'path': 'drafts/chapter_001.md'}],
+    })
+    before = s.read_jsonl('p1', 'canon/facts.jsonl')
+
+    client = TestClient(app_main.app)
+    rv = client.post('/api/projects/p1/canon/facts/fact_test_001/revise', json={
+        'patch': {'value': '解除封锁', 'confidence': 0.9},
+        'reason': '剧情推进后状态变化',
+    })
+    assert rv.status_code == 200
+
+    rev_rows = s.read_jsonl('p1', 'canon/revisions.jsonl')
+    assert rev_rows and rev_rows[-1]['target_fact_id'] == 'fact_test_001'
+
+    after = s.read_jsonl('p1', 'canon/facts.jsonl')
+    assert after == before
+
+    composed = client.get('/api/projects/p1/canon/facts?include_revisions=true')
+    assert composed.status_code == 200
+    rows = composed.json()
+    row = [x for x in rows if x.get('id') == 'fact_test_001'][-1]
+    assert row['value'] == '解除封锁'
+    assert row['_revised'] is True
+    assert row['_original']['value'] == '封锁中'

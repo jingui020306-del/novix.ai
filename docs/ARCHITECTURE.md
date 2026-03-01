@@ -1,10 +1,10 @@
 # Architecture (WenShape-aligned)
 
-## Alignment goals
+## 1. Goals
 
-This repository keeps WenShape-compatible data semantics while providing a practical local workbench for authoring pipelines.
+This repository keeps WenShape-compatible storage semantics while providing a practical, local authoring workbench with deterministic context engineering.
 
-Core invariant:
+## 2. Core invariant
 
 ```text
 data/{project_id}/
@@ -15,45 +15,50 @@ data/{project_id}/
   sessions/
 ```
 
-## High-level components
+## 3. System overview
 
-- **backend/**
-  - FastAPI APIs
-  - storage + context + KB + jobs pipeline
-- **frontend/**
-  - IDE-like React shell (left nav / editor / console)
-- **data/**
+- **Backend (`backend/`)**
+  - FastAPI routers
+  - storage, context engine, KB, jobs pipeline
+- **Frontend (`frontend/`)**
+  - React + Vite workbench UI (navigation, editor, event console)
+- **Data (`data/`)**
   - demo + runtime project data
-- **docs/**
-  - architecture and parity documents
+- **Docs (`docs/`)**
+  - architecture, parity, debugging guides
 
-## Data semantics
+## 4. Data semantics
 
-- **Cards** (`cards/*.yaml`): static setup/config cards.
-- **Canon** (`canon/*.jsonl`): append-only dynamic timeline/facts/issues/proposals.
-- **Drafts** (`drafts/*.md` + patch logs): chapter content and revision history.
-- **Sessions** (`sessions/*.jsonl` + meta): append-only event stream + UI pointers.
+- **Cards** (`cards/*.yaml`)  
+  Static setup/config cards (character/world/style/outline/techniques).
+- **Canon** (`canon/*.jsonl`)  
+  Dynamic facts/issues/proposals, append-only.
+- **Drafts** (`drafts/*.md`, `drafts/*.patch.jsonl`)  
+  Chapter text, patch ops, unified diff history.
+- **Sessions** (`sessions/*.jsonl`, meta)  
+  Append-only event stream + UI state pointers.
 
-## Pipeline stages
+## 5. Pipeline stages
 
 1. `DIRECTOR_PLAN`
-2. `CONTEXT_MANIFEST`
-3. `WRITER_TOKEN / WRITER_DRAFT`
-4. `CRITIC_REVIEW`
-5. `EDITOR_PATCH`
-6. `DIFF`
-7. `MERGE_RESULT`
-8. `CANON_UPDATES`
+2. `TECHNIQUE_BRIEF`
+3. `CONTEXT_MANIFEST`
+4. `WRITER_DRAFT`
+5. `CRITIC_REVIEW`
+6. `EDITOR_PATCH`
+7. `DIFF`
+8. `MERGE_RESULT`
+9. `CANON_UPDATES`
 
-## Context assembly principles
+## 6. Context-engine principles
 
 - Deterministic packing order.
-- Budget-aware bucket limits.
+- Budget-aware truncation/compression via `BudgetManager`.
 - Evidence traceability (`citation_map`).
-- Degradation path when model/network is unavailable.
+- Degradation path with mock fallback when provider/network is unavailable.
 
-## Operational notes
+## 7. Runtime defaults
 
-- Backend default: `127.0.0.1:8000`
-- Frontend default: `127.0.0.1:5173`
-- Startup: `start.sh` / `start.bat`
+- Backend: `127.0.0.1:8000`
+- Frontend: `127.0.0.1:5173`
+- Startup scripts: `start.sh` / `start.bat`

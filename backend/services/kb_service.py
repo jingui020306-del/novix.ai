@@ -18,6 +18,10 @@ INJECTION_PATTERNS = [
 
 KB_IDS = {"kb_style", "kb_docs", "kb_manuscript", "kb_world"}
 
+STAR_WEIGHT_COEFF = 0.15
+IMPORTANCE_WEIGHT_COEFF = 0.10
+DEFAULT_IMPORTANCE = 3
+
 
 def sanitize_for_index(text: str) -> tuple[str, list[str]]:
     warnings: list[str] = []
@@ -239,6 +243,21 @@ class KBService:
                 buf = []
         return rows
 
+
+    def _card_weight_multiplier(self, project_id: str, source: dict[str, Any]) -> float:
+        path = str(source.get("path", ""))
+        if not (path.startswith("cards/") and path.endswith(".yaml")):
+            return 1.0
+        try:
+            card = self.store.read_yaml(project_id, path)
+        except Exception:
+            return 1.0
+        stars = float(card.get("stars", 0) or 0)
+        importance = float(card.get("importance", DEFAULT_IMPORTANCE) or DEFAULT_IMPORTANCE)
+        stars = max(0.0, min(5.0, stars))
+        importance = max(1.0, min(5.0, importance))
+        return (1.0 + STAR_WEIGHT_COEFF * stars) * (1.0 + IMPORTANCE_WEIGHT_COEFF * (importance - DEFAULT_IMPORTANCE))
+
     def query(self, project_id: str, kb_id: str, query: str, top_k: int = 5, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         filters = filters or {}
         chunks = self.store.read_jsonl(project_id, _kb_rel(kb_id, "chunks.jsonl"))
@@ -273,9 +292,20 @@ class KBService:
                 b = 0.75
                 score += idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avg_len)))
             overlap = len(set(q_terms) & set(_tokenize(c.get("cleaned_text", c.get("text", "")))))
-            final_score = score + overlap * 0.1
+            retrieval_score = score + overlap * 0.1
+            score_multiplier = self._card_weight_multiplier(project_id, src)
+            final_score = retrieval_score * score_multiplier
             if final_score >= 0:
-                out.append({"kb_id": kb_id, "chunk_id": cid, "score": round(final_score, 4), "text": c["text"], "source": c["source"], "features": c.get("features")})
+                out.append({
+                    "kb_id": kb_id,
+                    "chunk_id": cid,
+                    "score": round(final_score, 4),
+                    "retrieval_score": round(retrieval_score, 4),
+                    "score_multiplier": round(score_multiplier, 4),
+                    "text": c["text"],
+                    "source": c["source"],
+                    "features": c.get("features"),
+                })
         out.sort(key=lambda x: x["score"], reverse=True)
         return out[:top_k]
 

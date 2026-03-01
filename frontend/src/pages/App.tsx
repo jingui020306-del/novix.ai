@@ -65,6 +65,15 @@ type SchemaCache = {
   blueprint?: any
 }
 
+type ProviderMeta = {
+  provider_id: string
+  display_name: string
+  required_fields: string[]
+  optional_fields: string[]
+  supports_stream: boolean
+  defaults?: Record<string, any>
+}
+
 const MRU_KEY = 'novix.palette.mru.v1'
 
 function loadMRU(): { id: string; title: string; group: string; subtitle?: string }[] {
@@ -102,6 +111,12 @@ export default function App() {
   const [assetFind, setAssetFind] = useState('')
   const [autoApplyPatch, setAutoApplyPatch] = useState(false)
   const [selectedOpIds, setSelectedOpIds] = useState<string[]>([])
+  const [selectionMode, setSelectionMode] = useState<'line' | 'paragraph'>('line')
+  const [selectionStart, setSelectionStart] = useState('')
+  const [selectionEnd, setSelectionEnd] = useState('')
+  const [analyzeBusy, setAnalyzeBusy] = useState(false)
+  const [analyzeResult, setAnalyzeResult] = useState<any>(null)
+  const [factRevisionModal, setFactRevisionModal] = useState<{ open: boolean; fact: any | null; patch: string; reason: string }>({ open: false, fact: null, patch: '{}', reason: '' })
   const [sessionMessageId, setSessionMessageId] = useState('writer_msg_001')
   const [sessionMessageText, setSessionMessageText] = useState('')
   const [worldQuery, setWorldQuery] = useState('临港城 封锁')
@@ -159,16 +174,74 @@ export default function App() {
   const { data: versions, mutate: mutateVersions } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/versions` : null, api.get)
   const { data: sessionMeta, mutate: mutateSessionMeta } = useSWR(project ? `/api/projects/${project}/sessions/session_001/meta` : null, api.get)
   const { data: proposals, mutate: mutateProposals } = useSWR(project ? `/api/projects/${project}/canon/proposals` : null, api.get)
+  const { data: canonFacts, mutate: mutateCanonFacts } = useSWR(project ? `/api/projects/${project}/canon/facts?include_revisions=true` : null, api.get)
   const { data: techniqueCards, mutate: mutateTechniqueCards } = useSWR(project ? `/api/projects/${project}/cards?type=technique` : null, api.get)
   const { data: techniqueCategories, mutate: mutateTechniqueCategories } = useSWR(project ? `/api/projects/${project}/cards?type=technique_category` : null, api.get)
+  const { data: globalProfiles, mutate: mutateGlobalProfiles } = useSWR('/api/config/llm/profiles', api.get)
+  const { data: globalAssignments, mutate: mutateGlobalAssignments } = useSWR('/api/config/llm/assignments', api.get)
+  const { data: providersMeta } = useSWR('/api/config/llm/providers_meta', api.get)
+  const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
 
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
   const [techniqueForm, setTechniqueForm] = useState<any>(null)
   const [categoryForm, setCategoryForm] = useState<any>(null)
+  const [profilesEditor, setProfilesEditor] = useState('')
+  const [assignmentsEditor, setAssignmentsEditor] = useState('')
+  const [presetProfileId, setPresetProfileId] = useState('')
+  const [selectedPresetId, setSelectedPresetId] = useState('openai_compat:deepseek')
+  const [selectedMemoryPackId, setSelectedMemoryPackId] = useState('')
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
 
   const profiles = projectInfo?.llm_profiles || {}
+  const providerPresets = ((providersMeta?.providers || []) as ProviderMeta[])
+  const selectedPreset = providerPresets.find((x) => x.provider_id === selectedPresetId)
+  const { data: selectedMemoryPack } = useSWR(
+    project && selectedMemoryPackId ? `/api/projects/${project}/memory_packs/${encodeURIComponent(selectedMemoryPackId)}` : null,
+    api.get,
+  )
+
+  const applyPresetToEditor = () => {
+    const profileId = (presetProfileId || '').trim()
+    if (!profileId) {
+      push('Please input profile id before applying preset', 'error')
+      return
+    }
+    if (!selectedPreset) {
+      push('Preset metadata unavailable', 'error')
+      return
+    }
+    try {
+      const parsed = JSON.parse(profilesEditor || '{}')
+      const next = {
+        ...(parsed || {}),
+        [profileId]: { ...(selectedPreset.defaults || {}) },
+      }
+      setProfilesEditor(JSON.stringify(next, null, 2))
+      push(`Preset applied to profile: ${profileId}`)
+    } catch {
+      push('Profiles JSON is invalid, please fix editor first', 'error')
+    }
+  }
+
+  useEffect(() => {
+    setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))
+  }, [globalProfiles])
+
+  useEffect(() => {
+    setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))
+  }, [globalAssignments])
+
+  useEffect(() => {
+    const rows = Array.isArray(memoryPacks) ? memoryPacks : []
+    if (!rows.length) {
+      setSelectedMemoryPackId('')
+      return
+    }
+    if (!selectedMemoryPackId || !rows.some((r: any) => r.pack_id === selectedMemoryPackId)) {
+      setSelectedMemoryPackId(rows[0].pack_id)
+    }
+  }, [memoryPacks, selectedMemoryPackId])
 
   const lazyLoadPaletteData = async (force = false) => {
     const cache = paletteCacheRef.current
@@ -769,7 +842,7 @@ export default function App() {
     }
   }
 
-  const runJob = async (maxTokens = 2400) => {
+  const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
     try {
       setSelectedOpIds([])
       const j = await api.post(`/api/projects/${project}/jobs/write`, {
@@ -780,6 +853,7 @@ export default function App() {
         llm_profile_id: llmProfileId,
         auto_apply_patch: autoApplyPatch,
         constraints: { max_tokens: maxTokens },
+        selection_range: range || undefined,
       })
       const ws = new WebSocket(`ws://127.0.0.1:8000/api/jobs/${j.job_id}/stream`)
       ws.onmessage = (e) => {
@@ -790,6 +864,7 @@ export default function App() {
           mutateStyles()
           mutateVersions()
           mutateSessionMeta()
+          mutateMemoryPacks()
           push('Job finished')
         }
       }
@@ -798,17 +873,45 @@ export default function App() {
     }
   }
 
+  const analyzeChapter = async () => {
+    try {
+      setAnalyzeBusy(true)
+      setAnalyzeResult(null)
+      const res = await api.post(`/api/projects/${project}/analyze/${selectedChapter}`, { reason: 'ui_button' })
+      setAnalyzeResult(res)
+      mutateProposals()
+      push(`Analyze done: +${res.new_facts_count || 0} facts, +${res.new_proposals_count || 0} proposals`)
+    } catch {
+      push('Analyze failed', 'error')
+    } finally {
+      setAnalyzeBusy(false)
+    }
+  }
+
   const applySelectedPatch = async () => {
     if (!latestPatch?.ops?.length) return
     try {
       const accept = selectedOpIds.length ? selectedOpIds : latestPatch.ops.map((o: any) => o.op_id)
-      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: latestPatch.patch_id, patch_ops: latestPatch.ops, accept_op_ids: accept })
+      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: latestPatch.patch_id, patch_ops: latestPatch.ops, accept_op_ids: accept, selection_range: latestPatch.selection_range || undefined })
       mutateDraft()
       mutateVersions()
       mutateSessionMeta()
       push('Patch applied')
     } catch {
       push('Patch apply failed', 'error')
+    }
+  }
+
+  const reviseCanonFact = async () => {
+    if (!factRevisionModal.fact?.id) return
+    try {
+      const patch = JSON.parse(factRevisionModal.patch || '{}')
+      await api.post(`/api/projects/${project}/canon/facts/${factRevisionModal.fact.id}/revise`, { patch, reason: factRevisionModal.reason })
+      mutateCanonFacts()
+      push('Fact revision appended')
+      setFactRevisionModal({ open: false, fact: null, patch: '{}', reason: '' })
+    } catch {
+      push('Revise fact failed (check patch/reason)', 'error')
     }
   }
 
@@ -1025,6 +1128,38 @@ export default function App() {
     </div>
   )
 
+  const paragraphRanges = useMemo(() => {
+    const lines = (draft?.content || '').split('\n')
+    const ranges: Array<{ idx: number; start: number; end: number }> = []
+    let start = 1
+    let idx = 1
+    for (let i = 1; i <= lines.length; i += 1) {
+      const isBreak = i === lines.length || lines[i].trim() === ''
+      if (isBreak) {
+        const end = i
+        if (end >= start) ranges.push({ idx, start, end })
+        start = i + 2
+        idx += 1
+      }
+    }
+    return ranges
+  }, [draft])
+
+  const selectionRange = useMemo(() => {
+    if (!selectionStart || !selectionEnd) return null
+    const s = Number(selectionStart)
+    const e = Number(selectionEnd)
+    if (!Number.isFinite(s) || !Number.isFinite(e)) return null
+    if (selectionMode === 'line') {
+      if (s < 1 || e < s) return null
+      return { start: s, end: e }
+    }
+    const p1 = paragraphRanges.find((p) => p.idx === s)
+    const p2 = paragraphRanges.find((p) => p.idx === e)
+    if (!p1 || !p2 || p2.idx < p1.idx) return null
+    return { start: p1.start, end: p2.end }
+  }, [selectionMode, selectionStart, selectionEnd, paragraphRanges])
+
   const highlighted = useMemo(() => {
     const lines = (draft?.content || '').split('\n')
     if (!highlightRange) return draft?.content
@@ -1089,7 +1224,7 @@ export default function App() {
         <div className='space-y-3 density-space'>
           <Card title='Profile / Importance'>
             <div className='grid grid-cols-12 gap-3'>
-              <div className='col-span-4'>
+              <div className='col-span-3'>
                 <label className='text-xs text-muted'>Role</label>
                 <Select
                   value={payload.role || 'other'}
@@ -1101,8 +1236,8 @@ export default function App() {
                   <option value='other'>other</option>
                 </Select>
               </div>
-              <div className='col-span-4'>
-                <label className='text-xs text-muted'>Importance (1-5)</label>
+              <div className='col-span-3'>
+                <label className='text-xs text-muted'>Character Importance (1-5)</label>
                 <Input
                   type='number'
                   min={1}
@@ -1111,7 +1246,7 @@ export default function App() {
                   onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, importance: Number(e.target.value || 3) } })}
                 />
               </div>
-              <div className='col-span-4'>
+              <div className='col-span-2'>
                 <label className='text-xs text-muted'>Age</label>
                 <Input
                   type='number'
@@ -1119,6 +1254,26 @@ export default function App() {
                   max={200}
                   value={payload.age ?? ''}
                   onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, age: e.target.value === '' ? undefined : Number(e.target.value) } })}
+                />
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Card Stars</label>
+                <Input
+                  type='number'
+                  min={0}
+                  max={5}
+                  value={characterForm?.stars ?? ''}
+                  onChange={(e) => setCharacterForm({ ...characterForm, stars: e.target.value === '' ? undefined : Number(e.target.value) })}
+                />
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Card Importance</label>
+                <Input
+                  type='number'
+                  min={1}
+                  max={5}
+                  value={characterForm?.importance ?? ''}
+                  onChange={(e) => setCharacterForm({ ...characterForm, importance: e.target.value === '' ? undefined : Number(e.target.value) })}
                 />
               </div>
             </div>
@@ -1192,10 +1347,31 @@ export default function App() {
                 </label>
               </div>
             </div>
-            <div className='mt-3 flex gap-2'>
-              <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
-              <Button onClick={() => runJob(160)}>超预算模拟</Button>
+            <div className='mt-3 grid grid-cols-12 gap-2'>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Selection Mode</label>
+                <Select value={selectionMode} onChange={(e) => setSelectionMode(e.target.value as any)}>
+                  <option value='line'>By Line</option>
+                  <option value='paragraph'>By Paragraph</option>
+                </Select>
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>{selectionMode === 'line' ? 'Start Line' : 'Start Paragraph'}</label>
+                <Input value={selectionStart} onChange={(e) => setSelectionStart(e.target.value)} placeholder='start' />
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>{selectionMode === 'line' ? 'End Line' : 'End Paragraph'}</label>
+                <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='end' />
+              </div>
+              <div className='col-span-6 flex items-end gap-2'>
+                <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
+                <Button onClick={() => runJob(160)}>超预算模拟</Button>
+                <Button onClick={analyzeChapter} disabled={analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
+                {selectionRange ? <Button onClick={() => runJob(1200, selectionRange)}>Edit Selection</Button> : null}
+              </div>
             </div>
+            {selectionRange ? <p className='mt-2 text-xs text-muted'>Selection range: L{selectionRange.start}-L{selectionRange.end}</p> : <p className='mt-2 text-xs text-muted'>Set start/end to enable Edit Selection.</p>}
+            {analyzeResult ? <p className='mt-1 text-xs text-muted'>Analyze result: +{analyzeResult.new_facts_count || 0} facts, +{analyzeResult.new_proposals_count || 0} proposals.</p> : null}
           </Card>
 
           <Card title={highlightRange ? `Evidence: ${selectedChapter} L${highlightRange.start}-L${highlightRange.end}` : 'Draft Preview'}>
@@ -1301,24 +1477,62 @@ export default function App() {
 
     if (view === 'canon') {
       return (
-        <Card title='Canon / Proposals'>
-          <div className='space-y-2'>
-            {(proposals || []).slice(-20).reverse().map((p: any, i: number) => (
-              <div key={i} className={`rounded-ui border bg-surface p-2 ${selectedProposalId && selectedProposalId === (p.proposal_id || p.id) ? 'border-brand-500' : 'border-border'}`}>
-                <div className='flex items-center gap-2 text-sm'>
-                  <Badge>{p.entity_type || p.event || 'proposal'}</Badge>
-                  <span>{p.name || p.proposal_id}</span>
-                  <span className='text-xs text-muted'>({p.status || 'pending'})</span>
+        <div className='space-y-3 density-space'>
+          <Card title='Canon Facts (Revisions)'>
+            <div className='space-y-2'>
+              {(canonFacts || []).slice(-20).reverse().map((f: any, i: number) => (
+                <div key={`${f.id || 'fact'}:${i}`} className='rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center gap-2 text-sm'>
+                    <Badge>{f.scope || 'fact'}</Badge>
+                    <span className='font-medium'>{f.id || `fact_${i}`}</span>
+                    {f._revised ? <span className='text-xs text-muted'>(revised x{(f._revisions || []).length})</span> : null}
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>
+                    <div>Original: {String((f._original || f).value || '')}</div>
+                    <div>Revised: {String(f.value || '')}</div>
+                  </div>
+                  <div className='mt-2'>
+                    <Button className='text-xs' onClick={() => setFactRevisionModal({ open: true, fact: f, patch: JSON.stringify({ value: f.value || '' }, null, 2), reason: '' })}>编辑/修订</Button>
+                  </div>
                 </div>
-                <div className='mt-2 flex gap-2'>
-                  <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('Proposal accepted') }}>Accept</Button>
-                  <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('Proposal rejected') }}>Reject</Button>
+              ))}
+              {(!canonFacts || canonFacts.length === 0) && <p className='text-sm text-muted'>No facts yet.</p>}
+            </div>
+          </Card>
+
+          <Card title='Canon / Proposals'>
+            <div className='space-y-2'>
+              {(proposals || []).slice(-20).reverse().map((p: any, i: number) => (
+                <div key={i} className={`rounded-ui border bg-surface p-2 ${selectedProposalId && selectedProposalId === (p.proposal_id || p.id) ? 'border-brand-500' : 'border-border'}`}>
+                  <div className='flex items-center gap-2 text-sm'>
+                    <Badge>{p.entity_type || p.event || 'proposal'}</Badge>
+                    <span>{p.name || p.proposal_id}</span>
+                    <span className='text-xs text-muted'>({p.status || 'pending'})</span>
+                  </div>
+                  <div className='mt-2 flex gap-2'>
+                    <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('Proposal accepted') }}>Accept</Button>
+                    <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('Proposal rejected') }}>Reject</Button>
+                  </div>
+                </div>
+              ))}
+              {(!proposals || proposals.length === 0) && <p className='text-sm text-muted'>No proposals yet.</p>}
+            </div>
+          </Card>
+
+          {factRevisionModal.open ? (
+            <Card title='Revise Fact (Append-only)'>
+              <div className='space-y-2'>
+                <div className='text-xs text-muted'>fact_id: {factRevisionModal.fact?.id}</div>
+                <Textarea className='h-28 mono' value={factRevisionModal.patch} onChange={(e) => setFactRevisionModal((x) => ({ ...x, patch: e.target.value }))} />
+                <Input value={factRevisionModal.reason} onChange={(e) => setFactRevisionModal((x) => ({ ...x, reason: e.target.value }))} placeholder='reason (required)' />
+                <div className='flex gap-2'>
+                  <Button variant='primary' onClick={reviseCanonFact}>Save Revision</Button>
+                  <Button onClick={() => setFactRevisionModal({ open: false, fact: null, patch: '{}', reason: '' })}>Cancel</Button>
                 </div>
               </div>
-            ))}
-            {(!proposals || proposals.length === 0) && <p className='text-sm text-muted'>No proposals yet.</p>}
-          </div>
-        </Card>
+            </Card>
+          ) : null}
+        </div>
       )
     }
 
@@ -1431,43 +1645,102 @@ export default function App() {
 
     if (view === 'settings') {
       return (
-        <Card title='Settings'>
-          <div className='grid grid-cols-2 gap-3'>
-            <div>
-              <label className='text-xs text-muted'>Theme</label>
-              <Select value={settings.theme} onChange={(e) => applySettings({ ...settings, theme: e.target.value as any })}>
-                <option value='system'>System</option>
-                <option value='light'>Light</option>
-                <option value='dark'>Dark</option>
-              </Select>
+        <div className='space-y-3 density-space'>
+          <Card title='Settings'>
+            <div className='grid grid-cols-2 gap-3'>
+              <div>
+                <label className='text-xs text-muted'>Theme</label>
+                <Select value={settings.theme} onChange={(e) => applySettings({ ...settings, theme: e.target.value as any })}>
+                  <option value='system'>System</option>
+                  <option value='light'>Light</option>
+                  <option value='dark'>Dark</option>
+                </Select>
+              </div>
+              <div>
+                <label className='text-xs text-muted'>Density</label>
+                <Select value={settings.density} onChange={(e) => applySettings({ ...settings, density: e.target.value as any })}>
+                  <option value='comfortable'>Comfortable</option>
+                  <option value='compact'>Compact</option>
+                </Select>
+              </div>
+              <div>
+                <label className='text-xs text-muted'>Editor Font Size</label>
+                <Select value={settings.editorSize} onChange={(e) => applySettings({ ...settings, editorSize: e.target.value as any })}>
+                  <option value='small'>Small</option>
+                  <option value='medium'>Medium</option>
+                  <option value='large'>Large</option>
+                </Select>
+              </div>
+              <div>
+                <label className='text-xs text-muted'>Default LLM profile</label>
+                <Select value={settings.defaultLlmProfileId} onChange={(e) => { const val = e.target.value; applySettings({ ...settings, defaultLlmProfileId: val }); setLlmProfileId(val) }}>
+                  {Object.keys(profiles).map((k) => <option key={k} value={k}>{k}</option>)}
+                </Select>
+              </div>
             </div>
-            <div>
-              <label className='text-xs text-muted'>Density</label>
-              <Select value={settings.density} onChange={(e) => applySettings({ ...settings, density: e.target.value as any })}>
-                <option value='comfortable'>Comfortable</option>
-                <option value='compact'>Compact</option>
-              </Select>
+            <div className='mt-3 space-y-2'>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> Default auto apply patch</label>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> Evidence viewer soft wrap</label>
             </div>
-            <div>
-              <label className='text-xs text-muted'>Editor Font Size</label>
-              <Select value={settings.editorSize} onChange={(e) => applySettings({ ...settings, editorSize: e.target.value as any })}>
-                <option value='small'>Small</option>
-                <option value='medium'>Medium</option>
-                <option value='large'>Large</option>
-              </Select>
+          </Card>
+
+          <Card title='LLM Profiles (Global)'>
+            <p className='text-xs text-muted mb-2'>Edit global profiles at `data/_global/llm_profiles.json` via config API.</p>
+            <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
+              <div className='grid grid-cols-3 gap-2'>
+                <div>
+                  <label className='text-xs text-muted'>Preset</label>
+                  <Select value={selectedPresetId} onChange={(e) => setSelectedPresetId(e.target.value)}>
+                    {providerPresets.map((p) => <option key={p.provider_id} value={p.provider_id}>{p.display_name}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>Profile ID</label>
+                  <Input value={presetProfileId} onChange={(e) => setPresetProfileId(e.target.value)} placeholder='e.g. deepseek_writer' />
+                </div>
+                <div className='flex items-end'>
+                  <Button onClick={applyPresetToEditor}>Apply Preset</Button>
+                </div>
+              </div>
+              <div className='mt-2 text-xs text-muted'>
+                <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
+                <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
+                <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
+              </div>
             </div>
-            <div>
-              <label className='text-xs text-muted'>Default LLM profile</label>
-              <Select value={settings.defaultLlmProfileId} onChange={(e) => { const val = e.target.value; applySettings({ ...settings, defaultLlmProfileId: val }); setLlmProfileId(val) }}>
-                {Object.keys(profiles).map((k) => <option key={k} value={k}>{k}</option>)}
-              </Select>
+            <Textarea className='h-48 mono' value={profilesEditor} onChange={(e) => setProfilesEditor(e.target.value)} />
+            <div className='mt-2 flex gap-2'>
+              <Button variant='primary' onClick={async () => {
+                try {
+                  await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
+                  mutateGlobalProfiles()
+                  push('Global LLM profiles saved')
+                } catch {
+                  push('Invalid profiles JSON', 'error')
+                }
+              }}>Save Profiles</Button>
+              <Button onClick={() => setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))}>Reset</Button>
             </div>
-          </div>
-          <div className='mt-3 space-y-2'>
-            <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> Default auto apply patch</label>
-            <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> Evidence viewer soft wrap</label>
-          </div>
-        </Card>
+          </Card>
+
+          <Card title='LLM Assignments (Global)'>
+            <p className='text-xs text-muted mb-2'>Module -> profile_id mapping. Priority: request.llm_profile_id > assignment[module] > project default.</p>
+            <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
+            <div className='mt-2 flex gap-2'>
+              <Button variant='primary' onClick={async () => {
+                try {
+                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: JSON.parse(assignmentsEditor || '{}') })
+                  mutateGlobalAssignments()
+                  push('Global assignments saved')
+                } catch {
+                  push('Invalid assignments JSON', 'error')
+                }
+              }}>Save Assignments</Button>
+              <Button onClick={() => setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))}>Reset</Button>
+            </div>
+            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3 mt-2'>{JSON.stringify(providersMeta?.providers || [], null, 2)}</pre>
+          </Card>
+        </div>
       )
     }
 
@@ -1502,6 +1775,40 @@ export default function App() {
             }}
           />
           <p className='text-xs text-muted'>支持 arc/chapter/beat 级 macro(categories) + micro(techniques) 挂载；chapter pinned_techniques 会覆盖同 technique_id。</p>
+        </Card>
+        <Card title='Memory Packs'>
+          <div className='grid grid-cols-2 gap-3'>
+            <div className='space-y-2 max-h-64 overflow-auto'>
+              {(Array.isArray(memoryPacks) ? memoryPacks : []).map((p: any) => (
+                <button
+                  key={p.pack_id}
+                  className={`w-full rounded-ui border px-2 py-2 text-left text-xs ${selectedMemoryPackId === p.pack_id ? 'border-primary bg-surface-2' : 'border-border bg-surface hover:bg-surface-2'}`}
+                  onClick={() => setSelectedMemoryPackId(p.pack_id)}
+                >
+                  <div className='font-medium'>{p.chapter_id} / {p.job_id}</div>
+                  <div className='text-muted'>evidence={p.summary?.evidence_count || 0} compression={p.summary?.compression_steps || 0}</div>
+                </button>
+              ))}
+              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>No memory packs yet. Run a job first.</p> : null}
+            </div>
+            <div className='rounded-ui border border-border bg-surface-2 p-3'>
+              {selectedMemoryPack ? (
+                <div className='space-y-2'>
+                  <div className='text-xs'><b>Pack:</b> {selectedMemoryPack.pack_id}</div>
+                  <div className='text-xs'><b>Budget report</b></div>
+                  <pre className='mono text-[11px] overflow-auto max-h-36'>{JSON.stringify(selectedMemoryPack.budget_report || {}, null, 2)}</pre>
+                  <div className='text-xs'><b>Evidence</b></div>
+                  <div className='space-y-1 max-h-32 overflow-auto'>
+                    {(selectedMemoryPack.evidence || []).map((e: any) => (
+                      <button key={`${e.kb_id}:${e.chunk_id}`} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => openEvidence(e)}>
+                        {e.kb_id}:{e.chunk_id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : <p className='text-sm text-muted'>Select a memory pack.</p>}
+            </div>
+          </div>
         </Card>
         <Card title='Context Manifest' extra={selectedBlueprintId ? <Badge>Blueprint: {selectedBlueprintId}</Badge> : undefined}>
           {currentManifest ? (
@@ -1556,6 +1863,17 @@ export default function App() {
     techniqueCards,
     techniqueCategories,
     techniqueQuery,
+    memoryPacks,
+    selectedMemoryPackId,
+    selectedMemoryPack,
+    selectionMode,
+    selectionStart,
+    selectionEnd,
+    selectionRange,
+    analyzeBusy,
+    analyzeResult,
+    canonFacts,
+    factRevisionModal,
   ])
 
   const providerInfo = events.filter((e) => e.event === 'WRITER_DRAFT').slice(-1)[0]?.data

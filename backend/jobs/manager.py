@@ -11,6 +11,7 @@ from services.llm_gateway import LLMGateway
 from agents.technique_director import TechniqueDirector, derive_technique_adherence_issues
 from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
+from services.llm_config_service import LLMConfigService
 from storage.fs_store import FSStore, apply_patch_ops
 
 
@@ -33,10 +34,19 @@ class JobManager:
         asyncio.create_task(self._pipeline(job_id, project_id, payload))
         return job_id
 
-    def _resolve_profile(self, project_id: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    def _resolve_profile(self, project_id: str, payload: dict[str, Any], module: str = "writer") -> tuple[str, dict[str, Any], dict[str, Any]]:
         project = self.store.read_yaml(project_id, "project.yaml")
-        profiles = project.get("llm_profiles", {})
-        req_id = payload.get("llm_profile_id") or project.get("default_llm_profile_id", "mock_default")
+        project_profiles = project.get("llm_profiles", {})
+        cfg = LLMConfigService(self.store.data_dir)
+        global_profiles = cfg.read_profiles()
+        assignments = cfg.read_assignments()
+        profiles = {**global_profiles, **project_profiles}
+
+        req_profile_id = payload.get("llm_profile_id")
+        assignment_profile_id = assignments.get(module)
+        project_default = project.get("default_llm_profile_id", "mock_default")
+        req_id = req_profile_id or assignment_profile_id or project_default
+
         selected = profiles.get(req_id, profiles.get("mock_default", self.llm_gateway.env_defaults()))
         fallback = profiles.get("mock_default", {"provider": "mock", "model": "mock-writer-v1", "stream": True})
         return req_id, selected, fallback
@@ -63,12 +73,59 @@ class JobManager:
             await self.emit(project_id, job_id, "ERROR", {"stage": stage, "provider": selected.get("provider"), "message": str(e)})
             return await self.llm_gateway.chat_complete(messages, fallback.get("model", "mock-writer-v1"), 0.4, 500, fallback), fallback
 
+
+    def _persist_memory_pack(self, project_id: str, chapter_id: str, job_id: str, manifest: dict[str, Any]) -> None:
+        pack = {
+            "pack_id": f"{chapter_id}:{job_id}",
+            "chapter_id": chapter_id,
+            "job_id": job_id,
+            "fixed_blocks": manifest.get("fixed_blocks", {}),
+            "evidence": manifest.get("evidence", []),
+            "citation_map": manifest.get("citation_map", {}),
+            "budget_report": manifest.get("budget", {}),
+            "dropped_items": manifest.get("dropped_items", []),
+            "compression_steps": manifest.get("compression_steps", []),
+        }
+        self.store.write_json(project_id, f"meta/memory_packs/{chapter_id}/{job_id}.json", pack)
+
+
+    def _normalize_selection_range(self, payload: dict[str, Any]) -> dict[str, int] | None:
+        sr = payload.get("selection_range")
+        if not isinstance(sr, dict):
+            return None
+        try:
+            start = int(sr.get("start", 0))
+            end = int(sr.get("end", 0))
+        except Exception:
+            return None
+        if start < 1 or end < start:
+            return None
+        return {"start": start, "end": end}
+
+    def _clip_ops_to_selection(self, ops: list[dict[str, Any]], selection_range: dict[str, int] | None) -> list[dict[str, Any]]:
+        if not selection_range:
+            return ops
+        out: list[dict[str, Any]] = []
+        s0, e0 = selection_range["start"], selection_range["end"]
+        for op in ops:
+            tr = op.get("target_range", {})
+            try:
+                s = int(tr.get("start", 0))
+                e = int(tr.get("end", s))
+            except Exception:
+                continue
+            if s < s0 or e > e0:
+                continue
+            out.append(op)
+        return out
+
     async def _pipeline(self, job_id: str, project_id: str, payload: dict[str, Any]) -> None:
         chapter_id = payload["chapter_id"]
+        selection_range = self._normalize_selection_range(payload)
         bp = self.store.read_json(project_id, f"cards/{payload['blueprint_id']}.json")
         scene = bp.get("scene_plan", [])[payload.get("scene_index", 0)]
         outline = self.store.read_yaml(project_id, "cards/outline_001.yaml")
-        req_profile_id, selected, fallback = self._resolve_profile(project_id, payload)
+        req_profile_id, selected, fallback = self._resolve_profile(project_id, payload, "writer")
 
         plan = {"scene": scene, "beats": outline.get("payload", {}).get("beats", [])}
         await self.emit(project_id, job_id, "DIRECTOR_PLAN", plan)
@@ -94,6 +151,7 @@ class JobManager:
         manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle)
         manifest["llm"] = {"requested_profile_id": req_profile_id, "requested_provider": selected.get("provider"), "requested_model": selected.get("model")}
         manifest["usage_estimate"] = {"prompt_tokens": 0, "completion_tokens": 0}
+        self._persist_memory_pack(project_id, chapter_id, job_id, manifest)
         await self.emit(project_id, job_id, "CONTEXT_MANIFEST", manifest)
 
         guide_text = str(manifest["fixed_blocks"].get("style_guide", {}))
@@ -101,7 +159,6 @@ class JobManager:
         writer_messages = [
             {"role": "system", "content": "你是长篇小说写作助手，按提供文风与场景目标写作，必须遵守style locks。"},
             {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\ntechnique_brief={manifest.get('fixed_blocks',{}).get('technique_brief','')}\ntechnique_checklist={manifest.get('fixed_blocks',{}).get('technique_checklist',[])}\n请写一段章节草稿。"},
-            {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\n请写一段章节草稿。"},
         ]
         writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
         draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
@@ -113,7 +170,8 @@ class JobManager:
         await self.emit(project_id, job_id, "WRITER_DRAFT", {"chapter_id": chapter_id, "text": draft, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider")})
 
         critic_messages = [{"role": "system", "content": "你是审稿人，输出一句主要问题。"}, {"role": "user", "content": draft[:900] + "\n证据:" + str(manifest.get("critic_evidence", [])[:3])}]
-        critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, selected, fallback)
+        _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "critic")
+        critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback)
         issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
         style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
         if style_locks.get("punctuation") and ("!" in draft or "！" in draft):
@@ -124,11 +182,13 @@ class JobManager:
             self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
         await self.emit(project_id, job_id, "CRITIC_REVIEW", {"issues": issues, "provider": critic_used.get("provider"), "model": critic_used.get("model")})
 
+        editor_scope_hint = f"selection_range={selection_range}" if selection_range else "selection_range=None(whole chapter)"
         editor_messages = [
-            {"role": "system", "content": "你是编辑。输出JSON: {\"ops\":[{\"op_id\":\"op_001\",\"type\":\"replace\",\"target_range\":{\"start\":2,\"end\":3},\"before\":\"...\",\"after\":\"...\",\"rationale\":\"...\"}]}"},
-            {"role": "user", "content": draft[:1200]},
+            {"role": "system", "content": "你是编辑。输出JSON: {\"ops\":[{\"op_id\":\"op_001\",\"type\":\"replace\",\"target_range\":{\"start\":2,\"end\":3},\"before\":\"...\",\"after\":\"...\",\"rationale\":\"...\"}]}. 若给定 selection_range，则所有 target_range 必须完全落在 selection_range 内。"},
+            {"role": "user", "content": f"{editor_scope_hint}\n{draft[:1200]}"},
         ]
-        editor_out, editor_used = await self._complete_with_fallback(project_id, job_id, "editor", editor_messages, selected, fallback)
+        _, editor_selected, editor_fallback = self._resolve_profile(project_id, payload, "editor")
+        editor_out, editor_used = await self._complete_with_fallback(project_id, job_id, "editor", editor_messages, editor_selected, editor_fallback)
         ops = []
         try:
             obj = json.loads(editor_out.get("text", "{}"))
@@ -137,6 +197,9 @@ class JobManager:
             ops = []
         if not ops:
             ops = [{"op_id": "op_001", "type": "replace", "target_range": {"start": 2, "end": 3}, "before": "", "after": "林秋停了两秒。她收起手机，走进雨里，决定赴约。", "rationale": "增强节奏与动作"}]
+        if selection_range and not self._clip_ops_to_selection(ops, selection_range):
+            s0, e0 = selection_range["start"], selection_range["end"]
+            ops = [{"op_id": "op_sel_001", "type": "replace", "target_range": {"start": s0, "end": e0}, "before": "", "after": "（选区内润色）", "rationale": "选区编辑兜底"}]
         technique_issue = next((x for x in issues if x.get("type") == "technique_adherence"), None)
         if technique_issue:
             ops.insert(0, {
@@ -148,7 +211,8 @@ class JobManager:
                 "rationale": "优先修复 technique_adherence，最小改动",
             })
 
-        await self.emit(project_id, job_id, "EDITOR_PATCH", {"patch_id": f"patch_{job_id}", "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model")})
+        ops = self._clip_ops_to_selection(ops, selection_range)
+        await self.emit(project_id, job_id, "EDITOR_PATCH", {"patch_id": f"patch_{job_id}", "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range})
 
         auto_apply = bool(payload.get("auto_apply_patch", False))
         if auto_apply:
@@ -173,7 +237,11 @@ class JobManager:
             self.store.append_jsonl(project_id, "canon/facts.jsonl", chapter_fact)
             for s in summary["scene_summaries"]:
                 self.store.append_jsonl(project_id, "canon/facts.jsonl", {"id": f"fact_{uuid.uuid4().hex[:10]}", "scope": "scene_summary", "key": "scene", "value": s["summary"], "confidence": 0.7, "evidence": {"chapter_id": chapter_id}, "sources": [{"path": f"drafts/{chapter_id}.md"}]})
-            extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": payload.get("scene_index", 0), "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, writer_used)
+            _, canon_selected, canon_fallback = self._resolve_profile(project_id, payload, "canon_extractor")
+            canon_profile = canon_selected
+            if canon_profile.get("provider") == "mock" and writer_used.get("provider") != "mock":
+                canon_profile = writer_used
+            extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": payload.get("scene_index", 0), "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, canon_profile)
             for fact in extracted.get("facts", []):
                 self.store.append_jsonl(project_id, "canon/facts.jsonl", fact)
             for issue in extracted.get("issues", []):

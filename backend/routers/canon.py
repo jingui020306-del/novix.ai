@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from storage.fs_store import FSStore
@@ -12,8 +14,50 @@ def get_store() -> FSStore:
 router = APIRouter(prefix='/api/projects/{project_id}/canon')
 
 
+def _apply_patch(base: dict, patch: dict) -> dict:
+    out = dict(base)
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            merged = dict(out.get(k) or {})
+            merged.update(v)
+            out[k] = merged
+        else:
+            out[k] = v
+    return out
+
+
+def _compose_facts_with_revisions(s: FSStore, project_id: str) -> list[dict]:
+    rows = s.read_jsonl(project_id, 'canon/facts.jsonl')
+    revs = s.read_jsonl(project_id, 'canon/revisions.jsonl')
+    rev_map: dict[str, list[dict]] = {}
+    for r in revs:
+        tid = str(r.get('target_fact_id', ''))
+        if not tid:
+            continue
+        rev_map.setdefault(tid, []).append(r)
+
+    out = []
+    for f in rows:
+        fid = str(f.get('id', ''))
+        if not fid:
+            out.append(f)
+            continue
+        chain = rev_map.get(fid, [])
+        current = dict(f)
+        for r in chain:
+            current = _apply_patch(current, r.get('patch', {}))
+        if chain:
+            current['_original'] = f
+            current['_revised'] = True
+            current['_revisions'] = chain
+        out.append(current)
+    return out
+
+
 @router.get('/facts')
-def facts(project_id: str, s: FSStore = Depends(get_store)):
+def facts(project_id: str, include_revisions: bool = False, s: FSStore = Depends(get_store)):
+    if include_revisions:
+        return _compose_facts_with_revisions(s, project_id)
     return s.read_jsonl(project_id, 'canon/facts.jsonl')
 
 
@@ -42,6 +86,31 @@ def append_issue(project_id: str, body: dict, s: FSStore = Depends(get_store)):
     s.append_jsonl(project_id, 'canon/issues.jsonl', body)
     return {"ok": True}
 
+
+
+
+@router.post('/facts/{fact_id}/revise')
+def revise_fact(project_id: str, fact_id: str, body: dict, s: FSStore = Depends(get_store)):
+    patch = body.get('patch')
+    reason = str(body.get('reason', '')).strip()
+    if not isinstance(patch, dict) or not patch:
+        raise HTTPException(status_code=400, detail='patch(dict) required')
+    if not reason:
+        raise HTTPException(status_code=400, detail='reason required')
+
+    facts_rows = s.read_jsonl(project_id, 'canon/facts.jsonl')
+    if not any(str(x.get('id', '')) == fact_id for x in facts_rows):
+        raise HTTPException(status_code=404, detail='fact not found')
+
+    rec = {
+        'target_fact_id': fact_id,
+        'patch': patch,
+        'reason': reason,
+        'ts': body.get('ts') or datetime.now(timezone.utc).isoformat(),
+    }
+    s.append_jsonl(project_id, 'canon/revisions.jsonl', rec)
+    s.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'CANON_FACT_REVISED', 'data': {'fact_id': fact_id, 'reason': reason}})
+    return {'ok': True, 'revision': rec}
 
 @router.post('/proposals/{proposal_id}/accept')
 def accept_proposal(project_id: str, proposal_id: str, body: dict | None = None, s: FSStore = Depends(get_store)):
