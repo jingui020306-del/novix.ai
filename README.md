@@ -45,19 +45,31 @@ WenShape-parity context-engineering workbench for longform fiction.
 
 ## Quickstart
 
-### One-command startup
+### Unified launcher (recommended)
 
-- Linux / macOS
+```bash
+python start.py
+```
 
-  ```bash
-  ./start.sh
-  ```
+功能：
 
-- Windows
+- 自动端口探测（后端从 `8000`、前端从 `5173` 起递增）。
+- 先启动后端并轮询 `/api/health`。
+- 开发模式自动拉起前端 dev server。
 
-  ```bat
-  start.bat
-  ```
+生产体验模式（前端已打包）
+
+```bash
+python start.py --prod
+```
+
+- 若 `backend/static_dist/index.html` 存在，前端由后端静态托管。
+- 可用 `--no-browser` 禁止自动打开浏览器。
+
+### Legacy one-command startup
+
+- Linux / macOS: `./start.sh`
+- Windows: `start.bat`
 
 ### Manual startup
 
@@ -76,6 +88,16 @@ WenShape-parity context-engineering workbench for longform fiction.
   npm install
   npm run dev
   ```
+
+- Frontend static bundle -> backend host
+
+  ```bash
+  cd frontend
+  npm install
+  npm run build:static
+  ```
+
+  该命令会将 `frontend/dist` 复制到 `backend/static_dist`。
 
 ### Ports
 
@@ -176,6 +198,7 @@ TODO:
 - [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
 - [Frontend Debug Guide](docs/FRONTEND_DEBUG.md)
 - [Technique Guide](docs/TECHNIQUES.md)
+- [Release / Packaging Guide](docs/RELEASE.md)
 - [Repository agent constraints](AGENTS.md)
 
 ## Contributing / License
