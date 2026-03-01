@@ -1,0 +1,36 @@
+{
+  "id": "technique_category_narrative",
+  "type": "technique_category",
+  "title": "叙事艺术",
+  "tags": [
+    "technique",
+    "category",
+    "macro"
+  ],
+  "links": [],
+  "payload": {
+    "name": "叙事艺术",
+    "description": "叙事艺术一级分类",
+    "sort_order": 5,
+    "tags": [
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_081",
+      "technique_082",
+      "technique_083",
+      "technique_084",
+      "technique_085",
+      "technique_086",
+      "technique_087",
+      "technique_088",
+      "technique_089",
+      "technique_090",
+      "technique_091",
+      "technique_092",
+      "technique_093",
+      "technique_094",
+      "technique_095"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_09",
+  "type": "technique_category",
+  "title": "表现艺术/映衬",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "映衬",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·映衬",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

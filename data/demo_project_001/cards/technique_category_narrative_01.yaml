@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_01",
+  "type": "technique_category",
+  "title": "叙事艺术/顺序",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "顺序",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·顺序",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

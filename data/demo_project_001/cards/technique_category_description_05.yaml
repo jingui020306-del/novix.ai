@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_05",
+  "type": "technique_category",
+  "title": "描写艺术/写意",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "写意",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·写意",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

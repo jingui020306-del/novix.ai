@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_08",
+  "type": "technique_category",
+  "title": "表现艺术/照应",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "照应",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·照应",
+    "sort_order": 8,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

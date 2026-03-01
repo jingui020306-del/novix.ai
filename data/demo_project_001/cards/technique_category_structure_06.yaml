@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_06",
+  "type": "technique_category",
+  "title": "结构艺术/回收",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "回收",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·回收",
+    "sort_order": 6,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

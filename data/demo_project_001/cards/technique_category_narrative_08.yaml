@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_08",
+  "type": "technique_category",
+  "title": "叙事艺术/节奏",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "节奏",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·节奏",
+    "sort_order": 8,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

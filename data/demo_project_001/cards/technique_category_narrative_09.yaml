@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_09",
+  "type": "technique_category",
+  "title": "叙事艺术/悬念",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "悬念",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·悬念",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -1,0 +1,8 @@
+id: world_rule_001
+type: world_rule
+title: 潮汐封港法
+tags: [rule]
+links: []
+payload:
+  rule: 风暴红色预警期间，临港城外港全面封锁。
+  level: hard

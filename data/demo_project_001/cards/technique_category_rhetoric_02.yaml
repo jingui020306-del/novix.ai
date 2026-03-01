@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_02",
+  "type": "technique_category",
+  "title": "修辞艺术/比拟",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "比拟",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·比拟",
+    "sort_order": 2,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

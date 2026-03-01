@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_01",
+  "type": "technique_category",
+  "title": "修辞艺术/比喻",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "比喻",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·比喻",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

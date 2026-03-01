@@ -1,0 +1,11 @@
+{
+  "id": "worldview_001",
+  "type": "world",
+  "title": "临港城",
+  "tags": [],
+  "links": [],
+  "payload": {
+    "era": "近未来",
+    "setting": "沿海巨型都市"
+  }
+}

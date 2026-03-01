@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_01",
+  "type": "technique_category",
+  "title": "表现艺术/对比",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "对比",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·对比",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

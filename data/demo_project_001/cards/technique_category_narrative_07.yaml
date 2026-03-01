@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_07",
+  "type": "technique_category",
+  "title": "叙事艺术/视角",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "视角",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·视角",
+    "sort_order": 7,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

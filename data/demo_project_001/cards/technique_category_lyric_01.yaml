@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_lyric_01",
+  "type": "technique_category",
+  "title": "抒情艺术/直抒",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_lyric"
+  ],
+  "payload": {
+    "name": "直抒",
+    "parent_id": "technique_category_lyric",
+    "description": "抒情艺术·直抒",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

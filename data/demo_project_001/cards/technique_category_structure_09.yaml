@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_09",
+  "type": "technique_category",
+  "title": "结构艺术/跳切",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "跳切",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·跳切",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

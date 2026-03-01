@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_03",
+  "type": "technique_category",
+  "title": "结构艺术/高潮",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "高潮",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·高潮",
+    "sort_order": 3,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "style_001",
+  "type": "style",
+  "title": "冷峻现实",
+  "tags": [],
+  "links": [],
+  "payload": {
+    "tone": "冷峻",
+    "rules": [
+      "短句为主"
+    ],
+    "active_style_sample_asset_ids": [
+      "style_sample_demo_001"
+    ],
+    "style_guide": {
+      "sentence_length": "短句优先",
+      "dialogue_ratio": "中低",
+      "punctuation": "少感叹号"
+    },
+    "injection_policy": {
+      "max_examples": 4,
+      "max_chars_per_example": 800
+    },
+    "locks": {
+      "pov": true,
+      "tense": true,
+      "punctuation": true,
+      "taboo_words": true
+    }
+  }
+}

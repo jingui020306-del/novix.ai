@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_lyric_05",
+  "type": "technique_category",
+  "title": "抒情艺术/含蓄",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_lyric"
+  ],
+  "payload": {
+    "name": "含蓄",
+    "parent_id": "technique_category_lyric",
+    "description": "抒情艺术·含蓄",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}
