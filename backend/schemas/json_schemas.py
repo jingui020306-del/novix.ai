@@ -6,7 +6,41 @@ CARD_TYPE_SCHEMAS = {
             "id": {"type": "string"}, "type": {"const": "character"}, "title": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
             "links": {"type": "array", "items": {"type": "string"}},
-            "payload": {"type": "object", "required": ["name", "identity", "appearance", "core_motivation", "personality_traits", "family_background", "voice", "boundaries", "relationships", "arc"]},
+            "payload": {
+                "type": "object",
+                "required": ["name", "identity", "appearance", "core_motivation", "personality_traits", "family_background", "voice", "boundaries", "relationships", "arc"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "identity": {"type": "string"},
+                    "appearance": {"type": "string"},
+                    "core_motivation": {"type": "string"},
+                    "personality_traits": {"type": "array", "items": {"type": "string"}},
+                    "family_background": {"type": "string"},
+                    "voice": {"type": "string"},
+                    "boundaries": {"type": "array", "items": {"type": "string"}},
+                    "relationships": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"target": {"type": "string"}, "type": {"type": "string"}},
+                        },
+                    },
+                    "arc": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"beat": {"type": "string"}, "goal": {"type": "string"}},
+                        },
+                    },
+                    "role": {
+                        "type": "string",
+                        "enum": ["protagonist", "supporting", "antagonist", "other"],
+                        "default": "other",
+                    },
+                    "importance": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+                    "age": {"type": "integer", "minimum": 0, "maximum": 200},
+                },
+            },
         },
     },
     "world": {"type": "object", "required": ["id", "type", "title", "payload"], "properties": {"id": {"type": "string"}, "type": {"const": "world"}, "title": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}}, "payload": {"type": "object"}}},
@@ -22,7 +56,90 @@ CARD_TYPE_SCHEMAS = {
             }},
         },
     },
-    "outline": {"type": "object", "required": ["id", "type", "title", "payload"], "properties": {"id": {"type": "string"}, "type": {"const": "outline"}, "title": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}}, "payload": {"type": "object"}}},
+    "outline": {
+        "type": "object", "required": ["id", "type", "title", "payload"],
+        "properties": {
+            "id": {"type": "string"}, "type": {"const": "outline"}, "title": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}},
+            "payload": {
+                "type": "object",
+                "properties": {
+                    "beats": {"type": "array", "items": {"type": "object"}},
+                    "technique_prefs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "scope": {"type": "string", "enum": ["arc", "chapter", "beat"]},
+                                "ref": {"type": "string"},
+                                "categories": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "category_id": {"type": "string"},
+                                            "intensity": {"type": "string", "enum": ["low", "med", "high"]},
+                                            "weight": {"type": "number"},
+                                            "notes": {"type": "string"},
+                                        },
+                                    },
+                                },
+                                "techniques": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "technique_id": {"type": "string"},
+                                            "intensity": {"type": "string", "enum": ["low", "med", "high"]},
+                                            "notes": {"type": "string"},
+                                            "weight": {"type": "number"},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+    "technique_category": {
+        "type": "object", "required": ["id", "type", "title", "payload"],
+        "properties": {
+            "id": {"type": "string"}, "type": {"const": "technique_category"}, "title": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}},
+            "payload": {"type": "object", "properties": {
+                "name": {"type": "string"},
+                "parent_id": {"type": "string"},
+                "description": {"type": "string"},
+                "sort_order": {"type": "integer"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "core_techniques": {"type": "array", "items": {"type": "string"}},
+            }},
+        },
+    },
+    "technique": {
+        "type": "object", "required": ["id", "type", "title", "payload"],
+        "properties": {
+            "id": {"type": "string"}, "type": {"const": "technique"}, "title": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}}, "links": {"type": "array", "items": {"type": "string"}},
+            "payload": {"type": "object", "properties": {
+                "name": {"type": "string"},
+                "category_id": {"type": "string"},
+                "aliases": {"type": "array", "items": {"type": "string"}},
+                "description": {"type": "string"},
+                "apply_steps": {"type": "array", "items": {"type": "string"}},
+                "signals": {"type": "array", "items": {"type": "string"}},
+                "intensity_levels": {"type": "object", "properties": {"low": {"type": "string"}, "med": {"type": "string"}, "high": {"type": "string"}}},
+                "metrics": {"type": "object", "properties": {
+                    "dialogue_ratio_range": {"type": "array", "items": {"type": "number"}},
+                    "punctuation_caps": {"type": "integer"},
+                    "metaphor_density": {"type": "number"},
+                }},
+                "do_dont": {"type": "object", "properties": {"do": {"type": "array", "items": {"type": "string"}}, "dont": {"type": "array", "items": {"type": "string"}}}},
+                "examples": {"type": "array", "items": {"type": "string"}},
+            }},
+        },
+    },
 }
 
 BLUEPRINT_SCHEMA = {

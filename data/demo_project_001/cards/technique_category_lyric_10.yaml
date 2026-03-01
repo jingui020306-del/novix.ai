@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_lyric_10",
+  "type": "technique_category",
+  "title": "抒情艺术/对位抒情",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_lyric"
+  ],
+  "payload": {
+    "name": "对位抒情",
+    "parent_id": "technique_category_lyric",
+    "description": "抒情艺术·对位抒情",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

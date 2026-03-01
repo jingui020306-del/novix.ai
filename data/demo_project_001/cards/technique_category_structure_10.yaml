@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_10",
+  "type": "technique_category",
+  "title": "结构艺术/蒙太奇",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "蒙太奇",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·蒙太奇",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

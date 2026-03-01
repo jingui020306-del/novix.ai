@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from context_engine.budget_manager import BudgetManager
 from services.kb_service import KBService
 from storage.fs_store import FSStore
 
@@ -15,52 +16,78 @@ class ContextEngine:
         self.store = store
         self.kb = kb
 
-    def build_manifest(self, project_id: str, chapter_id: str, scene: dict[str, Any], constraints: dict[str, Any] | None = None) -> dict[str, Any]:
+    def build_manifest(self, project_id: str, chapter_id: str, scene: dict[str, Any], constraints: dict[str, Any] | None = None, technique_data: dict[str, Any] | None = None) -> dict[str, Any]:
         constraints = constraints or {}
         proj = self.store.read_yaml(project_id, "project.yaml")
-        budget = int(constraints.get("max_tokens") or proj.get("token_budgets", {}).get("default", 2400))
+        bm = BudgetManager.from_project(proj, constraints.get("max_tokens"))
+        limits = bm.bucket_limits()
+
         style = self.store.read_yaml(project_id, "cards/style_001.yaml")
         outline = self.store.read_yaml(project_id, "cards/outline_001.yaml")
         cast = scene.get("cast", [])
-        cards = [self.store.read_yaml(project_id, f"cards/{cid}.yaml") for cid in cast if cid]
-        canon_facts = self.store.read_jsonl(project_id, "canon/facts.jsonl")[-8:]
-        canon_issues = self.store.read_jsonl(project_id, "canon/issues.jsonl")[-8:]
+        cards = [self.store.read_yaml(project_id, f"cards/{cid}.yaml") for cid in cast if cid][: bm.caps["max_items_per_bucket"]]
+        canon_facts = self.store.read_jsonl(project_id, "canon/facts.jsonl")[-bm.caps["max_items_per_bucket"] :]
+        canon_issues = self.store.read_jsonl(project_id, "canon/issues.jsonl")[-bm.caps["max_items_per_bucket"] :]
         chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")
 
         guide = style.get("payload", {}).get("style_guide", {})
+        locks = style.get("payload", {}).get("locks", {})
         policy = style.get("payload", {}).get("injection_policy", {"max_examples": 4, "max_chars_per_example": 800})
-        active_assets = style.get("payload", {}).get("active_style_sample_asset_ids", [])
         query_text = " ".join([scene.get("purpose", ""), scene.get("situation", ""), *scene.get("choice_points", [])])
 
+        self.kb.reindex(project_id, "kb_world")
         if not self.store.read_jsonl(project_id, "meta/kb/kb_manuscript/chunks.jsonl"):
             self.kb.reindex_manuscript(project_id)
 
-        writer_evidence = self.kb.query_multi(project_id, query_text, 12, [
-            {"kb_id": "kb_manuscript", "weight": 1.2},
-            {"kb_id": "kb_docs", "weight": 1.0},
-            {"kb_id": "kb_style", "weight": 0.6},
-        ], filters={})
+        writer_evidence = self.kb.query_multi(
+            project_id,
+            query_text,
+            bm.caps["max_items_per_bucket"],
+            [
+                {"kb_id": "kb_manuscript", "weight": 1.2},
+                {"kb_id": "kb_docs", "weight": 1.0},
+                {"kb_id": "kb_style", "weight": 0.7},
+                {"kb_id": "kb_world", "weight": 1.1},
+            ],
+            filters={},
+        )
 
-        critic_evidence = self.kb.query_multi(project_id, query_text + " 冲突 设定 矛盾", 10, [
-            {"kb_id": "kb_manuscript", "weight": 1.3},
-            {"kb_id": "kb_docs", "weight": 1.0},
-            {"kb_id": "kb_style", "weight": 0.2},
-        ], filters={})
+        critic_evidence = self.kb.query_multi(
+            project_id,
+            query_text + " 冲突 设定 矛盾",
+            bm.caps["max_items_per_bucket"],
+            [
+                {"kb_id": "kb_manuscript", "weight": 1.4},
+                {"kb_id": "kb_docs", "weight": 1.0},
+                {"kb_id": "kb_world", "weight": 1.2},
+                {"kb_id": "kb_style", "weight": 0.2},
+            ],
+            filters={},
+        )
 
-        style_examples = [e for e in writer_evidence if e.get("kb_id") == "kb_style"][: int(policy.get("max_examples", 4))]
+        world_facts = [e for e in writer_evidence if e.get("kb_id") == "kb_world"][:8]
+        style_examples = [e for e in writer_evidence if e.get("kb_id") == "kb_style"][: int(policy.get("max_examples", bm.caps["max_examples_style"]))]
         for ex in style_examples:
             ex["text"] = ex["text"][: int(policy.get("max_chars_per_example", 800))]
 
         evidence = writer_evidence[:12]
         citation_map = {e["chunk_id"]: e["source"] for e in evidence}
+        dropped_items: list[str] = []
+        compression_steps: list[str] = []
 
         fixed_blocks = {
             "style_guide": guide,
+            "style_locks": locks,
             "scene_plan": scene,
             "outline_beats": outline.get("payload", {}).get("beats", []),
         }
+        if technique_data:
+            fixed_blocks["technique_brief"] = technique_data.get("technique_brief", "")
+            fixed_blocks["technique_checklist"] = technique_data.get("technique_checklist", [])
+            if technique_data.get("technique_style_constraints"):
+                fixed_blocks["technique_style_constraints"] = technique_data.get("technique_style_constraints", {})
         manifest = {
-            "token_budgets": {"max_tokens": budget},
+            "token_budgets": {"max_tokens": bm.total},
             "fixed_blocks": fixed_blocks,
             "included_cards": cards,
             "included_canon": {"facts": canon_facts, "issues": canon_issues},
@@ -83,6 +110,20 @@ class ContextEngine:
             "output_reserve": limits.get("output_reserve", 0),
         }
 
+
+        if "technique_brief" in fixed_blocks:
+            brief_usage = approx_tokens(str(fixed_blocks.get("technique_brief", "")))
+            if usage["system_rules"] > limits["system_rules"] and brief_usage > 0:
+                compression_steps.append("trim_technique_brief_examples")
+                brief = str(fixed_blocks.get("technique_brief", ""))
+                keep = []
+                for line in brief.splitlines():
+                    if "示例" in line or "例：" in line:
+                        continue
+                    keep.append(line)
+                fixed_blocks["technique_brief"] = "\n".join(keep)[:800]
+                usage["system_rules"] = approx_tokens(str(fixed_blocks))
+
         if usage["cards"] > limits["cards"]:
             compression_steps.append("trim_cards_fields")
             trimmed_cards = []
@@ -100,8 +141,9 @@ class ContextEngine:
             manifest["citation_map"] = {e["chunk_id"]: e["source"] for e in manifest["evidence"]}
             manifest["included_evidence_chunks"]["draft_summaries"] = [{"chapter_summary": chapter_meta.get("chapter_summary", "")[:200]}]
 
-        examples_tokens = approx_tokens(str(style_examples))
-        if used + examples_tokens > budget:
-            manifest["dropped_items"].append("style_examples")
+        if approx_tokens(str(style_examples)) > limits["summaries"]:
+            dropped_items.append("style_examples")
             manifest["included_evidence_chunks"]["style_examples"] = []
+
+        manifest["budget"] = bm.build_report(usage, dropped_items)
         return manifest

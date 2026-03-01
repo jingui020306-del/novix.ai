@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_05",
+  "type": "technique_category",
+  "title": "表现艺术/渲染",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "渲染",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·渲染",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

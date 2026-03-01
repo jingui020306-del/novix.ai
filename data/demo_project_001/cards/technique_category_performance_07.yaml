@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_07",
+  "type": "technique_category",
+  "title": "表现艺术/铺垫",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "铺垫",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·铺垫",
+    "sort_order": 7,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

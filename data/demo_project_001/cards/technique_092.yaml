@@ -1,0 +1,55 @@
+{
+  "id": "technique_092",
+  "type": "technique",
+  "title": "心理折射",
+  "tags": [
+    "technique",
+    "narrative"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "心理折射",
+    "category_id": "technique_category_narrative",
+    "aliases": [
+      "心理折射"
+    ],
+    "description": "心理折射：用于提升段落表达与可检验性。",
+    "apply_steps": [
+      "明确段落目标",
+      "在关键句实施心理折射",
+      "回读并收束过度使用"
+    ],
+    "signals": [
+      "出现心理折射可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "intensity_levels": {
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.07
+    },
+    "do_dont": {
+      "do": [
+        "服务目标",
+        "保持可观察"
+      ],
+      "dont": [
+        "堆砌",
+        "跑偏"
+      ]
+    },
+    "examples": [
+      "示例：用心理折射改写一句场景句。"
+    ]
+  }
+}

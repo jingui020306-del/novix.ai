@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_lyric_03",
+  "type": "technique_category",
+  "title": "抒情艺术/托物",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_lyric"
+  ],
+  "payload": {
+    "name": "托物",
+    "parent_id": "technique_category_lyric",
+    "description": "抒情艺术·托物",
+    "sort_order": 3,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

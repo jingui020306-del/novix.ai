@@ -20,46 +20,41 @@
 create <type> <title...> [--key value] [--flag]
 ```
 
-## Parameterized create examples
+## Technique create commands
 
-1. `+ character Alice --tag 主角 --age 24`
-2. `+ character Alice --tag 主角 --importance 5 --role protagonist --identity "医学院研究生" --trait 冷静 --trait 克制`
-3. `+ character Alice --appearance "黑色风衣" --motivation "查明真相" --family "单亲家庭" --voice "短句"`
-4. `+ character Alice --boundary "不伤及无辜" --rel target=bob type=friend --arc beat=b1 goal="学会信任"`
-5. `+ world "旧城区天桥" --tag 地点 --type location --atmosphere 冷清 --desc "夜里风大"`
-6. `+ style 冷峻 --lock pov --max_examples 3 --max_chars 600`
-7. `+ blueprint 三幕结构测试 --story_type three_act --scenes 2`
-8. `+ chapter 第一章 --bind blueprint_001 --scene 0 --signals on`
-9. `+ chapter 第二章 --bind blueprint_001 --scene 1 --no-signals`
-10. `+ project My Novel`
+- `+ technique 冷笔触`
+- `+ technique "平行蒙太奇" --category 结构手法 --alias montage --tag 叙事 --desc "并行剪辑" --signal "镜头并置" --step "交错切换" --intensity high`
 
-## Character mapping rules
+Notes:
+- `--category` resolves by category card `title`/`payload.name`.
+- `--alias` / `--signal` / `--step` / `--tag` are repeatable.
+- If only title is provided, palette fills default template (category guess + 3 apply_steps + 2 signals).
 
-- `title` -> `card.title`, `payload.name`
-- `--tag` (repeatable) -> `tags[]` (dedupe, preserve order)
-- `--identity` -> `payload.identity`
-- `--appearance` -> `payload.appearance`
-- `--motivation` -> `payload.core_motivation`
-- `--trait` (repeatable) -> `payload.personality_traits[]`
-- `--family` -> `payload.family_background`
-- `--voice` -> `payload.voice`
-- `--boundary` (repeatable) -> `payload.boundaries[]`
-- `--rel target=<id> type=<type>` (repeatable) -> `payload.relationships[]`
-- `--arc beat=<id> goal=<text>` (repeatable) -> `payload.arc[]`
-- `--age` -> `payload.age` (number)
-- `--importance` -> `payload.importance` (number)
-- `--role` -> `payload.role`
+## Pin technique to current chapter
 
-### Tag canonicalization
+- `pin technique 蒙太奇 high`
+- `pin technique "冷笔触" med --note "开头冷叙述，结尾留白" --weight 1.6`
+- `pin tech 蒙太奇 high`
+- `unpin technique 蒙太奇`
+- `list pinned techniques`
 
-- If tags include `主角/配角/反派`, palette also appends canonical tags `protagonist/supporting/antagonist`.
-- If `--role` is not provided, role is inferred from canonical tag.
-- If `--importance` is not provided, defaults by role: protagonist=5, antagonist=4, supporting=3.
+Behavior:
+- Requires current chapter context (`Chapter Editor`).
+- Uses existing drafts meta GET/PUT.
+- Upserts by `technique_id` in `pinned_techniques`.
+
+## Two-level inheritance rule
+
+- Outline defaults (`outline.payload.technique_prefs`) are baseline.
+- Chapter pinned (`drafts/chapter_*.meta.json.pinned_techniques`) is override layer.
+- Merge priority (same `technique_id`): `pinned > beat > chapter > arc`.
+- Default weight fallback: `low=0.6`, `med=1.0`, `high=1.4`.
+- Final selected order: pinned first, then beat, chapter, arc.
 
 ## Error strategy
 
 - Missing title: `请输入名称` (no request sent)
-- Invalid number (`--age`, `--importance`): inline error, no request sent
+- Invalid number (`--age`, `--importance`, pin `--weight`): inline error, no request sent
 - Unknown option: `Unknown option --xxx`, no request sent
 - API/server error: toast shows backend error detail when available
 
@@ -69,18 +64,10 @@ Palette lazy-loads existing resources when opened. If API requests fail (offline
 
 ## Manual acceptance checklist
 
-1. Press `⌘K` / `Ctrl+K` to open palette.
-2. `Esc` closes palette.
-3. `@` filters characters.
-4. `#` filters chapters.
-5. `>` shows action commands.
-6. `?` shows shortcut/prefix/create help.
-7. Run `+ character Alice --tag 主角 --age 24`.
-8. Open Alice card and confirm Role=`protagonist`, Importance=`5`, Age=`24`, all editable.
-9. Run `+ style 冷峻 --lock pov --max_examples 3`.
-10. Run `+ blueprint 测试 --scenes 2`.
-11. Run `+ chapter 第一章 --bind blueprint_001 --scene 0 --signals on`.
-12. Error check: `+ character` => missing title error.
-13. Error check: `+ character Alice --age abc` => invalid number error.
-14. Error check: `+ character Alice --foo bar` => unknown option error.
-15. Modify Alice importance in form, save, refresh, value persists.
+1. 在 ChapterEditor 打开 `chapter_001`。
+2. `⌘K/Ctrl+K`：输入 `pin technique 蒙太奇 high`。
+3. 确认 `pinned_techniques` 已更新并在 Chapter UI 显示。
+4. `⌘K/Ctrl+K`：输入 `+ technique 冷笔触`。
+5. 在 Techniques 面板确认新增卡片并可编辑。
+6. 运行“生成本章”，确认事件里有 `TECHNIQUE_BRIEF`。
+7. 确认 `CONTEXT_MANIFEST.fixed_blocks` 含 `technique_brief`。

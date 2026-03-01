@@ -1,0 +1,55 @@
+{
+  "id": "technique_046",
+  "type": "technique",
+  "title": "插叙",
+  "tags": [
+    "technique",
+    "structure"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "插叙",
+    "category_id": "technique_category_structure",
+    "aliases": [
+      "插叙"
+    ],
+    "description": "插叙：用于提升段落表达与可检验性。",
+    "apply_steps": [
+      "明确段落目标",
+      "在关键句实施插叙",
+      "回读并收束过度使用"
+    ],
+    "signals": [
+      "出现插叙可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "intensity_levels": {
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.09
+    },
+    "do_dont": {
+      "do": [
+        "服务目标",
+        "保持可观察"
+      ],
+      "dont": [
+        "堆砌",
+        "跑偏"
+      ]
+    },
+    "examples": [
+      "示例：用插叙改写一句场景句。"
+    ]
+  }
+}

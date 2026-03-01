@@ -160,14 +160,41 @@ class FSStore:
                 "locks": {"pov": True, "tense": True, "punctuation": True, "taboo_words": True},
             }
         })
-        self.write_yaml(project_id, "cards/outline_001.yaml", {"id": "outline_001", "type": "outline", "title": "第一卷提纲", "tags": [], "links": ["character_001"], "payload": {"beats": [{"id": "beat_1", "summary": "匿名线索出现"}]}})
+        self.write_yaml(project_id, "cards/outline_001.yaml", {"id": "outline_001", "type": "outline", "title": "第一卷提纲", "tags": [], "links": ["character_001"], "payload": {"beats": [{"id": "beat_1", "summary": "匿名线索出现"}], "technique_prefs": [{"scope": "chapter", "ref": "chapter_001", "techniques": [{"technique_id": "technique_001", "intensity": "high", "notes": "本章冷笔触"}]}]}})
+
+        categories = [
+            ("technique_category_expression", "表达手法"),
+            ("technique_category_rhetoric", "修辞手法"),
+            ("technique_category_structure", "结构手法"),
+            ("technique_category_description", "描写方法"),
+            ("technique_category_performance", "表现手法"),
+        ]
+        for i, (cid, cname) in enumerate(categories, start=1):
+            self.write_yaml(project_id, f"cards/{cid}.yaml", {
+                "id": cid, "type": "technique_category", "title": cname, "tags": ["technique", "category"], "links": [],
+                "payload": {"name": cname, "description": f"{cname}分类", "sort_order": i, "tags": ["技法", "分类"]},
+            })
+        for i in range(1, 21):
+            cid = categories[(i - 1) % len(categories)][0]
+            self.write_yaml(project_id, f"cards/technique_{i:03d}.yaml", {
+                "id": f"technique_{i:03d}", "type": "technique", "title": f"示例技法{i:03d}", "tags": ["technique"], "links": [cid],
+                "payload": {
+                    "name": f"示例技法{i:03d}", "category_id": cid, "aliases": [], "description": "用于示例与测试",
+                    "apply_steps": ["定义目标", "应用句法", "收束回看"],
+                    "signals": ["出现显性语言信号", "段落节奏可观察"],
+                    "intensity_levels": {"low": "点缀", "med": "贯穿", "high": "主导"},
+                    "metrics": {"dialogue_ratio_range": [0.2, 0.6], "punctuation_caps": 6, "metaphor_density": 0.06},
+                    "do_dont": {"do": ["服务目标"], "dont": ["过度堆叠"]},
+                    "examples": ["示例：改写一句动作描述"],
+                },
+            })
         self.write_json(project_id, "cards/blueprint_001.json", {
             "id": "blueprint_001", "story_type_id": "longform_novel", "title": "第一章蓝图", "signals": ["@@BEAT:N@@", "@@NEXT_SCENE@@"],
             "scene_plan": [{"scene_id": "scene_1", "phase": "setup", "purpose": "引入线索", "situation": "雨夜收到匿名短信", "choice_points": ["是否赴约"], "cast": ["character_001"], "beats": ["beat_1"]}]
         })
         self.write_md(project_id, "drafts/.chapter_order", "chapter_001\n")
         self.write_md(project_id, "drafts/chapter_001.md", "# Chapter 001\n\n林秋在雨夜收到匿名短信。")
-        self.write_json(project_id, "drafts/chapter_001.meta.json", {"chapter_id": "chapter_001", "title": "雨夜来信", "chapter_summary": "", "scene_summaries": [], "open_questions": [], "canon_candidates": []})
+        self.write_json(project_id, "drafts/chapter_001.meta.json", {"chapter_id": "chapter_001", "title": "雨夜来信", "chapter_summary": "", "scene_summaries": [], "open_questions": [], "canon_candidates": [], "pinned_techniques": [{"technique_id": "technique_001", "intensity": "high", "notes": "本章优先"}]})
         for rel in ["canon/facts.jsonl", "canon/issues.jsonl", "drafts/chapter_001.patch.jsonl", "sessions/session_001.jsonl"]:
             self._safe_path(project_id, rel).touch(exist_ok=True)
         self.write_json(project_id, "sessions/session_001.meta.json", {"id": "session_001", "undo_index": 0, "versions": [], "rolling_summary": "", "last_summarized_message_id": "", "messages": {}, "undo_stack": [], "redo_stack": []})

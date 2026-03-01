@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_09",
+  "type": "technique_category",
+  "title": "描写艺术/心理",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "心理",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·心理",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

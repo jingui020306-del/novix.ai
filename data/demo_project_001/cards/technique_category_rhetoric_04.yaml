@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_04",
+  "type": "technique_category",
+  "title": "修辞艺术/夸张",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "夸张",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·夸张",
+    "sort_order": 4,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

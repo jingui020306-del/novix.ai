@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_04",
+  "type": "technique_category",
+  "title": "叙事艺术/补叙",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "补叙",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·补叙",
+    "sort_order": 4,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

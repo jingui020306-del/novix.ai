@@ -8,6 +8,7 @@ from typing import Any
 
 from services.context_engine import ContextEngine
 from services.llm_gateway import LLMGateway
+from agents.technique_director import TechniqueDirector, derive_technique_adherence_issues
 from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
 from storage.fs_store import FSStore, apply_patch_ops
@@ -20,6 +21,7 @@ class JobManager:
         self.llm_gateway = llm_gateway
         self.queues: dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
         self.canon_extractor = CanonExtractorService(llm_gateway)
+        self.technique_director = TechniqueDirector(store)
 
     async def emit(self, project_id: str, job_id: str, event: str, data: Any) -> None:
         payload = {"event": event, "data": data}
@@ -71,7 +73,25 @@ class JobManager:
         plan = {"scene": scene, "beats": outline.get("payload", {}).get("beats", [])}
         await self.emit(project_id, job_id, "DIRECTOR_PLAN", plan)
 
-        manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}))
+        selected_bundle = self.technique_director.resolve_selected_bundle(project_id, chapter_id, outline, scene)
+        selected_techniques = selected_bundle.get("selected_techniques", [])
+        selected_categories = selected_bundle.get("selected_categories", [])
+        technique_bundle = self.technique_director.build(
+            project_id,
+            chapter_id,
+            plan,
+            self.store.read_yaml(project_id, "cards/style_001.yaml").get("payload", {}).get("style_guide", {}),
+            self.store.read_jsonl(project_id, "canon/facts.jsonl")[-8:],
+            selected_techniques,
+            selected_categories,
+        )
+        await self.emit(project_id, job_id, "TECHNIQUE_BRIEF", technique_bundle)
+        chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")
+        chapter_meta["technique_brief"] = technique_bundle.get("technique_brief", "")
+        chapter_meta["technique_checklist"] = technique_bundle.get("technique_checklist", [])
+        self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", chapter_meta)
+
+        manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle)
         manifest["llm"] = {"requested_profile_id": req_profile_id, "requested_provider": selected.get("provider"), "requested_model": selected.get("model")}
         manifest["usage_estimate"] = {"prompt_tokens": 0, "completion_tokens": 0}
         await self.emit(project_id, job_id, "CONTEXT_MANIFEST", manifest)
@@ -80,6 +100,7 @@ class JobManager:
         world_facts = manifest.get("world_facts", [])[:5]
         writer_messages = [
             {"role": "system", "content": "你是长篇小说写作助手，按提供文风与场景目标写作，必须遵守style locks。"},
+            {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\ntechnique_brief={manifest.get('fixed_blocks',{}).get('technique_brief','')}\ntechnique_checklist={manifest.get('fixed_blocks',{}).get('technique_checklist',[])}\n请写一段章节草稿。"},
             {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\n请写一段章节草稿。"},
         ]
         writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
@@ -97,6 +118,8 @@ class JobManager:
         style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
         if style_locks.get("punctuation") and ("!" in draft or "！" in draft):
             issues.append({"issue": "style_drift: punctuation lock violated", "evidence": {"chapter_id": chapter_id, "quote": "!"}})
+        tech_issues = derive_technique_adherence_issues(chapter_id, draft, manifest.get("fixed_blocks", {}).get("technique_checklist", []))
+        issues.extend(tech_issues)
         for issue in issues:
             self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
         await self.emit(project_id, job_id, "CRITIC_REVIEW", {"issues": issues, "provider": critic_used.get("provider"), "model": critic_used.get("model")})
@@ -114,6 +137,16 @@ class JobManager:
             ops = []
         if not ops:
             ops = [{"op_id": "op_001", "type": "replace", "target_range": {"start": 2, "end": 3}, "before": "", "after": "林秋停了两秒。她收起手机，走进雨里，决定赴约。", "rationale": "增强节奏与动作"}]
+        technique_issue = next((x for x in issues if x.get("type") == "technique_adherence"), None)
+        if technique_issue:
+            ops.insert(0, {
+                "op_id": "op_technique_001",
+                "type": "replace",
+                "target_range": {"start": 2, "end": 3},
+                "before": "",
+                "after": f"（技法修复）{technique_issue.get('suggested_fix', '补充技法信号。')}",
+                "rationale": "优先修复 technique_adherence，最小改动",
+            })
 
         await self.emit(project_id, job_id, "EDITOR_PATCH", {"patch_id": f"patch_{job_id}", "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model")})
 

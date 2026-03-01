@@ -12,6 +12,62 @@
         "id": "beat_1",
         "summary": "匿名线索出现"
       }
+    ],
+    "technique_prefs": [
+      {
+        "scope": "arc",
+        "ref": "arc_main",
+        "categories": [
+          {
+            "category_id": "technique_category_narrative",
+            "intensity": "med",
+            "notes": "叙事整体控制"
+          }
+        ],
+        "techniques": [
+          {
+            "technique_id": "technique_081",
+            "intensity": "med",
+            "notes": "顺序推进"
+          }
+        ]
+      },
+      {
+        "scope": "chapter",
+        "ref": "chapter_001",
+        "categories": [
+          {
+            "category_id": "technique_category_description",
+            "intensity": "med",
+            "notes": "强化写景"
+          }
+        ],
+        "techniques": [
+          {
+            "technique_id": "technique_061",
+            "intensity": "high",
+            "notes": "五感写景"
+          }
+        ]
+      },
+      {
+        "scope": "beat",
+        "ref": "chapter_001.b0",
+        "categories": [
+          {
+            "category_id": "technique_category_structure",
+            "intensity": "high",
+            "notes": "镜头组织"
+          }
+        ],
+        "techniques": [
+          {
+            "technique_id": "technique_041",
+            "intensity": "high",
+            "notes": "倒叙"
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,0 +1,55 @@
+{
+  "id": "technique_068",
+  "type": "technique",
+  "title": "潜台词对话",
+  "tags": [
+    "technique",
+    "description"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "潜台词对话",
+    "category_id": "technique_category_description",
+    "aliases": [
+      "潜台词对话"
+    ],
+    "description": "潜台词对话：用于提升段落表达与可检验性。",
+    "apply_steps": [
+      "明确段落目标",
+      "在关键句实施潜台词对话",
+      "回读并收束过度使用"
+    ],
+    "signals": [
+      "出现潜台词对话可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "intensity_levels": {
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.07
+    },
+    "do_dont": {
+      "do": [
+        "服务目标",
+        "保持可观察"
+      ],
+      "dont": [
+        "堆砌",
+        "跑偏"
+      ]
+    },
+    "examples": [
+      "示例：用潜台词对话改写一句场景句。"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_06",
+  "type": "technique_category",
+  "title": "描写艺术/白描",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "白描",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·白描",
+    "sort_order": 6,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_10",
+  "type": "technique_category",
+  "title": "表现艺术/反差",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "反差",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·反差",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

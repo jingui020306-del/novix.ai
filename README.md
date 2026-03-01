@@ -106,6 +106,7 @@ Use **⌘K / Ctrl+K** to open Command Palette for quick navigation/actions, and 
 | Evidence jump | ✅ | asset/chapter trace with source metadata |
 | Providers | ✅ | mock / ollama / llama.cpp / openai-compat fallback |
 | Talk-style editing | ✅ | patch accept/reject + versions + undo/redo |
+| Technique System | ✅ | technique library + outline/chapter mounting + technique brief/adherence |
 
 ## Ports
 
