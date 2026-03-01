@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_01",
+  "type": "technique_category",
+  "title": "描写艺术/写景",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "写景",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·写景",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

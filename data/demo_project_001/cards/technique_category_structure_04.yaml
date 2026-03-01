@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_04",
+  "type": "technique_category",
+  "title": "结构艺术/结局",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "结局",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·结局",
+    "sort_order": 4,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

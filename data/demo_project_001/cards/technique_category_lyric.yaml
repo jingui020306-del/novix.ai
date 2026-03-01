@@ -1,0 +1,36 @@
+{
+  "id": "technique_category_lyric",
+  "type": "technique_category",
+  "title": "抒情艺术",
+  "tags": [
+    "technique",
+    "category",
+    "macro"
+  ],
+  "links": [],
+  "payload": {
+    "name": "抒情艺术",
+    "description": "抒情艺术一级分类",
+    "sort_order": 6,
+    "tags": [
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_101",
+      "technique_102",
+      "technique_103",
+      "technique_104",
+      "technique_105",
+      "technique_106",
+      "technique_107",
+      "technique_108",
+      "technique_109",
+      "technique_110",
+      "technique_111",
+      "technique_112",
+      "technique_113",
+      "technique_114",
+      "technique_115"
+    ]
+  }
+}

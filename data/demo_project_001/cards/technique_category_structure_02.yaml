@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_02",
+  "type": "technique_category",
+  "title": "结构艺术/发展",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "发展",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·发展",
+    "sort_order": 2,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

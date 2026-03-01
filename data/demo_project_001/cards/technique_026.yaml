@@ -1,0 +1,55 @@
+{
+  "id": "technique_026",
+  "type": "technique",
+  "title": "情绪对位",
+  "tags": [
+    "technique",
+    "performance"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "情绪对位",
+    "category_id": "technique_category_performance",
+    "aliases": [
+      "情绪对位"
+    ],
+    "description": "情绪对位：用于提升段落表达与可检验性。",
+    "apply_steps": [
+      "明确段落目标",
+      "在关键句实施情绪对位",
+      "回读并收束过度使用"
+    ],
+    "signals": [
+      "出现情绪对位可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "intensity_levels": {
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.05
+    },
+    "do_dont": {
+      "do": [
+        "服务目标",
+        "保持可观察"
+      ],
+      "dont": [
+        "堆砌",
+        "跑偏"
+      ]
+    },
+    "examples": [
+      "示例：用情绪对位改写一句场景句。"
+    ]
+  }
+}

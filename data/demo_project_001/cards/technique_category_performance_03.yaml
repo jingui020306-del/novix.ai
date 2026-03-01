@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_03",
+  "type": "technique_category",
+  "title": "表现艺术/象征",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "象征",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·象征",
+    "sort_order": 3,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

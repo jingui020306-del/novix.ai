@@ -1,0 +1,42 @@
+name: release-package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  package-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend static bundle
+        run: |
+          cd frontend
+          npm ci
+          npm run build:static
+
+      - name: Build release archive
+        run: |
+          mkdir -p release/novix
+          cp -r backend release/novix/backend
+          cp -r data release/novix/data
+          cp start.py start.sh start.bat README.md release/novix/
+          cp -r docs release/novix/docs
+          cd release
+          zip -r novix-${GITHUB_REF_NAME}-linux.zip novix
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novix-${{ github.ref_name }}-linux
+          path: release/novix-${{ github.ref_name }}-linux.zip

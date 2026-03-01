@@ -1,0 +1,55 @@
+{
+  "id": "technique_107",
+  "type": "technique",
+  "title": "直抒胸臆",
+  "tags": [
+    "technique",
+    "lyric"
+  ],
+  "links": [
+    "technique_category_lyric"
+  ],
+  "payload": {
+    "name": "直抒胸臆",
+    "category_id": "technique_category_lyric",
+    "aliases": [
+      "直抒胸臆"
+    ],
+    "description": "直抒胸臆：用于提升段落表达与可检验性。",
+    "apply_steps": [
+      "明确段落目标",
+      "在关键句实施直抒胸臆",
+      "回读并收束过度使用"
+    ],
+    "signals": [
+      "出现直抒胸臆可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "intensity_levels": {
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.2,
+        0.6
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.06
+    },
+    "do_dont": {
+      "do": [
+        "服务目标",
+        "保持可观察"
+      ],
+      "dont": [
+        "堆砌",
+        "跑偏"
+      ]
+    },
+    "examples": [
+      "示例：用直抒胸臆改写一句场景句。"
+    ]
+  }
+}

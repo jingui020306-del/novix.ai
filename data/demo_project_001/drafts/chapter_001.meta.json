@@ -1,0 +1,22 @@
+{
+  "chapter_id": "chapter_001",
+  "title": "雨夜来信",
+  "chapter_summary": "",
+  "scene_summaries": [],
+  "open_questions": [],
+  "canon_candidates": [],
+  "pinned_techniques": [
+    {
+      "technique_id": "technique_043",
+      "intensity": "high",
+      "weight": 1.6,
+      "notes": "蒙太奇高强"
+    },
+    {
+      "technique_id": "technique_081",
+      "intensity": "med",
+      "weight": 1.0,
+      "notes": "冷笔触中强"
+    }
+  ]
+}

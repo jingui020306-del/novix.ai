@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_05",
+  "type": "technique_category",
+  "title": "结构艺术/伏笔",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "伏笔",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·伏笔",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

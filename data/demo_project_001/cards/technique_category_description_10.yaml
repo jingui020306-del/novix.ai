@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_10",
+  "type": "technique_category",
+  "title": "描写艺术/环境",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "环境",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·环境",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}
