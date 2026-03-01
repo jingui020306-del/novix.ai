@@ -150,11 +150,3 @@ Yes. Provider failures are captured and pipeline falls back to Mock provider.
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md)
 - See [LICENSE](LICENSE)
-
-
-## Technique System
-
-- 技法库：`technique_category` + `technique` 卡片。
-- 挂载点：`outline.payload.technique_prefs` 与 `drafts/chapter_*.meta.json.pinned_techniques`（chapter 优先）。
-- Pipeline：`DIRECTOR_PLAN -> TECHNIQUE_BRIEF -> CONTEXT_MANIFEST`，并在审稿产出 `technique_adherence` 问题。
-- 详情见 `docs/TECHNIQUES.md`。
