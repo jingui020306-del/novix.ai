@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_02",
+  "type": "technique_category",
+  "title": "表现艺术/衬托",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "衬托",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·衬托",
+    "sort_order": 2,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

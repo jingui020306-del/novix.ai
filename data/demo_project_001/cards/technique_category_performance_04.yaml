@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_performance_04",
+  "type": "technique_category",
+  "title": "表现艺术/抑扬",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_performance"
+  ],
+  "payload": {
+    "name": "抑扬",
+    "parent_id": "technique_category_performance",
+    "description": "表现艺术·抑扬",
+    "sort_order": 4,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -1,19 +1,36 @@
 {
   "id": "technique_category_performance",
   "type": "technique_category",
-  "title": "表现手法",
+  "title": "表现艺术",
   "tags": [
     "technique",
-    "category"
+    "category",
+    "macro"
   ],
   "links": [],
   "payload": {
-    "name": "表现手法",
-    "description": "节奏控制与情绪呈现",
-    "sort_order": 5,
+    "name": "表现艺术",
+    "description": "表现艺术一级分类",
+    "sort_order": 2,
     "tags": [
-      "技法",
-      "分类"
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_021",
+      "technique_022",
+      "technique_023",
+      "technique_024",
+      "technique_025",
+      "technique_026",
+      "technique_027",
+      "technique_028",
+      "technique_029",
+      "technique_030",
+      "technique_031",
+      "technique_032",
+      "technique_033",
+      "technique_034",
+      "technique_035"
     ]
   }
 }

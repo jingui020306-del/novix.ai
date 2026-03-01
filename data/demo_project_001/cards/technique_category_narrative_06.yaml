@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_06",
+  "type": "technique_category",
+  "title": "叙事艺术/多线",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "多线",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·多线",
+    "sort_order": 6,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -151,6 +151,8 @@ export default function App() {
   const { data: projectInfo } = useSWR(project ? `/api/projects/${project}` : null, api.get)
   const { data: charSchema } = useSWR('/api/schema/cards/character', api.get)
   const { data: styleSchema } = useSWR('/api/schema/cards/style', api.get)
+  const { data: techniqueSchema } = useSWR('/api/schema/cards/technique', api.get)
+  const { data: techniqueCategorySchema } = useSWR('/api/schema/cards/technique_category', api.get)
   const { data: chars, mutate: mutateCards } = useSWR(project ? `/api/projects/${project}/cards?type=character` : null, api.get)
   const { data: styles, mutate: mutateStyles } = useSWR(project ? `/api/projects/${project}/cards?type=style` : null, api.get)
   const { data: draft, mutate: mutateDraft } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}` : null, api.get)
@@ -161,6 +163,8 @@ export default function App() {
   const { data: techniqueCategories, mutate: mutateTechniqueCategories } = useSWR(project ? `/api/projects/${project}/cards?type=technique_category` : null, api.get)
 
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
+  const [techniqueForm, setTechniqueForm] = useState<any>(null)
+  const [categoryForm, setCategoryForm] = useState<any>(null)
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
 
@@ -1179,16 +1183,43 @@ export default function App() {
       })
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Technique Categories'>
-            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(cats, null, 2)}</pre>
+          <Card title='Technique Categories (Tree)'>
+            <div className='space-y-1'>
+              {cats.filter((c: any) => !(c.payload || {}).parent_id).map((c: any) => (
+                <div key={c.id} className='rounded-ui border border-border p-2'>
+                  <button className='text-sm font-medium' onClick={() => setCategoryForm(c)}>{c.title}</button>
+                  <div className='ml-3 mt-1 space-y-1'>
+                    {cats.filter((x: any) => (x.payload || {}).parent_id === c.id).map((x: any) => (
+                      <button key={x.id} className='block text-xs text-muted hover:underline' onClick={() => setCategoryForm(x)}>{x.title}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
           <Card title='Technique Library'>
             <div className='flex gap-2 mb-2'>
               <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search technique/category keywords...' />
               <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
             </div>
-            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(rows, null, 2)}</pre>
+            <div className='max-h-72 overflow-auto space-y-1'>
+              {rows.map((r: any) => (
+                <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>{r.title} <span className='text-muted'>({r.id})</span></button>
+              ))}
+            </div>
           </Card>
+          {techniqueForm && (
+            <div className='space-y-2'>
+              <SchemaForm schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
+              <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>Save Technique</Button>
+            </div>
+          )}
+          {categoryForm && (
+            <div className='space-y-2'>
+              <SchemaForm schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
+              <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>Save Category</Button>
+            </div>
+          )}
         </div>
       )
     }
@@ -1299,7 +1330,7 @@ export default function App() {
               }
             }}
           />
-          <p className='text-xs text-muted'>支持 arc/chapter/beat 级 technique 挂载；chapter pinned_techniques 会覆盖同 technique_id。</p>
+          <p className='text-xs text-muted'>支持 arc/chapter/beat 级 macro(categories) + micro(techniques) 挂载；chapter pinned_techniques 会覆盖同 technique_id。</p>
         </Card>
         <Card title='Context Manifest' extra={selectedBlueprintId ? <Badge>Blueprint: {selectedBlueprintId}</Badge> : undefined}>
           {currentManifest ? (

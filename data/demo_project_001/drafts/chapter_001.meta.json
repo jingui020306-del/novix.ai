@@ -7,14 +7,16 @@
   "canon_candidates": [],
   "pinned_techniques": [
     {
-      "technique_id": "technique_001",
+      "technique_id": "technique_043",
       "intensity": "high",
-      "notes": "本章强调冷笔触"
+      "weight": 1.6,
+      "notes": "蒙太奇高强"
     },
     {
-      "technique_id": "technique_051",
+      "technique_id": "technique_081",
       "intensity": "med",
-      "notes": "本章蒙太奇切段"
+      "weight": 1.0,
+      "notes": "冷笔触中强"
     }
   ]
 }

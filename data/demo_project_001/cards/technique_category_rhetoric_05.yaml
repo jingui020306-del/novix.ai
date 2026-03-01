@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_05",
+  "type": "technique_category",
+  "title": "修辞艺术/对偶",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "对偶",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·对偶",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

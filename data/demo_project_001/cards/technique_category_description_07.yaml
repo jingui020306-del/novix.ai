@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_description_07",
+  "type": "technique_category",
+  "title": "描写艺术/五感",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_description"
+  ],
+  "payload": {
+    "name": "五感",
+    "parent_id": "technique_category_description",
+    "description": "描写艺术·五感",
+    "sort_order": 7,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

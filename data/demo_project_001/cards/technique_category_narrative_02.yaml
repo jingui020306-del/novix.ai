@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_narrative_02",
+  "type": "technique_category",
+  "title": "叙事艺术/倒叙",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_narrative"
+  ],
+  "payload": {
+    "name": "倒叙",
+    "parent_id": "technique_category_narrative",
+    "description": "叙事艺术·倒叙",
+    "sort_order": 2,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

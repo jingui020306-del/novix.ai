@@ -73,7 +73,9 @@ class JobManager:
         plan = {"scene": scene, "beats": outline.get("payload", {}).get("beats", [])}
         await self.emit(project_id, job_id, "DIRECTOR_PLAN", plan)
 
-        selected_techniques = self.technique_director.resolve_selected_techniques(project_id, chapter_id, outline, scene)
+        selected_bundle = self.technique_director.resolve_selected_bundle(project_id, chapter_id, outline, scene)
+        selected_techniques = selected_bundle.get("selected_techniques", [])
+        selected_categories = selected_bundle.get("selected_categories", [])
         technique_bundle = self.technique_director.build(
             project_id,
             chapter_id,
@@ -81,6 +83,7 @@ class JobManager:
             self.store.read_yaml(project_id, "cards/style_001.yaml").get("payload", {}).get("style_guide", {}),
             self.store.read_jsonl(project_id, "canon/facts.jsonl")[-8:],
             selected_techniques,
+            selected_categories,
         )
         await self.emit(project_id, job_id, "TECHNIQUE_BRIEF", technique_bundle)
         chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")

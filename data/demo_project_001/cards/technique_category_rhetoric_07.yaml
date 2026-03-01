@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_07",
+  "type": "technique_category",
+  "title": "修辞艺术/反复",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "反复",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·反复",
+    "sort_order": 7,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

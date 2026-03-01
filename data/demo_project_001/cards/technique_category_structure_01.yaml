@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_01",
+  "type": "technique_category",
+  "title": "结构艺术/开端",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "开端",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·开端",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

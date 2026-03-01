@@ -195,7 +195,7 @@ def test_schema_contains_technique_and_category_payloads(tmp_path: Path):
     t_props = CARD_TYPE_SCHEMAS["technique"]["properties"]["payload"]["properties"]
     c_props = CARD_TYPE_SCHEMAS["technique_category"]["properties"]["payload"]["properties"]
     assert "apply_steps" in t_props and "signals" in t_props and "intensity_levels" in t_props
-    assert "name" in c_props and "sort_order" in c_props
+    assert "name" in c_props and "sort_order" in c_props and "core_techniques" in c_props
 
 
 def test_technique_merge_chapter_pinned_overrides_outline(tmp_path: Path):
@@ -211,7 +211,7 @@ def test_technique_merge_chapter_pinned_overrides_outline(tmp_path: Path):
         {"technique_id": "technique_030", "intensity": "high"},
     ]
 
-    selected = merge_technique_mounts(outline_prefs, pinned, "chapter_001", scene_index=0)
+    selected, categories = merge_technique_mounts(outline_prefs, pinned, "chapter_001", scene_index=0)
     ids = [x["technique_id"] for x in selected]
     assert ids[:2] == ["technique_001", "technique_030"]
     assert ids.index("technique_020") < ids.index("technique_010")
@@ -233,6 +233,40 @@ def test_pinned_technique_upsert_dedup_overwrites_fields():
     out = upsert_pinned_technique_rows(rows, {"technique_id": "technique_001", "intensity": "high", "weight": 1.8, "notes": "new"})
     assert len(out) == 1
     assert out[0]["intensity"] == "high" and out[0]["weight"] == 1.8 and out[0]["notes"] == "new"
+
+
+
+def test_macro_category_auto_recommends_micro(tmp_path: Path):
+    from agents.technique_director import TechniqueDirector
+
+    s = make_store(tmp_path)
+    # category with core_techniques
+    cat = {
+        "id": "technique_category_narrative",
+        "type": "technique_category",
+        "title": "叙事艺术",
+        "tags": [],
+        "links": [],
+        "payload": {"name": "叙事艺术", "core_techniques": ["technique_001", "technique_002", "technique_003"]},
+    }
+    s.write_yaml("p1", "cards/technique_category_narrative.yaml", cat)
+    for i in [1, 2, 3]:
+        s.write_yaml("p1", f"cards/technique_{i:03d}.yaml", {
+            "id": f"technique_{i:03d}", "type": "technique", "title": f"T{i}", "tags": [], "links": ["technique_category_narrative"],
+            "payload": {"name": f"T{i}", "apply_steps": ["a", "b", "c"], "signals": ["s1", "s2"]},
+        })
+
+    outline = s.read_yaml("p1", "cards/outline_001.yaml")
+    outline.setdefault("payload", {})["technique_prefs"] = [
+        {"scope": "chapter", "ref": "chapter_001", "categories": [{"category_id": "technique_category_narrative", "intensity": "high"}], "techniques": []}
+    ]
+    s.write_yaml("p1", "cards/outline_001.yaml", outline)
+
+    td = TechniqueDirector(s)
+    bundle = td.resolve_selected_bundle("p1", "chapter_001", outline, {"scene_index": 0})
+    selected = bundle["selected_techniques"]
+    assert any(x.get("source") == "auto_from_category" for x in selected)
+    assert len([x for x in selected if x.get("source") == "auto_from_category"]) >= 2
 
 def test_job_emits_technique_brief_and_manifest_fixed_block(tmp_path: Path):
     s = make_store(tmp_path)

@@ -7,43 +7,50 @@ from storage.fs_store import FSStore
 DEFAULT_WEIGHTS = {"low": 0.6, "med": 1.0, "high": 1.4}
 
 
+def _effective(intensity: str, weight: Any, defaults: dict[str, float]) -> tuple[str, float]:
+    i = str(intensity or "med")
+    w = float(weight) if weight is not None else float(defaults.get(i, 1.0))
+    return i, w
+
+
 def merge_technique_mounts(
     outline_prefs: list[dict[str, Any]],
     chapter_pinned: list[dict[str, Any]],
     chapter_id: str,
     scene_index: int = 0,
     weight_defaults: dict[str, float] | None = None,
-) -> list[dict[str, Any]]:
-    """Merge two-level mounts with precedence: pinned > beat > chapter > arc."""
-    weight_defaults = {**DEFAULT_WEIGHTS, **(weight_defaults or {})}
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (selected_micro_techniques, selected_macro_categories)."""
+    defaults = {**DEFAULT_WEIGHTS, **(weight_defaults or {})}
 
-    order_map = {"outline:arc": 0, "outline:chapter": 1, "outline:beat": 2, "pinned": 3}
+    precedence = {"outline:arc": 0, "outline:chapter": 1, "outline:beat": 2, "pinned": 3}
+    techs: dict[str, dict[str, Any]] = {}
+    cats: dict[str, dict[str, Any]] = {}
     seq: dict[str, int] = {}
-    merged: dict[str, dict[str, Any]] = {}
     n = 0
 
-    def apply_row(row: dict[str, Any], source: str) -> None:
+    def apply_item(pool: dict[str, dict[str, Any]], key_name: str, row: dict[str, Any], source: str) -> None:
         nonlocal n
-        tid = row.get("technique_id")
-        if not tid:
+        key = row.get(key_name)
+        if not key:
             return
-        intensity = str(row.get("intensity") or "med")
-        base = merged.get(tid, {"technique_id": tid})
+        intensity, weight = _effective(row.get("intensity", "med"), row.get("weight"), defaults)
+        base = pool.get(key, {key_name: key})
         out = {
             **base,
-            "technique_id": tid,
+            key_name: key,
             "intensity": intensity,
-            "weight": float(row.get("weight") if row.get("weight") is not None else weight_defaults.get(intensity, 1.0)),
+            "weight": weight,
             "notes": row.get("notes", base.get("notes", "")),
             "source": source,
             "effective_intensity": intensity,
-            "effective_weight": float(row.get("weight") if row.get("weight") is not None else weight_defaults.get(intensity, 1.0)),
+            "effective_weight": weight,
         }
-        prev = merged.get(tid)
-        if not prev or order_map[source] >= order_map.get(prev.get("source", "outline:arc"), -1):
-            merged[tid] = out
-            if tid not in seq:
-                seq[tid] = n
+        prev = pool.get(key)
+        if not prev or precedence[source] >= precedence.get(prev.get("source", "outline:arc"), -1):
+            pool[key] = out
+            if key not in seq:
+                seq[key] = n
                 n += 1
 
     beat_ref = f"{chapter_id}.b{scene_index}"
@@ -55,17 +62,20 @@ def merge_technique_mounts(
             matched = scope == "arc" or (scope == "chapter" and ref == chapter_id) or (scope == "beat" and (ref == beat_ref or ref.startswith(f"{chapter_id}.b")))
             if not matched:
                 continue
+            source = f"outline:{scope}"
             for t in pref.get("techniques", []) or []:
-                apply_row(t, f"outline:{scope}")
+                apply_item(techs, "technique_id", t, source)
+            for c in pref.get("categories", []) or []:
+                apply_item(cats, "category_id", c, source)
 
     for row in chapter_pinned or []:
-        apply_row(row, "pinned")
+        apply_item(techs, "technique_id", row, "pinned")
 
-    rows = list(merged.values())
-    rows.sort(key=lambda x: (-order_map.get(str(x.get("source", "outline:arc")), 0), seq.get(str(x.get("technique_id", "")), 9999)))
-    return rows
-
-
+    out_techs = list(techs.values())
+    out_cats = list(cats.values())
+    out_techs.sort(key=lambda x: (-precedence.get(str(x.get("source", "outline:arc")), 0), seq.get(str(x.get("technique_id", "")), 9999)))
+    out_cats.sort(key=lambda x: (-precedence.get(str(x.get("source", "outline:arc")), 0), seq.get(str(x.get("category_id", "")), 9999)))
+    return out_techs, out_cats
 
 
 def upsert_pinned_technique_rows(rows: list[dict[str, Any]], item: dict[str, Any]) -> list[dict[str, Any]]:
@@ -89,29 +99,81 @@ class TechniqueDirector:
     def __init__(self, store: FSStore):
         self.store = store
 
-    def resolve_selected_techniques(self, project_id: str, chapter_id: str, outline: dict[str, Any], scene: dict[str, Any]) -> list[dict[str, Any]]:
-        prefs = outline.get("payload", {}).get("technique_prefs", []) or []
-        chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")
-        pinned = chapter_meta.get("pinned_techniques", []) or []
-        scene_index = int(scene.get("scene_index", 0) or 0)
-        return merge_technique_mounts(prefs, pinned, chapter_id, scene_index)
-
-    def build(self, project_id: str, chapter_id: str, plan: dict[str, Any], style_guide: dict[str, Any] | None, world_facts: list[dict[str, Any]] | None, selected: list[dict[str, Any]]) -> dict[str, Any]:
+    def _load_technique_cards(self, project_id: str) -> dict[str, dict[str, Any]]:
         cards_dir = self.store._safe_path(project_id, "cards")
         cards: dict[str, dict[str, Any]] = {}
         for f in cards_dir.glob("*.yaml"):
             card = self.store.read_yaml(project_id, f"cards/{f.name}")
             if card.get("type") == "technique" and card.get("id"):
                 cards[card["id"]] = card
+        return cards
 
+    def _load_category_cards(self, project_id: str) -> dict[str, dict[str, Any]]:
+        cards_dir = self.store._safe_path(project_id, "cards")
+        cards: dict[str, dict[str, Any]] = {}
+        for f in cards_dir.glob("*.yaml"):
+            card = self.store.read_yaml(project_id, f"cards/{f.name}")
+            if card.get("type") == "technique_category" and card.get("id"):
+                cards[card["id"]] = card
+        return cards
+
+    def resolve_selected_bundle(self, project_id: str, chapter_id: str, outline: dict[str, Any], scene: dict[str, Any]) -> dict[str, Any]:
+        prefs = outline.get("payload", {}).get("technique_prefs", []) or []
+        chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")
+        pinned = chapter_meta.get("pinned_techniques", []) or []
+        scene_index = int(scene.get("scene_index", 0) or 0)
+        selected_techniques, selected_categories = merge_technique_mounts(prefs, pinned, chapter_id, scene_index)
+
+        # macro -> auto micro 추천
+        cat_cards = self._load_category_cards(project_id)
+        for c in selected_categories:
+            cc = cat_cards.get(c.get("category_id"), {})
+            core = (cc.get("payload", {}) or {}).get("core_techniques", []) or []
+            picks = core[:5]  # 3~5 by design; use up to 5
+            for tid in picks:
+                if any(x.get("technique_id") == tid for x in selected_techniques):
+                    continue
+                selected_techniques.append(
+                    {
+                        "technique_id": tid,
+                        "source": "auto_from_category",
+                        "intensity": c.get("effective_intensity", c.get("intensity", "med")),
+                        "weight": c.get("effective_weight", c.get("weight", 1.0)),
+                        "effective_intensity": c.get("effective_intensity", c.get("intensity", "med")),
+                        "effective_weight": c.get("effective_weight", c.get("weight", 1.0)),
+                        "notes": f"auto from {c.get('category_id')}",
+                    }
+                )
+
+        return {
+            "selected_techniques": selected_techniques,
+            "selected_categories": selected_categories,
+        }
+
+    def resolve_selected_techniques(self, project_id: str, chapter_id: str, outline: dict[str, Any], scene: dict[str, Any]) -> list[dict[str, Any]]:
+        return self.resolve_selected_bundle(project_id, chapter_id, outline, scene)["selected_techniques"]
+
+    def build(
+        self,
+        project_id: str,
+        chapter_id: str,
+        plan: dict[str, Any],
+        style_guide: dict[str, Any] | None,
+        world_facts: list[dict[str, Any]] | None,
+        selected_techniques: list[dict[str, Any]],
+        selected_categories: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        cards = self._load_technique_cards(project_id)
         checklist: list[dict[str, Any]] = []
         lines = [f"场景目标: {plan.get('scene', {}).get('purpose', '')}"]
+        if selected_categories:
+            lines.append(f"宏观分类: {[c.get('category_id') for c in selected_categories]}")
         if style_guide:
             lines.append(f"文风约束: {style_guide}")
         if world_facts:
             lines.append(f"世界事实采样: {len(world_facts)} 条")
 
-        for s in selected:
+        for s in selected_techniques:
             tid = s.get("technique_id")
             card = cards.get(tid, {})
             p = card.get("payload", {})
@@ -123,7 +185,6 @@ class TechniqueDirector:
                     "technique_id": tid,
                     "must_have_signals": signals,
                     "avoid": avoid,
-                    "intensity": s.get("effective_intensity", s.get("intensity", "med")),
                     "source": s.get("source", "outline:arc"),
                     "effective_intensity": s.get("effective_intensity", s.get("intensity", "med")),
                     "effective_weight": s.get("effective_weight", s.get("weight", 1.0)),
@@ -147,15 +208,17 @@ class TechniqueDirector:
             "technique_brief": brief,
             "technique_checklist": checklist,
             "technique_style_constraints": constraints,
-            "selected_techniques": selected,
+            "selected_techniques": selected_techniques,
+            "selected_categories": selected_categories or [],
         }
 
 
 def derive_technique_adherence_issues(chapter_id: str, draft_text: str, checklist: list[dict[str, Any]]) -> list[dict[str, Any]]:
     issues = []
     lower = draft_text.lower()
-    last_line = draft_text.splitlines()[-1] if draft_text.splitlines() else ""
-    line_count = len(draft_text.splitlines())
+    lines = draft_text.splitlines()
+    last_line = lines[-1] if lines else ""
+    line_count = len(lines)
     for item in checklist:
         signals = item.get("must_have_signals", []) or []
         if not signals:

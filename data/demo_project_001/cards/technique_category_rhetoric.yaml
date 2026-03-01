@@ -1,19 +1,36 @@
 {
   "id": "technique_category_rhetoric",
   "type": "technique_category",
-  "title": "修辞手法",
+  "title": "修辞艺术",
   "tags": [
     "technique",
-    "category"
+    "category",
+    "macro"
   ],
   "links": [],
   "payload": {
-    "name": "修辞手法",
-    "description": "修辞与语义强化",
-    "sort_order": 2,
+    "name": "修辞艺术",
+    "description": "修辞艺术一级分类",
+    "sort_order": 1,
     "tags": [
-      "技法",
-      "分类"
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_001",
+      "technique_002",
+      "technique_003",
+      "technique_004",
+      "technique_005",
+      "technique_006",
+      "technique_007",
+      "technique_008",
+      "technique_009",
+      "technique_010",
+      "technique_011",
+      "technique_012",
+      "technique_013",
+      "technique_014",
+      "technique_015"
     ]
   }
 }

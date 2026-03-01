@@ -71,6 +71,18 @@ CARD_TYPE_SCHEMAS = {
                             "properties": {
                                 "scope": {"type": "string", "enum": ["arc", "chapter", "beat"]},
                                 "ref": {"type": "string"},
+                                "categories": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "category_id": {"type": "string"},
+                                            "intensity": {"type": "string", "enum": ["low", "med", "high"]},
+                                            "weight": {"type": "number"},
+                                            "notes": {"type": "string"},
+                                        },
+                                    },
+                                },
                                 "techniques": {
                                     "type": "array",
                                     "items": {
@@ -79,6 +91,7 @@ CARD_TYPE_SCHEMAS = {
                                             "technique_id": {"type": "string"},
                                             "intensity": {"type": "string", "enum": ["low", "med", "high"]},
                                             "notes": {"type": "string"},
+                                            "weight": {"type": "number"},
                                         },
                                     },
                                 },
@@ -100,6 +113,7 @@ CARD_TYPE_SCHEMAS = {
                 "description": {"type": "string"},
                 "sort_order": {"type": "integer"},
                 "tags": {"type": "array", "items": {"type": "string"}},
+                "core_techniques": {"type": "array", "items": {"type": "string"}},
             }},
         },
     },

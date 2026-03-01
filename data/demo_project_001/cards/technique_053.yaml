@@ -1,7 +1,7 @@
 {
   "id": "technique_053",
   "type": "technique",
-  "title": "平行蒙太奇",
+  "title": "时间折叠",
   "tags": [
     "technique",
     "structure"
@@ -10,25 +10,25 @@
     "technique_category_structure"
   ],
   "payload": {
-    "name": "平行蒙太奇",
+    "name": "时间折叠",
     "category_id": "technique_category_structure",
     "aliases": [
-      "平行蒙太奇"
+      "时间折叠"
     ],
-    "description": "平行蒙太奇用于提升叙事可读性与可检验性。",
+    "description": "时间折叠：用于提升段落表达与可检验性。",
     "apply_steps": [
-      "明确场景目标与情绪方向",
-      "在关键句应用平行蒙太奇并保持一致",
-      "收束段落并回看是否过度"
+      "明确段落目标",
+      "在关键句实施时间折叠",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "出现平行蒙太奇相关的语言痕迹",
-      "段落节奏与目标强度一致"
+      "出现时间折叠可观察信号",
+      "节奏/语义与目标一致"
     ],
     "intensity_levels": {
-      "low": "点到即止，单段使用",
-      "med": "贯穿场景关键段",
-      "high": "成为本场景主导手法"
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +36,20 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.09
+      "metaphor_density": 0.08
     },
     "do_dont": {
       "do": [
-        "围绕目标服务",
-        "保持信号可观察"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "连续堆叠导致噪音",
-        "破坏角色一致性"
+        "堆砌",
+        "跑偏"
       ]
     },
     "examples": [
-      "示例：用平行蒙太奇重写一句关键动作。"
+      "示例：用时间折叠改写一句场景句。"
     ]
   }
 }

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_03",
+  "type": "technique_category",
+  "title": "修辞艺术/借代",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "借代",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·借代",
+    "sort_order": 3,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

@@ -1,34 +1,34 @@
 {
   "id": "technique_117",
   "type": "technique",
-  "title": "悬置结尾",
+  "title": "镜像抒情",
   "tags": [
     "technique",
-    "performance"
+    "lyric"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_lyric"
   ],
   "payload": {
-    "name": "悬置结尾",
-    "category_id": "technique_category_performance",
+    "name": "镜像抒情",
+    "category_id": "technique_category_lyric",
     "aliases": [
-      "悬置结尾"
+      "镜像抒情"
     ],
-    "description": "悬置结尾用于提升叙事可读性与可检验性。",
+    "description": "镜像抒情：用于提升段落表达与可检验性。",
     "apply_steps": [
-      "明确场景目标与情绪方向",
-      "在关键句应用悬置结尾并保持一致",
-      "收束段落并回看是否过度"
+      "明确段落目标",
+      "在关键句实施镜像抒情",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "出现悬置结尾相关的语言痕迹",
-      "段落节奏与目标强度一致"
+      "出现镜像抒情可观察信号",
+      "节奏/语义与目标一致"
     ],
     "intensity_levels": {
-      "low": "点到即止，单段使用",
-      "med": "贯穿场景关键段",
-      "high": "成为本场景主导手法"
+      "low": "点缀",
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +36,20 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.07
+      "metaphor_density": 0.08
     },
     "do_dont": {
       "do": [
-        "围绕目标服务",
-        "保持信号可观察"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "连续堆叠导致噪音",
-        "破坏角色一致性"
+        "堆砌",
+        "跑偏"
       ]
     },
     "examples": [
-      "示例：用悬置结尾重写一句关键动作。"
+      "示例：用镜像抒情改写一句场景句。"
     ]
   }
 }

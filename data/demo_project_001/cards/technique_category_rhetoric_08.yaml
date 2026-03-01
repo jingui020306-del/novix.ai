@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_08",
+  "type": "technique_category",
+  "title": "修辞艺术/设问",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "设问",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·设问",
+    "sort_order": 8,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

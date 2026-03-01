@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_structure_08",
+  "type": "technique_category",
+  "title": "结构艺术/回环",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_structure"
+  ],
+  "payload": {
+    "name": "回环",
+    "parent_id": "technique_category_structure",
+    "description": "结构艺术·回环",
+    "sort_order": 8,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

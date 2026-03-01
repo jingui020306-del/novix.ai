@@ -1,19 +1,36 @@
 {
   "id": "technique_category_description",
   "type": "technique_category",
-  "title": "描写方法",
+  "title": "描写艺术",
   "tags": [
     "technique",
-    "category"
+    "category",
+    "macro"
   ],
   "links": [],
   "payload": {
-    "name": "描写方法",
-    "description": "场景/人物/动作描写策略",
+    "name": "描写艺术",
+    "description": "描写艺术一级分类",
     "sort_order": 4,
     "tags": [
-      "技法",
-      "分类"
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_061",
+      "technique_062",
+      "technique_063",
+      "technique_064",
+      "technique_065",
+      "technique_066",
+      "technique_067",
+      "technique_068",
+      "technique_069",
+      "technique_070",
+      "technique_071",
+      "technique_072",
+      "technique_073",
+      "technique_074",
+      "technique_075"
     ]
   }
 }

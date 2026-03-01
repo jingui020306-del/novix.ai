@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_rhetoric_09",
+  "type": "technique_category",
+  "title": "修辞艺术/反问",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_rhetoric"
+  ],
+  "payload": {
+    "name": "反问",
+    "parent_id": "technique_category_rhetoric",
+    "description": "修辞艺术·反问",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

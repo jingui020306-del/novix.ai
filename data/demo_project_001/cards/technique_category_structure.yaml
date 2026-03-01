@@ -1,19 +1,36 @@
 {
   "id": "technique_category_structure",
   "type": "technique_category",
-  "title": "结构手法",
+  "title": "结构艺术",
   "tags": [
     "technique",
-    "category"
+    "category",
+    "macro"
   ],
   "links": [],
   "payload": {
-    "name": "结构手法",
-    "description": "时间线、镜头、结构编排",
+    "name": "结构艺术",
+    "description": "结构艺术一级分类",
     "sort_order": 3,
     "tags": [
-      "技法",
-      "分类"
+      "一级"
+    ],
+    "core_techniques": [
+      "technique_041",
+      "technique_042",
+      "technique_043",
+      "technique_044",
+      "technique_045",
+      "technique_046",
+      "technique_047",
+      "technique_048",
+      "technique_049",
+      "technique_050",
+      "technique_051",
+      "technique_052",
+      "technique_053",
+      "technique_054",
+      "technique_055"
     ]
   }
 }
