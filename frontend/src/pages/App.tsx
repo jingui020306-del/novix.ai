@@ -513,6 +513,85 @@ export default function App() {
     return { ok: true, message: `Unpinned "${tech.title || tech.id}"` }
   }
 
+
+  const resolveCategoryByQuery = (q: string) => {
+    const rows = (paletteCacheRef.current.techniqueCategories || []) as any[]
+    const query = q.trim().toLowerCase()
+    const byPath = (c: any) => {
+      const parentId = c?.payload?.parent_id
+      const parent = rows.find((r: any) => r.id === parentId)
+      const parentName = parent ? String(parent.title || parent.payload?.name || '').trim() : ''
+      const selfName = String(c.title || c.payload?.name || '').trim()
+      return parentName ? `${parentName}/${selfName}` : selfName
+    }
+    const matched = rows.filter((c: any) => {
+      const id = String(c.id || '').toLowerCase()
+      const title = String(c.title || '').toLowerCase()
+      const name = String(c.payload?.name || '').toLowerCase()
+      const path = byPath(c).toLowerCase()
+      return id === query || title === query || name === query || path === query || id.includes(query) || title.includes(query) || name.includes(query) || path.includes(query)
+    })
+    if (!matched.length) return null
+    return matched[0]
+  }
+
+  const pinCategoryToChapter = async (cat: any, intensity: string, weight?: number, notes?: string) => {
+    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+    const pinned = Array.isArray(meta?.pinned_technique_categories) ? meta.pinned_technique_categories : []
+    const row: any = { category_id: cat.id, intensity: intensity || 'med' }
+    if (weight !== undefined) row.weight = weight
+    if (notes) row.notes = notes
+    const next = [row, ...pinned.filter((x: any) => x.category_id !== cat.id)]
+    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_technique_categories: next })
+    mutateDraft()
+    return { ok: true, message: `Pinned category "${cat.title || cat.id}" (${row.intensity})` }
+  }
+
+  const unpinCategoryFromChapter = async (cat: any) => {
+    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+    const pinned = Array.isArray(meta?.pinned_technique_categories) ? meta.pinned_technique_categories : []
+    const next = pinned.filter((x: any) => x.category_id !== cat.id)
+    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_technique_categories: next })
+    mutateDraft()
+    return { ok: true, message: `Unpinned category "${cat.title || cat.id}"` }
+  }
+
+  const parseCategoryPinCommand = (query: string): { mode: 'pin_cat' | 'unpin_cat' | 'list_cat' | null; name?: string; intensity?: string; weight?: number; note?: string; error?: string } => {
+    const q = query.trim()
+    if (/^list\s+pinned\s+categories$/i.test(q)) return { mode: 'list_cat' }
+    const tokens = q.split(/\s+/)
+    const isPin = /^pin$/i.test(tokens[0] || '')
+    const isUnpin = /^unpin$/i.test(tokens[0] || '')
+    if (!isPin && !isUnpin) return { mode: null }
+    if (!/^cat(egory)?$/i.test(tokens[1] || '')) return { mode: null }
+    const rest = q.replace(/^\s*(pin|unpin)\s+cat(egory)?\s+/i, '')
+    const parts = rest.split(/\s+--/)
+    const head = parts[0].trim()
+    const optsRaw = parts.slice(1)
+    const headTokens = head.split(/\s+/).filter(Boolean)
+    if (!headTokens.length) return { mode: isPin ? 'pin_cat' : 'unpin_cat', error: 'Missing category name' }
+    let intensity = 'med'
+    if (isPin && ['low', 'med', 'high'].includes((headTokens[headTokens.length - 1] || '').toLowerCase())) {
+      intensity = headTokens.pop()!.toLowerCase()
+    }
+    const name = headTokens.join(' ').replace(/^"|"$/g, '')
+    let weight: number | undefined
+    let note = ''
+    for (const seg of optsRaw) {
+      const s = seg.trim()
+      if (s.startsWith('weight ')) {
+        const v = Number(s.slice('weight '.length).trim())
+        if (Number.isFinite(v)) weight = v
+      }
+      if (s.startsWith('note ')) {
+        note = s.slice('note '.length).trim().replace(/^"|"$/g, '')
+      }
+    }
+    return { mode: isPin ? 'pin_cat' : 'unpin_cat', name, intensity, weight, note }
+  }
+
   const parsePinCommand = (query: string): { mode: 'pin' | 'unpin' | 'list' | null; name?: string; intensity?: string; weight?: number; note?: string; error?: string } => {
     const q = query.trim()
     if (/^list\s+pinned\s+techniques$/i.test(q)) return { mode: 'list' }
@@ -548,6 +627,50 @@ export default function App() {
   }
 
   const resolveCreateCommand = (query: string): { item?: CommandItem; error?: string } | null => {
+    const catParsed = parseCategoryPinCommand(query)
+    if (catParsed.mode === 'list_cat') {
+      return {
+        item: {
+          id: 'cmd-list-pinned-categories',
+          title: 'List pinned categories',
+          subtitle: selectedChapter || 'open chapter first',
+          group: 'Actions',
+          icon: List,
+          run: async () => {
+            if (!selectedChapter) {
+              push('请先在 ChapterEditor 打开章节', 'error')
+              return
+            }
+            const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+            push(`Pinned categories: ${JSON.stringify(meta?.pinned_technique_categories || [])}`)
+          },
+        },
+      }
+    }
+
+    if (catParsed.mode === 'pin_cat' || catParsed.mode === 'unpin_cat') {
+      if (catParsed.error) return { error: catParsed.error }
+      const hit = resolveCategoryByQuery(catParsed.name || '')
+      if (!hit) return { error: `Category not found: ${catParsed.name}` }
+      const actionTitle = catParsed.mode === 'pin_cat' ? `Pin category ${hit.title} ${catParsed.intensity || 'med'}` : `Unpin category ${hit.title}`
+      return {
+        item: {
+          id: `${catParsed.mode}-${hit.id}`,
+          title: actionTitle,
+          subtitle: selectedChapter || 'open chapter first',
+          group: 'Actions',
+          icon: Sparkles,
+          run: async () => {
+            const out = catParsed.mode === 'pin_cat'
+              ? await pinCategoryToChapter(hit, catParsed.intensity || 'med', catParsed.weight, catParsed.note)
+              : await unpinCategoryFromChapter(hit)
+            if (out.ok) push(out.message)
+            else push(out.message || 'Command failed', 'error')
+          },
+        },
+      }
+    }
+
     const pinParsed = parsePinCommand(query)
     if (pinParsed.mode === 'list') {
       return {
@@ -932,6 +1055,19 @@ export default function App() {
   )
 
   const center = useMemo(() => {
+    const latestTechniqueBrief = events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}
+    const autoRecommendedTechniques = (latestTechniqueBrief?.checklist || []).filter((x: any) => String(x?.source || '').startsWith('auto_from_category'))
+    const toPinnedFromAuto = async (row: any) => {
+      const tech = (techniqueCards || []).find((x: any) => x.id === row.technique_id)
+      if (!tech) {
+        push(`Technique not found: ${row.technique_id}`, 'error')
+        return
+      }
+      const out = await pinTechniqueToChapter(tech, row.intensity || 'med', row.weight, row.notes)
+      if (out.ok) push(`Converted auto recommendation to pinned micro: ${tech.title || tech.id}`)
+      else push(out.message || 'Convert failed', 'error')
+    }
+
     if (view === 'projects') {
       return (
         <Card title='Projects' extra={<Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>}>
@@ -1082,9 +1218,34 @@ export default function App() {
                 }}
               />
               <p className='text-xs text-muted'>pinned_techniques 优先于 outline technique_prefs，同 technique_id 会覆盖强度与备注。</p>
+              <Textarea
+                className='h-24 mono'
+                value={JSON.stringify((draft?.meta || {}).pinned_technique_categories || [], null, 2)}
+                onChange={async (e) => {
+                  try {
+                    const meta = { ...(draft?.meta || {}), pinned_technique_categories: JSON.parse(e.target.value) }
+                    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
+                    mutateDraft()
+                  } catch {
+                    // keep typing tolerant
+                  }
+                }}
+              />
+              <p className='text-xs text-muted'>pinned_technique_categories 为宏观分类覆盖层；可驱动 TechniqueDirector 自动推荐 micro 技法。</p>
               <div className='rounded-ui border border-border bg-surface-2 p-2'>
                 <div className='text-xs font-medium mb-1'>Inherited from outline (read-only)</div>
                 <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify(inheritedTechniqueDefaults, null, 2)}</pre>
+              </div>
+              <div className='rounded-ui border border-border bg-surface-2 p-2'>
+                <div className='text-xs font-medium mb-1'>Auto-recommended micro from pinned categories (read-only)</div>
+                <div className='space-y-1'>
+                  {autoRecommendedTechniques.length ? autoRecommendedTechniques.map((row: any) => (
+                    <div key={`${row.technique_id}:${row.source}`} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-surface px-2 py-1'>
+                      <span className='text-xs'>{row.technique_id} <span className='text-muted'>({row.intensity || 'med'}, {row.source})</span></span>
+                      <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>转为 pinned micro</Button>
+                    </div>
+                  )) : <p className='text-xs text-muted'>暂无自动推荐（先 pin category 并运行生成）。</p>}
+                </div>
               </div>
             </div>
           </Card>
@@ -1315,6 +1476,16 @@ export default function App() {
     return (
       <div className='space-y-3 density-space'>
         <Card title='Outline Technique Mount'>
+          <div className='grid grid-cols-2 gap-2 mb-2'>
+            <div className='rounded-ui border border-border bg-surface-2 p-2'>
+              <div className='text-xs font-medium mb-1'>Macro categories</div>
+              <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify((outlineCard?.payload?.technique_prefs || []).map((x: any) => ({ scope: x.scope, ref: x.ref, categories: x.categories || [] })), null, 2)}</pre>
+            </div>
+            <div className='rounded-ui border border-border bg-surface-2 p-2'>
+              <div className='text-xs font-medium mb-1'>Micro techniques</div>
+              <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify((outlineCard?.payload?.technique_prefs || []).map((x: any) => ({ scope: x.scope, ref: x.ref, techniques: x.techniques || [] })), null, 2)}</pre>
+            </div>
+          </div>
           <Textarea
             className='h-28 mono'
             value={JSON.stringify(outlineCard?.payload?.technique_prefs || [], null, 2)}
