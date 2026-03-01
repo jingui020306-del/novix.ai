@@ -260,6 +260,7 @@ export default function App() {
       outline: 'outline',
       lore: 'lore',
       world_rule: 'world_rule',
+      technique: 'technique',
     }
     const cardType = typeMap[parsed.type] || parsed.type
     const card: any = {
@@ -307,6 +308,41 @@ export default function App() {
       setMaybe('role', 'payload.role', resolvedRole)
       setMaybe('importance', 'payload.importance', explicitImportance ?? inferredImportance)
       setMaybe('age', 'payload.age', parsed.opts.age)
+    }
+
+    if (parsed.type === 'technique') {
+      const categories = (paletteCacheRef.current.techniqueCategories || []) as any[]
+      const title = parsed.title
+      const inferCategoryName = (name: string) => {
+        if (/(蒙太奇|倒叙|插叙|剪辑|回环)/.test(name)) return '结构手法'
+        if (/(冷笔触|白描|冰山)/.test(name)) return '表达手法'
+        if (/(隐喻|象征|反讽)/.test(name)) return '修辞手法'
+        if (/(环境|侧面|心理)/.test(name)) return '描写方法'
+        if (/(节奏|反高潮|信息延迟)/.test(name)) return '表现手法'
+        return '表达手法'
+      }
+      const categoryName = String(parsed.opts.category || inferCategoryName(title))
+      const cat = categories.find((x: any) => x?.title === categoryName || x?.payload?.name === categoryName)
+      const aliases = uniq(((parsed.opts.alias as string[]) || []).concat([title]))
+      const signals = uniq((parsed.opts.signal as string[]) || ['出现可观察技法信号', '段落节奏与目标一致'])
+      const steps = uniq((parsed.opts.step as string[]) || ['明确场景目标', '在关键句实施技法', '收束并复核过度使用'])
+      card.tags = uniq(parsed.tags)
+      card.payload = {
+        name: title,
+        category_id: cat?.id || categories[0]?.id || 'technique_category_expression',
+        aliases,
+        description: String(parsed.opts.desc || `${title}（命令面板创建的默认模板）`),
+        apply_steps: steps,
+        signals,
+        intensity_levels: {
+          low: '点状使用',
+          med: '贯穿关键段',
+          high: '作为本段主导技法',
+        },
+        metrics: {},
+        do_dont: { do: ['服务场景目标'], dont: ['避免堆砌'] },
+        examples: [],
+      }
     }
 
     if (parsed.type === 'world' || parsed.type === 'lore' || parsed.type === 'world_rule') {
@@ -425,6 +461,9 @@ export default function App() {
         setView('world')
       } else if (parsed.type === 'outline') {
         setView('context')
+      } else if (parsed.type === 'technique') {
+        setView('techniques')
+        mutateTechniqueCards()
       }
       await lazyLoadPaletteData(true)
       return { ok: true, label: `${parsed.type}:${parsed.title}` }
@@ -433,7 +472,122 @@ export default function App() {
     }
   }
 
+
+  const resolveTechniqueByQuery = (q: string) => {
+    const rows = (paletteCacheRef.current.techniques || []) as any[]
+    const query = q.trim().toLowerCase()
+    const matched = rows.filter((t: any) => {
+      const id = String(t.id || '').toLowerCase()
+      const title = String(t.title || '').toLowerCase()
+      const name = String(t.payload?.name || '').toLowerCase()
+      return id === query || title === query || name === query || id.includes(query) || title.includes(query) || name.includes(query)
+    })
+    if (!matched.length) return null
+    return matched[0]
+  }
+
+  const pinTechniqueToChapter = async (tech: any, intensity: string, weight?: number, notes?: string) => {
+    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+    const pinned = Array.isArray(meta?.pinned_techniques) ? meta.pinned_techniques : []
+    const row: any = { technique_id: tech.id, intensity: intensity || 'med' }
+    if (weight !== undefined) row.weight = weight
+    if (notes) row.notes = notes
+    const next = [row, ...pinned.filter((x: any) => x.technique_id !== tech.id)]
+    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_techniques: next })
+    mutateDraft()
+    return { ok: true, message: `Pinned "${tech.title || tech.id}" (${row.intensity})` }
+  }
+
+  const unpinTechniqueFromChapter = async (tech: any) => {
+    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+    const pinned = Array.isArray(meta?.pinned_techniques) ? meta.pinned_techniques : []
+    const next = pinned.filter((x: any) => x.technique_id !== tech.id)
+    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_techniques: next })
+    mutateDraft()
+    return { ok: true, message: `Unpinned "${tech.title || tech.id}"` }
+  }
+
+  const parsePinCommand = (query: string): { mode: 'pin' | 'unpin' | 'list' | null; name?: string; intensity?: string; weight?: number; note?: string; error?: string } => {
+    const q = query.trim()
+    if (/^list\s+pinned\s+techniques$/i.test(q)) return { mode: 'list' }
+    const tokens = q.split(/\s+/)
+    const isPin = /^pin$/i.test(tokens[0] || '')
+    const isUnpin = /^unpin$/i.test(tokens[0] || '')
+    if (!isPin && !isUnpin) return { mode: null }
+    if (!/^tech(nique)?$/i.test(tokens[1] || '')) return { mode: null }
+    const rest = q.replace(/^\s*(pin|unpin)\s+tech(nique)?\s+/i, '')
+    const parts = rest.split(/\s+--/)
+    const head = parts[0].trim()
+    const optsRaw = parts.slice(1)
+    const headTokens = head.split(/\s+/).filter(Boolean)
+    if (!headTokens.length) return { mode: isPin ? 'pin' : 'unpin', error: 'Missing technique name' }
+    let intensity = 'med'
+    if (isPin && ['low', 'med', 'high'].includes((headTokens[headTokens.length - 1] || '').toLowerCase())) {
+      intensity = headTokens.pop()!.toLowerCase()
+    }
+    const name = headTokens.join(' ').replace(/^"|"$/g, '')
+    let weight: number | undefined
+    let note = ''
+    for (const seg of optsRaw) {
+      const s = seg.trim()
+      if (s.startsWith('weight ')) {
+        const v = Number(s.slice('weight '.length).trim())
+        if (Number.isFinite(v)) weight = v
+      }
+      if (s.startsWith('note ')) {
+        note = s.slice('note '.length).trim().replace(/^"|"$/g, '')
+      }
+    }
+    return { mode: isPin ? 'pin' : 'unpin', name, intensity, weight, note }
+  }
+
   const resolveCreateCommand = (query: string): { item?: CommandItem; error?: string } | null => {
+    const pinParsed = parsePinCommand(query)
+    if (pinParsed.mode === 'list') {
+      return {
+        item: {
+          id: 'cmd-list-pinned-techniques',
+          title: 'List pinned techniques',
+          subtitle: selectedChapter || 'open chapter first',
+          group: 'Actions',
+          icon: List,
+          run: async () => {
+            if (!selectedChapter) {
+              push('请先在 ChapterEditor 打开章节', 'error')
+              return
+            }
+            const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+            push(`Pinned: ${JSON.stringify(meta?.pinned_techniques || [])}`)
+          },
+        },
+      }
+    }
+
+    if (pinParsed.mode === 'pin' || pinParsed.mode === 'unpin') {
+      if (pinParsed.error) return { error: pinParsed.error }
+      const hit = resolveTechniqueByQuery(pinParsed.name || '')
+      if (!hit) return { error: `Technique not found: ${pinParsed.name}` }
+      const actionTitle = pinParsed.mode === 'pin' ? `Pin technique ${hit.title} ${pinParsed.intensity || 'med'}` : `Unpin technique ${hit.title}`
+      return {
+        item: {
+          id: `${pinParsed.mode}-tech-${hit.id}`,
+          title: actionTitle,
+          subtitle: selectedChapter || 'open chapter first',
+          group: 'Actions',
+          icon: Sparkles,
+          run: async () => {
+            const out = pinParsed.mode === 'pin'
+              ? await pinTechniqueToChapter(hit, pinParsed.intensity || 'med', pinParsed.weight, pinParsed.note)
+              : await unpinTechniqueFromChapter(hit)
+            if (out.ok) push(out.message)
+            else push(out.message || 'Command failed', 'error')
+          },
+        },
+      }
+    }
+
     if (!isCreateMode(query)) return null
     const parsed = parseCreateInput(query)
     if (!parsed) return null
@@ -578,6 +732,13 @@ export default function App() {
     await api.post(`/api/projects/${project}/sessions/session_001/redo`, {})
     mutateSessionMeta()
   }
+
+  const inheritedTechniqueDefaults = useMemo(() => {
+    const outline = (paletteCacheRef.current.outlines || [])[0]
+    const prefs = outline?.payload?.technique_prefs || []
+    const chapterRows = (prefs || []).filter((r: any) => r.scope === 'arc' || (r.scope === 'chapter' && r.ref === selectedChapter) || (r.scope === 'beat' && String(r.ref || '').startsWith(`${selectedChapter}.b`)))
+    return chapterRows
+  }, [selectedChapter, currentManifest])
 
   const commandItems = useMemo<CommandItem[]>(() => {
     const cache = paletteCacheRef.current
@@ -917,6 +1078,10 @@ export default function App() {
                 }}
               />
               <p className='text-xs text-muted'>pinned_techniques 优先于 outline technique_prefs，同 technique_id 会覆盖强度与备注。</p>
+              <div className='rounded-ui border border-border bg-surface-2 p-2'>
+                <div className='text-xs font-medium mb-1'>Inherited from outline (read-only)</div>
+                <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify(inheritedTechniqueDefaults, null, 2)}</pre>
+              </div>
             </div>
           </Card>
 

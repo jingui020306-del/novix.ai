@@ -8,6 +8,7 @@ export type CreateType =
   | 'blueprint'
   | 'chapter'
   | 'project'
+  | 'technique'
 
 export type KeyValueItem = {
   raw: string
@@ -36,10 +37,11 @@ const ALLOWED: Record<CreateType, Set<string>> = {
   blueprint: new Set(['story_type', 'scenes']),
   chapter: new Set(['bind', 'scene', 'signals', 'no-signals']),
   project: new Set([]),
+  technique: new Set(['category', 'alias', 'tag', 'desc', 'signal', 'step', 'intensity']),
 }
 
 const BOOL_FLAGS = new Set(['signals', 'no-signals', 'auto-apply', 'no-auto-apply'])
-const NUM_KEYS = new Set(['age', 'importance', 'scenes', 'scene', 'max_examples', 'max_chars'])
+const NUM_KEYS = new Set(['age', 'importance', 'scenes', 'scene', 'max_examples', 'max_chars', 'weight'])
 
 function stripPrefix(input: string): string {
   const t = input.trim()
@@ -186,7 +188,7 @@ export function parseCreateInput(input: string): ParsedCreate | null {
       locks.push(val)
       continue
     }
-    if (key === 'trait' || key === 'boundary') {
+    if (key === 'trait' || key === 'boundary' || key === 'alias' || key === 'signal' || key === 'step') {
       const prev = (opts[key] as string[] | undefined) || []
       opts[key] = [...prev, val]
       continue
@@ -233,5 +235,6 @@ export function createHelpText(): string[] {
     '+ blueprint 三幕结构测试 --story_type three_act --scenes 3',
     '+ chapter 第一章 --bind blueprint_001 --scene 0 --signals',
     '+ project MyNovel',
+    '+ technique 冷笔触 --category 表达手法 --signal 词句冷静 --step 缩短句子',
   ]
 }

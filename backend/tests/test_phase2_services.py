@@ -199,24 +199,40 @@ def test_schema_contains_technique_and_category_payloads(tmp_path: Path):
 
 
 def test_technique_merge_chapter_pinned_overrides_outline(tmp_path: Path):
-    from agents.technique_director import TechniqueDirector
+    from agents.technique_director import merge_technique_mounts
 
-    s = make_store(tmp_path)
-    outline = s.read_yaml("p1", "cards/outline_001.yaml")
-    outline.setdefault("payload", {})["technique_prefs"] = [
-        {"scope": "chapter", "ref": "chapter_001", "techniques": [{"technique_id": "technique_001", "intensity": "low", "notes": "outline"}]}
+    outline_prefs = [
+        {"scope": "arc", "ref": "arc_main", "techniques": [{"technique_id": "technique_001", "intensity": "low"}, {"technique_id": "technique_010", "intensity": "med"}]},
+        {"scope": "chapter", "ref": "chapter_001", "techniques": [{"technique_id": "technique_001", "intensity": "med", "notes": "chapter default"}]},
+        {"scope": "beat", "ref": "chapter_001.b0", "techniques": [{"technique_id": "technique_001", "intensity": "high"}, {"technique_id": "technique_020", "intensity": "low"}]},
     ]
-    s.write_yaml("p1", "cards/outline_001.yaml", outline)
-    meta = s.read_json("p1", "drafts/chapter_001.meta.json")
-    meta["pinned_techniques"] = [{"technique_id": "technique_001", "intensity": "high", "notes": "chapter"}]
-    s.write_json("p1", "drafts/chapter_001.meta.json", meta)
+    pinned = [
+        {"technique_id": "technique_001", "intensity": "med", "weight": 1.6, "notes": "pinned override"},
+        {"technique_id": "technique_030", "intensity": "high"},
+    ]
 
-    td = TechniqueDirector(s)
-    selected = td.resolve_selected_techniques("p1", "chapter_001", outline, {"scene_index": 0})
+    selected = merge_technique_mounts(outline_prefs, pinned, "chapter_001", scene_index=0)
+    ids = [x["technique_id"] for x in selected]
+    assert ids[:2] == ["technique_001", "technique_030"]
+    assert ids.index("technique_020") < ids.index("technique_010")
+
     row = [x for x in selected if x["technique_id"] == "technique_001"][0]
-    assert row["intensity"] == "high"
-    assert row["notes"] == "chapter"
+    assert row["source"] == "pinned"
+    assert row["effective_intensity"] == "med"
+    assert row["effective_weight"] == 1.6
 
+    beat_row = [x for x in selected if x["technique_id"] == "technique_020"][0]
+    assert beat_row["source"] == "outline:beat"
+    assert beat_row["effective_weight"] == 0.6
+
+
+def test_pinned_technique_upsert_dedup_overwrites_fields():
+    from agents.technique_director import upsert_pinned_technique_rows
+
+    rows = [{"technique_id": "technique_001", "intensity": "low", "weight": 0.6, "notes": "old"}]
+    out = upsert_pinned_technique_rows(rows, {"technique_id": "technique_001", "intensity": "high", "weight": 1.8, "notes": "new"})
+    assert len(out) == 1
+    assert out[0]["intensity"] == "high" and out[0]["weight"] == 1.8 and out[0]["notes"] == "new"
 
 def test_job_emits_technique_brief_and_manifest_fixed_block(tmp_path: Path):
     s = make_store(tmp_path)
