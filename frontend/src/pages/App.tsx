@@ -186,6 +186,7 @@ export default function App() {
   const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[]; accepted_target?: string; rejection_reason?: string } | null>(null)
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
   const [buildWizardStep, setBuildWizardStep] = useState('basics')
+  const [buildDraftHistoryFilter, setBuildDraftHistoryFilter] = useState('all')
 
   const paletteCacheRef = useRef<PaletteCache>({
     storyCards: [],
@@ -295,6 +296,13 @@ export default function App() {
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
+  const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
+  const buildDraftHistoryCounts = {
+    all: processedBuildDrafts.length,
+    accepted: processedBuildDrafts.filter((x: any) => x.status === 'accepted').length,
+    partially_accepted: processedBuildDrafts.filter((x: any) => x.status === 'partially_accepted').length,
+    rejected: processedBuildDrafts.filter((x: any) => x.status === 'rejected').length,
+  }
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -2348,7 +2356,19 @@ export default function App() {
             </Card>
             <Card title='建书草案历史'>
               <div className='space-y-1'>
-                {processedBuildDrafts.slice(0, 5).map((rec: any) => (
+                <div className='flex flex-wrap gap-1 pb-1'>
+                  {[
+                    ['all', '全部'],
+                    ['accepted', '已接受'],
+                    ['partially_accepted', '局部'],
+                    ['rejected', '已拒绝'],
+                  ].map(([key, label]) => (
+                    <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
+                      {label} {(buildDraftHistoryCounts as any)[key] || 0}
+                    </Button>
+                  ))}
+                </div>
+                {buildDraftHistoryRows.slice(0, 5).map((rec: any) => (
                   <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
                     <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
                       <span className='font-medium'>{rec.title || rec.kind}</span>
@@ -2358,9 +2378,13 @@ export default function App() {
                       {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
                       {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
                     </div>
+                    <div className='mt-1 flex gap-1'>
+                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                      <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
+                    </div>
                   </div>
                 ))}
-                {!processedBuildDrafts.length && <p className='text-sm text-muted'>暂无已处理草案。</p>}
+                {!buildDraftHistoryRows.length && <p className='text-sm text-muted'>没有符合筛选的已处理草案。</p>}
               </div>
             </Card>
             <Card title='待审 AI Patch'>
@@ -2479,10 +2503,22 @@ export default function App() {
                 <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
                   <div className='flex items-center justify-between gap-2'>
                     <span className='text-xs font-medium'>已处理草案</span>
-                    <Badge>{processedBuildDrafts.length}</Badge>
+                    <Badge>{buildDraftHistoryRows.length}/{processedBuildDrafts.length}</Badge>
+                  </div>
+                  <div className='flex flex-wrap gap-1'>
+                    {[
+                      ['all', '全部'],
+                      ['accepted', '已接受'],
+                      ['partially_accepted', '局部'],
+                      ['rejected', '已拒绝'],
+                    ].map(([key, label]) => (
+                      <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
+                        {label} {(buildDraftHistoryCounts as any)[key] || 0}
+                      </Button>
+                    ))}
                   </div>
                   <div className='max-h-36 space-y-1 overflow-auto'>
-                    {processedBuildDrafts.slice(0, 6).map((rec: any) => (
+                    {buildDraftHistoryRows.slice(0, 6).map((rec: any) => (
                       <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
                         <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
                           <span className='font-medium'>{rec.title || rec.kind}</span>
@@ -2499,7 +2535,7 @@ export default function App() {
                         </div>
                       </div>
                     ))}
-                    {!processedBuildDrafts.length && <div className='text-xs text-muted'>暂无已处理草案。</div>}
+                    {!buildDraftHistoryRows.length && <div className='text-xs text-muted'>没有符合筛选的已处理草案。</div>}
                   </div>
                 </div>
               </div>
@@ -3475,6 +3511,9 @@ export default function App() {
     completedBuildSteps,
     pendingBuildDrafts,
     processedBuildDrafts,
+    buildDraftHistoryRows,
+    buildDraftHistoryCounts,
+    buildDraftHistoryFilter,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
