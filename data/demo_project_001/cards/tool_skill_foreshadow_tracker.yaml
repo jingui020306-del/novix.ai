@@ -1,0 +1,31 @@
+{
+  "id": "tool_skill_foreshadow_tracker",
+  "type": "tool_skill",
+  "title": "伏笔追踪",
+  "tags": [
+    "tool_skill",
+    "tracker"
+  ],
+  "links": [],
+  "payload": {
+    "name": "伏笔追踪",
+    "category": "tracker",
+    "description": "伏笔追踪，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "story",
+      "chapter"
+    ],
+    "output_type": "foreshadowing_marks",
+    "agent_role": "reviewer",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "首次出现",
+      "显示方式",
+      "回收章节",
+      "未证实命中"
+    ],
+    "proposal_fields": []
+  }
+}

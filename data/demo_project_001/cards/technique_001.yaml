@@ -1,34 +1,33 @@
 {
   "id": "technique_001",
   "type": "technique",
-  "title": "隐喻",
+  "title": "悬念延迟",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "隐喻",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "隐喻"
-    ],
-    "description": "隐喻：用于提升段落表达与可检验性。",
+    "name": "悬念延迟",
+    "category_id": "technique_category_structure",
+    "aliases": [],
+    "description": "先给读者可见问题，再推迟关键答案，用行动和阻碍维持期待。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施隐喻",
-      "回读并收束过度使用"
+      "明确本段要悬置的问题",
+      "给出局部证据而非答案",
+      "用新的选择或阻碍收束段落"
     ],
     "signals": [
-      "出现隐喻可观察信号",
-      "节奏/语义与目标一致"
+      "提出明确问题但暂不解释",
+      "章节末保留未解信息",
+      "人物行动被新阻碍打断"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +35,18 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.04
+      "metaphor_density": 0.06
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "让延迟服务冲突升级",
+        "每次延迟都给读者新信息"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "只拖延不推进",
+        "用作者旁白宣布神秘"
       ]
     },
-    "examples": [
-      "示例：用隐喻改写一句场景句。"
-    ]
+    "examples": []
   }
 }

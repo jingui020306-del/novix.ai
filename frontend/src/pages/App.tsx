@@ -34,6 +34,7 @@ import { createHelpText, isCreateMode, parseCreateInput, ParsedCreate } from '..
 
 const NAV_ITEMS = [
   { id: 'projects', label: 'Projects', icon: FolderKanban },
+  { id: 'story', label: 'Story', icon: BookOpen },
   { id: 'characters', label: 'Characters', icon: UserRound },
   { id: 'style', label: 'Style', icon: Brush },
   { id: 'chapter', label: 'Chapter', icon: FilePenLine },
@@ -46,8 +47,18 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
+const ACTIVITY_ITEMS = [
+  { id: 'explorer', label: 'Explorer', icon: FolderKanban },
+  { id: 'story', label: 'Story', icon: BookOpen },
+  { id: 'cards', label: 'Cards', icon: UserRound },
+  { id: 'techniques', label: 'Techniques', icon: Sparkles },
+  { id: 'canon', label: 'Canon', icon: Waypoints },
+  { id: 'settings', label: 'Settings', icon: Settings },
+]
+
 type PaletteCache = {
   loadedFor?: string
+  storyCards: any[]
   characters: any[]
   worldCards: any[]
   styleCards: any[]
@@ -57,6 +68,7 @@ type PaletteCache = {
   proposals: any[]
   techniques?: any[]
   techniqueCategories?: any[]
+  toolSkills?: any[]
 }
 
 
@@ -75,6 +87,41 @@ type ProviderMeta = {
 }
 
 const MRU_KEY = 'novix.palette.mru.v1'
+
+const STORY_PAYLOAD_TEMPLATE = {
+  logline: '',
+  theme: '',
+  genre: '',
+  keywords: [],
+  target_reader: '',
+  platform_style: '',
+  worldview: '',
+  main_conflict: '',
+  banned_items: [],
+  important_scenes: [{ scene: '', purpose: '', chapter: '' }],
+  stages: [{ stage: '', goal: '', conflict: '', result: '', turning_point: '' }],
+  open_line: [{ chapter: '', event: '', goal: '', conflict: '', result: '' }],
+  hidden_line: [{ chapter: '', truth: '', visible_hint: '', hidden_meaning: '', reveal_timing: '' }],
+  foreshadowings: [{ id: '', content: '', first_chapter: '', surface_signal: '', reader_feeling: '', true_meaning: '', payoff_chapter: '', payoff: '', emphasis: '', status: '未出现' }],
+  chapter_plan: [{ chapter: '', chapter_id: '', title: '', focus: '', key_events: '', stage_result: '', conflict: '', result: '', open_line: '', hidden_line: '', foreshadowing: '' }],
+}
+
+const STORY_CARD_TEMPLATE = {
+  id: 'story_new',
+  type: 'story',
+  title: '',
+  tags: [],
+  links: [],
+  payload: STORY_PAYLOAD_TEMPLATE,
+}
+
+const cloneJson = (value: any) => JSON.parse(JSON.stringify(value))
+
+const normalizeStoryCard = (card: any) => {
+  const base = cloneJson(STORY_CARD_TEMPLATE)
+  const payload = { ...cloneJson(STORY_PAYLOAD_TEMPLATE), ...(card?.payload || {}) }
+  return { ...base, ...(card || {}), type: 'story', payload }
+}
 
 function loadMRU(): { id: string; title: string; group: string; subtitle?: string }[] {
   try {
@@ -97,6 +144,7 @@ export default function App() {
 
   const [project, setProject] = useState('demo_project_001')
   const [view, setView] = useState('projects')
+  const [activeActivity, setActiveActivity] = useState('explorer')
   const [events, setEvents] = useState<any[]>([])
   const [sideSearch, setSideSearch] = useState('')
 
@@ -123,10 +171,14 @@ export default function App() {
   const [worldRows, setWorldRows] = useState<any[]>([])
   const [wikiHtml, setWikiHtml] = useState('<html><head><title>示例</title></head><body><table class="infobox"><tr><th>阵营</th><td>黑潮同盟</td></tr></table><h2>设定</h2><p>临港城由七港区组成。</p></body></html>')
   const [techniqueQuery, setTechniqueQuery] = useState('')
+  const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
+  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string } | null>(null)
+  const [buildDraftBusy, setBuildDraftBusy] = useState(false)
 
   const paletteCacheRef = useRef<PaletteCache>({
+    storyCards: [],
     characters: [],
     worldCards: [],
     styleCards: [],
@@ -136,6 +188,7 @@ export default function App() {
     proposals: [],
     techniques: [],
     techniqueCategories: [],
+    toolSkills: [],
   })
 
   const schemaCacheRef = useRef<SchemaCache>({ cardSchemas: {} })
@@ -164,12 +217,17 @@ export default function App() {
 
   const { data: projects, mutate: mutateProjects } = useSWR('/api/projects', api.get)
   const { data: projectInfo } = useSWR(project ? `/api/projects/${project}` : null, api.get)
+  const { data: storySchema } = useSWR('/api/schema/cards/story', api.get)
   const { data: charSchema } = useSWR('/api/schema/cards/character', api.get)
   const { data: styleSchema } = useSWR('/api/schema/cards/style', api.get)
   const { data: techniqueSchema } = useSWR('/api/schema/cards/technique', api.get)
   const { data: techniqueCategorySchema } = useSWR('/api/schema/cards/technique_category', api.get)
+  const { data: toolSkillSchema } = useSWR('/api/schema/cards/tool_skill', api.get)
+  const { data: storyCards, mutate: mutateStoryCards } = useSWR(project ? `/api/projects/${project}/cards?type=story` : null, api.get)
   const { data: chars, mutate: mutateCards } = useSWR(project ? `/api/projects/${project}/cards?type=character` : null, api.get)
   const { data: styles, mutate: mutateStyles } = useSWR(project ? `/api/projects/${project}/cards?type=style` : null, api.get)
+  const { data: volumes, mutate: mutateVolumes } = useSWR(project ? `/api/projects/${project}/volumes` : null, api.get)
+  const { data: draftDetails, mutate: mutateDraftDetails } = useSWR(project ? `/api/projects/${project}/drafts/details` : null, api.get)
   const { data: draft, mutate: mutateDraft } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}` : null, api.get)
   const { data: versions, mutate: mutateVersions } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/versions` : null, api.get)
   const { data: sessionMeta, mutate: mutateSessionMeta } = useSWR(project ? `/api/projects/${project}/sessions/session_001/meta` : null, api.get)
@@ -177,19 +235,29 @@ export default function App() {
   const { data: canonFacts, mutate: mutateCanonFacts } = useSWR(project ? `/api/projects/${project}/canon/facts?include_revisions=true` : null, api.get)
   const { data: techniqueCards, mutate: mutateTechniqueCards } = useSWR(project ? `/api/projects/${project}/cards?type=technique` : null, api.get)
   const { data: techniqueCategories, mutate: mutateTechniqueCategories } = useSWR(project ? `/api/projects/${project}/cards?type=technique_category` : null, api.get)
+  const { data: toolSkillCards, mutate: mutateToolSkillCards } = useSWR(project ? `/api/projects/${project}/cards?type=tool_skill` : null, api.get)
   const { data: globalProfiles, mutate: mutateGlobalProfiles } = useSWR('/api/config/llm/profiles', api.get)
   const { data: globalAssignments, mutate: mutateGlobalAssignments } = useSWR('/api/config/llm/assignments', api.get)
   const { data: providersMeta } = useSWR('/api/config/llm/providers_meta', api.get)
   const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
+  const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
+  const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
 
+  const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
   const [techniqueForm, setTechniqueForm] = useState<any>(null)
   const [categoryForm, setCategoryForm] = useState<any>(null)
+  const [toolSkillForm, setToolSkillForm] = useState<any>(null)
   const [profilesEditor, setProfilesEditor] = useState('')
   const [assignmentsEditor, setAssignmentsEditor] = useState('')
   const [presetProfileId, setPresetProfileId] = useState('')
   const [selectedPresetId, setSelectedPresetId] = useState('openai_compat:deepseek')
   const [selectedMemoryPackId, setSelectedMemoryPackId] = useState('')
+  const [storyPlanningTab, setStoryPlanningTab] = useState('Overview')
+  const [chapterEditorText, setChapterEditorText] = useState('')
+  const [chapterTitleDraft, setChapterTitleDraft] = useState('')
+  const [chapterSaving, setChapterSaving] = useState(false)
+  const [selectedMarkId, setSelectedMarkId] = useState('')
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
 
@@ -200,6 +268,19 @@ export default function App() {
     project && selectedMemoryPackId ? `/api/projects/${project}/memory_packs/${encodeURIComponent(selectedMemoryPackId)}` : null,
     api.get,
   )
+  const volumeRows = Array.isArray(volumes) ? volumes : []
+  const chapterRows = Array.isArray(draftDetails) ? draftDetails : []
+  const currentChapterMeta = (draft?.meta || chapterRows.find((x: any) => x.chapter_id === selectedChapter) || {}) as any
+  const currentVolume = volumeRows.find((v: any) => v.id === (currentChapterMeta?.volume_id || 'volume_default')) || volumeRows[0]
+  const activeStoryPayload = normalizeStoryCard(storyForm).payload || {}
+  const currentStoryLinks = {
+    chapterPlan: (activeStoryPayload.chapter_plan || []).filter((x: any) => x.chapter_id === selectedChapter || x.chapter === selectedChapter),
+    openLine: (activeStoryPayload.open_line || []).filter((x: any) => x.chapter === selectedChapter || x.chapter_id === selectedChapter),
+    hiddenLine: (activeStoryPayload.hidden_line || []).filter((x: any) => x.chapter === selectedChapter || x.chapter_id === selectedChapter),
+    foreshadowings: (activeStoryPayload.foreshadowings || []).filter((x: any) => x.first_chapter === selectedChapter || x.payoff_chapter === selectedChapter),
+  }
+  const evidenceMarkRows = Array.isArray(evidenceMarks) ? evidenceMarks : []
+  const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
 
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
@@ -243,11 +324,26 @@ export default function App() {
     }
   }, [memoryPacks, selectedMemoryPackId])
 
+  useEffect(() => {
+    const rows = Array.isArray(storyCards) ? storyCards : []
+    if (!rows.length) return
+    const currentId = storyForm?.id
+    if (!currentId || currentId === 'story_new' || !rows.some((x: any) => x.id === currentId)) {
+      setStoryForm(normalizeStoryCard(rows[0]))
+    }
+  }, [storyCards])
+
+  useEffect(() => {
+    setChapterEditorText(draft?.content || '')
+    setChapterTitleDraft(draft?.meta?.chapter_title || draft?.meta?.title || selectedChapter)
+  }, [draft, selectedChapter])
+
   const lazyLoadPaletteData = async (force = false) => {
     const cache = paletteCacheRef.current
     if (!force && cache.loadedFor === project) return
     try {
-      const [characters, worldview, worldRules, lore, styleCards, outlines, blueprints, chapters, proposalRows, techniqueRows, categoryRows, charSchema, styleSchemaFromApi, blueprintSchema] = await Promise.all([
+      const [storyRows, characters, worldview, worldRules, lore, styleCards, outlines, blueprints, chapters, proposalRows, techniqueRows, categoryRows, toolSkillRows, storySchemaFromApi, charSchema, styleSchemaFromApi, toolSkillSchemaFromApi, blueprintSchema] = await Promise.all([
+        api.get(`/api/projects/${project}/cards?type=story`),
         api.get(`/api/projects/${project}/cards?type=character`),
         api.get(`/api/projects/${project}/cards?type=worldview`),
         api.get(`/api/projects/${project}/cards?type=world_rule`),
@@ -255,16 +351,20 @@ export default function App() {
         api.get(`/api/projects/${project}/cards?type=style`),
         api.get(`/api/projects/${project}/cards?type=outline`),
         api.get(`/api/projects/${project}/blueprints`),
-        api.get(`/api/projects/${project}/drafts`),
+        api.get(`/api/projects/${project}/drafts/details`),
         api.get(`/api/projects/${project}/canon/proposals`),
         api.get(`/api/projects/${project}/cards?type=technique`),
         api.get(`/api/projects/${project}/cards?type=technique_category`),
+        api.get(`/api/projects/${project}/cards?type=tool_skill`),
+        api.get(`/api/schema/cards/story`),
         api.get(`/api/schema/cards/character`),
         api.get(`/api/schema/cards/style`),
+        api.get(`/api/schema/cards/tool_skill`),
         api.get(`/api/schema/blueprint`),
       ])
       paletteCacheRef.current = {
         loadedFor: project,
+        storyCards: Array.isArray(storyRows) ? storyRows : [],
         characters: Array.isArray(characters) ? characters : [],
         worldCards: [...(Array.isArray(worldview) ? worldview : []), ...(Array.isArray(worldRules) ? worldRules : []), ...(Array.isArray(lore) ? lore : [])],
         styleCards: Array.isArray(styleCards) ? styleCards : [],
@@ -274,12 +374,15 @@ export default function App() {
         proposals: Array.isArray(proposalRows) ? proposalRows : [],
         techniques: Array.isArray(techniqueRows) ? techniqueRows : [],
         techniqueCategories: Array.isArray(categoryRows) ? categoryRows : [],
+        toolSkills: Array.isArray(toolSkillRows) ? toolSkillRows : [],
       }
 
       schemaCacheRef.current = {
         cardSchemas: {
+          story: storySchemaFromApi || {},
           character: charSchema || {},
           style: styleSchemaFromApi || {},
+          tool_skill: toolSkillSchemaFromApi || {},
         },
         blueprint: blueprintSchema || {},
       }
@@ -290,7 +393,7 @@ export default function App() {
   }
 
   const refreshPaletteData = async () => {
-    paletteCacheRef.current = { characters: [], worldCards: [], styleCards: [], outlines: [], blueprints: [], chapters: [], proposals: [], techniques: [], techniqueCategories: [] }
+    paletteCacheRef.current = { storyCards: [], characters: [], worldCards: [], styleCards: [], outlines: [], blueprints: [], chapters: [], proposals: [], techniques: [], techniqueCategories: [], toolSkills: [] }
     await lazyLoadPaletteData(true)
     push('Palette data refreshed')
   }
@@ -335,9 +438,11 @@ export default function App() {
       world: 'world',
       style: 'style',
       outline: 'outline',
+      story: 'story',
       lore: 'lore',
       world_rule: 'world_rule',
       technique: 'technique',
+      tool_skill: 'tool_skill',
     }
     const cardType = typeMap[parsed.type] || parsed.type
     const card: any = {
@@ -422,6 +527,25 @@ export default function App() {
       }
     }
 
+    if (parsed.type === 'tool_skill') {
+      const category = String(parsed.opts.category || 'checker')
+      const agentRole = String(parsed.opts.agent_role || (category === 'research' ? 'researcher' : category === 'generator' ? 'writer' : 'reviewer'))
+      card.tags = uniq([...parsed.tags, 'tool_skill', category])
+      card.payload = {
+        name: parsed.title,
+        category,
+        description: String(parsed.opts.desc || `${parsed.title}：输出进入待确认队列，不自动覆盖作者卡片。`),
+        input_types: uniq((parsed.opts.input as string[]) || ['chapter']),
+        output_type: String(parsed.opts.output || 'proposal'),
+        agent_role: agentRole,
+        evidence_required: !Boolean(parsed.opts['no-evidence']),
+        auto_apply_allowed: Boolean(parsed.opts['auto-apply']) && false,
+        review_policy: '默认生成 proposal；作者确认后才写入卡片或 canon。',
+        check_rules: uniq((parsed.opts.rule as string[]) || []),
+        proposal_fields: uniq((parsed.opts.proposal_field as string[]) || []),
+      }
+    }
+
     if (parsed.type === 'world' || parsed.type === 'lore' || parsed.type === 'world_rule') {
       const set = (path: string, value: any) => {
         if (value === undefined || value === null || value === '') return
@@ -453,6 +577,20 @@ export default function App() {
 
     if (parsed.type === 'outline' && parsed.opts.note) {
       setByPath(card, 'payload.note', parsed.opts.note)
+    }
+
+    if (parsed.type === 'story') {
+      card.payload = {
+        ...cloneJson(STORY_PAYLOAD_TEMPLATE),
+        logline: String(parsed.opts.logline || parsed.opts.note || ''),
+        theme: String(parsed.opts.theme || ''),
+        genre: String(parsed.opts.genre || ''),
+        keywords: uniq((parsed.opts.keyword as string[]) || []),
+        target_reader: String(parsed.opts.target_reader || ''),
+        platform_style: String(parsed.opts.platform_style || ''),
+        banned_items: uniq((parsed.opts.banned as string[]) || []),
+        important_scenes: parsed.opts.scene ? [{ scene: String(parsed.opts.scene), purpose: '', chapter: '' }] : [],
+      }
     }
 
     return { card, warnings }
@@ -495,16 +633,44 @@ export default function App() {
         return { ok: true, label: `blueprint:${parsed.title}` }
       }
 
+      if (parsed.type === 'volume') {
+        const volume = {
+          id: `volume_${Date.now()}`,
+          title: parsed.title,
+          summary: String(parsed.opts.summary || ''),
+          order_index: Number(parsed.opts.order ?? (volumeRows.length + 1)),
+          chapter_ids: [],
+        }
+        const res = await api.post(`/api/projects/${project}/volumes`, volume)
+        if (res?.detail) return { ok: false, message: String(res.detail?.message || res.detail) }
+        setActiveActivity('explorer')
+        await mutateVolumes()
+        await lazyLoadPaletteData(true)
+        return { ok: true, label: `volume:${parsed.title}` }
+      }
+
       if (parsed.type === 'chapter') {
         const chapterId = `ch_${Date.now()}`
-        const body = { content: `# ${parsed.title}
+        const volumeId = String(parsed.opts.volume || currentVolume?.id || 'volume_default')
+        const body = {
+          content: `# ${parsed.title}
 
-` }
+`,
+          chapter_title: parsed.title,
+          title: parsed.title,
+          chapter_status: String(parsed.opts.status || 'draft'),
+          volume_id: volumeId,
+          order_index: Number(parsed.opts.order ?? (chapterRows.length + 1)),
+        }
         const put1 = await api.put(`/api/projects/${project}/drafts/${chapterId}`, body)
         if (put1?.detail) return { ok: false, message: String(put1.detail?.message || put1.detail) }
         const meta: any = {
           chapter_id: chapterId,
           title: parsed.title,
+          chapter_title: parsed.title,
+          chapter_status: String(parsed.opts.status || 'draft'),
+          volume_id: volumeId,
+          order_index: Number(parsed.opts.order ?? (chapterRows.length + 1)),
           chapter_summary: '',
           scene_summaries: [],
           open_questions: [],
@@ -518,6 +684,9 @@ export default function App() {
         if (put2?.detail) return { ok: false, message: String(put2.detail?.message || put2.detail) }
         setSelectedChapter(chapterId)
         setView('chapter')
+        setActiveActivity('explorer')
+        await mutateVolumes()
+        await mutateDraftDetails()
         await lazyLoadPaletteData(true)
         return { ok: true, label: `chapter:${parsed.title}` }
       }
@@ -534,6 +703,10 @@ export default function App() {
       } else if (parsed.type === 'style') {
         setView('style')
         mutateStyles()
+      } else if (parsed.type === 'story') {
+        setStoryForm(normalizeStoryCard(mapped.card))
+        setView('story')
+        mutateStoryCards()
       } else if (parsed.type === 'world' || parsed.type === 'lore' || parsed.type === 'world_rule') {
         setView('world')
       } else if (parsed.type === 'outline') {
@@ -541,6 +714,11 @@ export default function App() {
       } else if (parsed.type === 'technique') {
         setView('techniques')
         mutateTechniqueCards()
+      } else if (parsed.type === 'tool_skill') {
+        setView('techniques')
+        setTechniqueLibraryTab('AI Tool Skills')
+        setToolSkillForm(mapped.card)
+        mutateToolSkillCards()
       }
       await lazyLoadPaletteData(true)
       return { ok: true, label: `${parsed.type}:${parsed.title}` }
@@ -845,26 +1023,35 @@ export default function App() {
   const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
     try {
       setSelectedOpIds([])
+      setEvents([])
       const j = await api.post(`/api/projects/${project}/jobs/write`, {
         chapter_id: selectedChapter,
         blueprint_id: 'blueprint_001',
         scene_index: 0,
-        agents: ['director', 'writer'],
+        agent_mode: 'three_agent',
+        agents: ['reviewer', 'writer', 'proofreader'],
         llm_profile_id: llmProfileId,
-        auto_apply_patch: autoApplyPatch,
+        auto_apply_patch: Boolean(autoApplyPatch),
+        word_checkpoint_chars: 1500,
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
       })
-      const ws = new WebSocket(`ws://127.0.0.1:8000/api/jobs/${j.job_id}/stream`)
+      const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      const ws = new WebSocket(`${wsProto}://${window.location.host}/api/jobs/${j.job_id}/stream`)
       ws.onmessage = (e) => {
         const evt = JSON.parse(e.data)
         setEvents((x) => [...x, evt])
         if (evt.event === 'DONE') {
           mutateDraft()
+          mutateDraftDetails()
+          mutateVolumes()
           mutateStyles()
           mutateVersions()
           mutateSessionMeta()
           mutateMemoryPacks()
+          mutateEvidenceMarks()
+          mutateTrustReport()
+          mutateProposals()
           push('Job finished')
         }
       }
@@ -885,6 +1072,82 @@ export default function App() {
       push('Analyze failed', 'error')
     } finally {
       setAnalyzeBusy(false)
+    }
+  }
+
+  const analyzeMarks = async () => {
+    try {
+      await saveChapterDraft()
+      const res = await api.post(`/api/projects/${project}/chapters/${selectedChapter}/analyze-marks`, {})
+      await mutateEvidenceMarks()
+      await mutateTrustReport()
+      push(`Marks analyzed: ${res?.marks?.length || 0}`)
+    } catch {
+      push('Analyze marks failed', 'error')
+    }
+  }
+
+  const createVolume = async () => {
+    const idx = volumeRows.length + 1
+    const volume = {
+      id: `volume_${Date.now()}`,
+      title: `第${idx}卷`,
+      summary: '',
+      order_index: idx,
+      chapter_ids: [],
+    }
+    await api.post(`/api/projects/${project}/volumes`, volume)
+    await mutateVolumes()
+    await lazyLoadPaletteData(true)
+    setActiveActivity('explorer')
+    push(`Volume created: ${volume.title}`)
+  }
+
+  const createChapterInVolume = async (volumeId?: string) => {
+    const idx = chapterRows.length + 1
+    const chapterId = `ch_${Date.now()}`
+    const title = `第${idx}章`
+    await api.put(`/api/projects/${project}/drafts/${chapterId}`, {
+      content: `# ${title}\n\n`,
+      title,
+      chapter_title: title,
+      chapter_status: 'draft',
+      volume_id: volumeId || currentVolume?.id || 'volume_default',
+      order_index: idx,
+    })
+    setSelectedChapter(chapterId)
+    setChapterEditorText(`# ${title}\n\n`)
+    setChapterTitleDraft(title)
+    setView('chapter')
+    setActiveActivity('explorer')
+    await mutateDraft()
+    await mutateDraftDetails()
+    await mutateVolumes()
+    await lazyLoadPaletteData(true)
+    push(`Chapter created: ${title}`)
+  }
+
+  const saveChapterDraft = async () => {
+    if (!selectedChapter) return
+    try {
+      setChapterSaving(true)
+      const body = {
+        content: chapterEditorText,
+        title: chapterTitleDraft || selectedChapter,
+        chapter_title: chapterTitleDraft || selectedChapter,
+        chapter_status: currentChapterMeta?.chapter_status || 'draft',
+        volume_id: currentChapterMeta?.volume_id || currentVolume?.id || 'volume_default',
+        order_index: currentChapterMeta?.order_index ?? chapterRows.findIndex((x: any) => x.chapter_id === selectedChapter) + 1,
+      }
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}`, body)
+      await mutateDraft()
+      await mutateDraftDetails()
+      await mutateVolumes()
+      push('Chapter saved')
+    } catch {
+      push('Chapter save failed', 'error')
+    } finally {
+      setChapterSaving(false)
     }
   }
 
@@ -974,15 +1237,29 @@ export default function App() {
     const cache = paletteCacheRef.current
 
     const staticNav: CommandItem[] = [
-      { id: 'nav-characters', title: 'Go to Characters', subtitle: 'Open characters panel', group: 'Navigate', icon: UserRound, run: () => setView('characters') },
-      { id: 'nav-settings', title: 'Settings', subtitle: 'Open settings panel', group: 'Navigate', icon: Settings, run: () => setView('settings') },
-      { id: 'nav-chapter', title: 'Go to Chapter Editor', group: 'Navigate', icon: FilePenLine, run: () => setView('chapter') },
-      { id: 'nav-canon', title: 'Go to Canon / Proposals', group: 'Navigate', icon: Sparkles, run: () => setView('canon') },
-      { id: 'nav-world', title: 'Go to World panel', group: 'Navigate', icon: Globe, run: () => setView('world') },
-      { id: 'nav-techniques', title: 'Go to Techniques', group: 'Navigate', icon: Sparkles, run: () => setView('techniques') },
+      { id: 'nav-story', title: 'Go to Story', subtitle: 'Open story control card', group: 'Navigate', icon: BookOpen, run: () => { setActiveActivity('story'); setView('story') } },
+      { id: 'nav-characters', title: 'Go to Characters', subtitle: 'Open characters panel', group: 'Navigate', icon: UserRound, run: () => { setActiveActivity('cards'); setView('characters') } },
+      { id: 'nav-settings', title: 'Settings', subtitle: 'Open settings panel', group: 'Navigate', icon: Settings, run: () => { setActiveActivity('settings'); setView('settings') } },
+      { id: 'nav-chapter', title: 'Go to Chapter Editor', group: 'Navigate', icon: FilePenLine, run: () => { setActiveActivity('explorer'); setView('chapter') } },
+      { id: 'nav-canon', title: 'Go to Canon / Proposals', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('canon'); setView('canon') } },
+      { id: 'nav-world', title: 'Go to World panel', group: 'Navigate', icon: Globe, run: () => { setActiveActivity('cards'); setView('world') } },
+      { id: 'nav-techniques', title: 'Go to Techniques', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('techniques'); setView('techniques') } },
     ]
 
     const navData: CommandItem[] = [
+      ...cache.storyCards.map((s: any) => ({
+        id: `story-${s.id}`,
+        title: `Open Story: ${s.title || s.id}`,
+        subtitle: s.id,
+        group: 'Navigate' as const,
+        icon: BookOpen,
+        keywords: [s.title || '', s.id || '', 'story', 'plot', 'foreshadowing'],
+        payload: { kind: 'story', id: s.id },
+        run: () => {
+          setView('story')
+          setStoryForm(normalizeStoryCard(s))
+        },
+      })),
       ...cache.characters.map((c: any) => ({
         id: `char-${c.id}`,
         title: `Open Character: ${c.title || c.id}`,
@@ -1009,19 +1286,22 @@ export default function App() {
           setView('context')
         },
       })),
-      ...cache.chapters.map((ch: string) => ({
-        id: `chapter-${ch}`,
-        title: `Open Chapter: ${ch}`,
-        subtitle: 'Chapter editor',
+      ...cache.chapters.map((ch: any) => {
+        const chapterId = typeof ch === 'string' ? ch : ch.chapter_id
+        return ({
+        id: `chapter-${chapterId}`,
+        title: `Open Chapter: ${ch.chapter_title || ch.title || chapterId}`,
+        subtitle: `${chapterId}${ch.volume_id ? ` · ${ch.volume_id}` : ''}`,
         group: 'Navigate' as const,
         icon: iconForKind('chapter'),
-        keywords: [ch, 'chapter'],
-        payload: { kind: 'chapter', id: ch },
+        keywords: [chapterId, ch.chapter_title || '', ch.title || '', ch.volume_id || '', 'chapter'],
+        payload: { kind: 'chapter', id: chapterId },
         run: () => {
-          setSelectedChapter(ch)
+          setActiveActivity('explorer')
+          setSelectedChapter(chapterId)
           setView('chapter')
         },
-      })),
+      })}),
       ...cache.worldCards.map((w: any) => ({
         id: `world-${w.id}`,
         title: `Open World Card: ${w.title || w.id}`,
@@ -1033,6 +1313,20 @@ export default function App() {
         run: () => {
           setView('world')
           setWorldQuery(w.title || w.id || '')
+        },
+      })),
+      ...(cache.toolSkills || []).map((t: any) => ({
+        id: `tool-skill-${t.id}`,
+        title: `Open Tool Skill: ${t.title || t.id}`,
+        subtitle: t.payload?.category || t.id,
+        group: 'Navigate' as const,
+        icon: Sparkles,
+        keywords: [t.id || '', t.title || '', t.payload?.name || '', t.payload?.category || '', 'tool', 'skill', 'checker', 'research'],
+        payload: { kind: 'tool_skill', id: t.id },
+        run: () => {
+          setView('techniques')
+          setTechniqueLibraryTab('AI Tool Skills')
+          setToolSkillForm(t)
         },
       })),
       ...cache.proposals.map((p: any) => ({
@@ -1091,6 +1385,22 @@ export default function App() {
         icon: RefreshCw,
         run: refreshPaletteData,
       },
+      {
+        id: 'act-save-chapter',
+        title: 'Save Chapter',
+        subtitle: selectedChapter,
+        group: 'Actions',
+        icon: FilePenLine,
+        run: saveChapterDraft,
+      },
+      {
+        id: 'act-analyze-chapter',
+        title: 'Analyze Chapter',
+        subtitle: selectedChapter,
+        group: 'Actions',
+        icon: Sparkles,
+        run: analyzeChapter,
+      },
     ]
 
     const mruItems: CommandItem[] = mru.map((x) => ({ id: `mru-${x.id}`, title: `[Recent] ${x.title}`, subtitle: x.subtitle, group: 'Navigate', icon: BookOpen, run: () => {} }))
@@ -1102,28 +1412,146 @@ export default function App() {
     }).filter(Boolean) as CommandItem[]
 
     return [...resolvedMRU, ...all]
-  }, [mru, project, settings, autoApplyPatch])
+  }, [mru, project, settings, autoApplyPatch, selectedChapter, chapterEditorText, chapterTitleDraft, currentChapterMeta, currentVolume, volumeRows, chapterRows, analyzeBusy])
 
-  const filteredNav = NAV_ITEMS.filter((x) => x.label.toLowerCase().includes(sideSearch.toLowerCase()))
+  const filteredChapterRows = chapterRows.filter((ch: any) => {
+    const q = sideSearch.trim().toLowerCase()
+    if (!q) return true
+    return [ch.chapter_id, ch.chapter_title, ch.title, ch.volume_id].some((x) => String(x || '').toLowerCase().includes(q))
+  })
 
   const left = (
-    <div className='space-y-3 density-space'>
-      <Input placeholder='Filter panels...' value={sideSearch} onChange={(e) => setSideSearch(e.target.value)} />
-      <div className='space-y-2'>
-        {filteredNav.map((item) => {
+    <div className='-m-3 flex min-h-[calc(100vh-8rem)]'>
+      <div className='flex w-12 flex-col items-center gap-2 border-r border-border bg-surface-2 py-2'>
+        {ACTIVITY_ITEMS.map((item) => {
           const Icon = item.icon
           return (
             <button
               key={item.id}
               title={item.label}
-              onClick={() => setView(item.id)}
-              className={`w-full density-pad flex items-center gap-2 rounded-ui text-left text-sm border ${view === item.id ? 'bg-brand-500 text-white border-brand-500' : 'bg-surface text-muted border-border hover:bg-surface-2'}`}
+              onClick={() => {
+                setActiveActivity(item.id)
+                if (item.id === 'settings') setView('settings')
+              }}
+              className={`focus-ring flex h-9 w-9 items-center justify-center rounded-ui ${activeActivity === item.id ? 'bg-brand-500 text-white' : 'text-muted hover:bg-surface'}`}
             >
-              <Icon size={15} />
-              {item.label}
+              <Icon size={17} />
             </button>
           )
         })}
+      </div>
+      <div className='flex-1 p-3'>
+        <Input placeholder='Search resources...' value={sideSearch} onChange={(e) => setSideSearch(e.target.value)} />
+
+        {activeActivity === 'explorer' ? (
+          <div className='mt-3 space-y-3'>
+            <div>
+              <div className='mb-1 text-xs font-semibold uppercase text-muted'>Project</div>
+              <Select value={project} onChange={(e) => setProject(e.target.value)}>
+                {(projects || []).map((p: any) => <option key={p.id} value={p.id}>{p.title || p.id}</option>)}
+              </Select>
+            </div>
+            <div className='flex gap-2'>
+              <Button className='text-xs' onClick={createVolume}>+ Volume</Button>
+              <Button className='text-xs' onClick={() => createChapterInVolume(currentVolume?.id)}>+ Chapter</Button>
+            </div>
+            <div className='space-y-2'>
+              {volumeRows.map((vol: any) => {
+                const chapters = filteredChapterRows
+                  .filter((ch: any) => (ch.volume_id || 'volume_default') === vol.id)
+                  .sort((a: any, b: any) => Number(a.order_index || 0) - Number(b.order_index || 0))
+                return (
+                  <details key={vol.id} open className='rounded-ui border border-border bg-surface'>
+                    <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>
+                      {vol.title || vol.id} <span className='text-xs text-muted'>({chapters.length})</span>
+                    </summary>
+                    <div className='border-t border-border p-1'>
+                      {chapters.map((ch: any) => (
+                        <button
+                          key={ch.chapter_id}
+                          onClick={() => { setSelectedChapter(ch.chapter_id); setView('chapter') }}
+                          className={`w-full rounded-ui px-2 py-1.5 text-left text-xs hover:bg-surface-2 ${selectedChapter === ch.chapter_id && view === 'chapter' ? 'bg-indigo-50 text-brand-700 dark:bg-indigo-900/20' : ''}`}
+                        >
+                          <div className='font-medium'>{ch.chapter_title || ch.title || ch.chapter_id}</div>
+                          <div className='text-[11px] text-muted'>{ch.chapter_id} · {ch.chapter_status || 'draft'}</div>
+                        </button>
+                      ))}
+                      <Button className='mt-1 w-full text-xs' onClick={() => createChapterInVolume(vol.id)}>+ Chapter in Volume</Button>
+                    </div>
+                  </details>
+                )
+              })}
+              {!volumeRows.length && <p className='text-sm text-muted'>No volumes yet.</p>}
+            </div>
+          </div>
+        ) : null}
+
+        {activeActivity === 'story' ? (
+          <div className='mt-3 space-y-2'>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('story')}>Story Control</Button>
+            {['Overview', 'Stages', 'Lines', 'Foreshadowings', 'Chapter Matrix'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => { setStoryPlanningTab(tab); setView('story') }}
+                className={`w-full rounded-ui border px-2 py-1.5 text-left text-xs ${storyPlanningTab === tab && view === 'story' ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface hover:bg-surface-2'}`}
+              >
+                {tab}
+              </button>
+            ))}
+            <div className='pt-2 text-xs text-muted'>
+              明线 {(activeStoryPayload.open_line || []).length} · 暗线 {(activeStoryPayload.hidden_line || []).length} · 伏笔 {(activeStoryPayload.foreshadowings || []).length}
+            </div>
+          </div>
+        ) : null}
+
+        {activeActivity === 'cards' ? (
+          <div className='mt-3 space-y-3'>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('characters')}>Characters</Button>
+            <div className='max-h-52 space-y-1 overflow-auto'>
+              {(chars || []).map((c: any) => (
+                <button key={c.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setCharacterForm(c); setView('characters') }}>
+                  {c.title || c.id}
+                </button>
+              ))}
+            </div>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('world')}>World</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('style')}>Style</Button>
+          </div>
+        ) : null}
+
+        {activeActivity === 'techniques' ? (
+          <div className='mt-3 space-y-2'>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('Narrative Techniques'); setView('techniques') }}>Narrative Techniques</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('AI Tool Skills'); setView('techniques') }}>AI Tool Skills</Button>
+            {(techniqueCategories || []).slice(0, 12).map((cat: any) => (
+              <button key={cat.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setCategoryForm(cat); setView('techniques') }}>
+                {cat.title || cat.id}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {activeActivity === 'canon' ? (
+          <div className='mt-3 space-y-2'>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('canon')}>Canon Facts</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('context')}>Context Manifest</Button>
+            {(proposals || []).slice(-8).reverse().map((p: any) => (
+              <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
+                {p.name || p.proposal_id || p.id} <span className='text-muted'>({p.status || 'pending'})</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {activeActivity === 'settings' ? (
+          <div className='mt-3 space-y-2'>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('settings')}>Settings</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => refreshPaletteData()}>Refresh Palette Data</Button>
+            <div className='rounded-ui border border-border bg-surface p-2 text-[11px] text-muted'>
+              Command Palette keeps create/search flows: + volume, + chapter, + character, pin technique.
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -1176,6 +1604,8 @@ export default function App() {
       <span className='text-muted'>Project</span>
       <Badge>{project}</Badge>
       <span className='text-muted'>/</span>
+      <span className='font-medium capitalize'>{activeActivity}</span>
+      <span className='text-muted'>/</span>
       <span className='font-medium capitalize'>{view}</span>
       <span className='ml-4 text-xs text-muted'>provider:</span>
       <Badge>{llmProfileId}</Badge>
@@ -1203,18 +1633,503 @@ export default function App() {
       else push(out.message || 'Convert failed', 'error')
     }
 
-    if (view === 'projects') {
-      return (
-        <Card title='Projects' extra={<Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>}>
-          <div className='space-y-2'>
-            {(projects || []).map((p: any) => (
-              <button key={p.id} onClick={() => setProject(p.id)} className={`w-full rounded-ui border px-3 py-2 text-left ${project === p.id ? 'border-brand-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}>
-                <div className='text-sm font-medium'>{p.id}</div>
-                <div className='text-xs text-muted'>{p.title}</div>
-              </button>
-            ))}
+    const updateStoryRoot = (key: string, value: any) => {
+      setStoryForm((prev: any) => normalizeStoryCard({ ...prev, [key]: value }))
+    }
+
+    const updateStoryPayload = (key: string, value: any) => {
+      setStoryForm((prev: any) => normalizeStoryCard({ ...prev, payload: { ...(prev?.payload || {}), [key]: value } }))
+    }
+
+    const updateStoryArrayItem = (section: string, index: number, key: string, value: any) => {
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        const rows = Array.isArray(payload[section]) ? [...payload[section]] : []
+        rows[index] = { ...(rows[index] || {}), [key]: value }
+        return normalizeStoryCard({ ...prev, payload: { ...payload, [section]: rows } })
+      })
+    }
+
+    const addStoryArrayItem = (section: string, template: any) => {
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        const rows = Array.isArray(payload[section]) ? [...payload[section], cloneJson(template)] : [cloneJson(template)]
+        return normalizeStoryCard({ ...prev, payload: { ...payload, [section]: rows } })
+      })
+    }
+
+    const removeStoryArrayItem = (section: string, index: number) => {
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        const rows = (Array.isArray(payload[section]) ? payload[section] : []).filter((_: any, i: number) => i !== index)
+        return normalizeStoryCard({ ...prev, payload: { ...payload, [section]: rows } })
+      })
+    }
+
+    const saveStoryCard = async () => {
+      const current = normalizeStoryCard(storyForm)
+      const id = current.id && current.id !== 'story_new' ? current.id : `story_${Date.now()}`
+      const body = { ...current, id, type: 'story' }
+      await api.put(`/api/projects/${project}/cards/${id}`, body)
+      setStoryForm(normalizeStoryCard(body))
+      mutateStoryCards()
+      await lazyLoadPaletteData(true)
+      push('Story card saved')
+    }
+
+    const localBuildDraftContent = (kind: string, revision: number) => {
+      const payload = normalizeStoryCard(storyForm).payload || {}
+      const title = storyForm?.title || '未命名小说'
+      const chapterId = selectedChapter || 'chapter_001'
+      const seed = `${revision}`
+      const draftByKind: Record<string, any> = {
+        story_overview: {
+          logline: payload.logline || `${title}的主角在关键事件中被迫面对核心秘密。`,
+          theme: payload.theme || '选择的代价与自我边界',
+          keywords: payload.keywords?.length ? payload.keywords : ['主角秘密', '阶段冲突', `刷新${seed}`],
+          target_reader: payload.target_reader || '喜欢人物动机清晰、伏笔可回查、章节钩子明确的长篇读者。',
+          platform_style: payload.platform_style || '章节节奏紧，每章有明确推进和未解问题。',
+          banned_items: payload.banned_items?.length ? payload.banned_items : ['不要提前揭示最终真相', '不要让角色违背硬设定'],
+          important_scenes: payload.important_scenes?.length ? payload.important_scenes : [{ scene: '开篇关键场景', purpose: '触发主冲突', chapter: chapterId }],
+        },
+        character_seed: {
+          id: `character_${Date.now()}`,
+          type: 'character',
+          title: '待确认人物',
+          tags: ['pending_ai_draft'],
+          links: [],
+          payload: {
+            name: '待确认人物',
+            identity: '请改写身份',
+            appearance: '',
+            core_motivation: payload.main_conflict ? `被卷入「${payload.main_conflict}」并寻找自己的答案。` : '请填写核心动机',
+            personality_traits: ['克制', '警觉'],
+            family_background: '',
+            voice: '说话谨慎，避免一次性暴露真实想法。',
+            boundaries: ['不能无证据相信陌生人'],
+            relationships: [],
+            arc: [{ beat: chapterId, goal: '在本章做出第一个主动选择' }],
+            role: 'supporting',
+            importance: 3,
+          },
+        },
+        lines: {
+          open_line: [{ chapter: chapterId, event: '表面事件待确认', goal: '角色本章可见目标', conflict: '阻碍/冲突', result: '本章结果' }],
+          hidden_line: [{ chapter: chapterId, truth: '暗处真实信息待确认', visible_hint: '读者能看见的提示', hidden_meaning: '提示背后的真实意义', reveal_timing: '后续揭示' }],
+        },
+        foreshadowing: {
+          foreshadowings: [{
+            id: `foreshadow_${Date.now()}`,
+            content: '待确认伏笔',
+            first_chapter: chapterId,
+            surface_signal: '正文中可看见的显示方式',
+            reader_feeling: '读者当下感受',
+            true_meaning: '真实意义',
+            payoff_chapter: '',
+            payoff: '',
+            emphasis: '反复出现但暂不解释',
+            status: '未出现',
+          }],
+        },
+      }
+      return draftByKind[kind]
+    }
+
+    const generateBuildDraft = async (kind: string) => {
+      const nextRevision = (buildDraft?.kind === kind ? buildDraft.revision + 1 : 1)
+      setBuildDraftBusy(true)
+      try {
+        const rec = await api.post(`/api/projects/${project}/build-drafts`, {
+          kind,
+          revision: nextRevision,
+          selected_chapter: selectedChapter,
+          story_card: normalizeStoryCard(storyForm),
+        })
+        if (rec?.detail) throw new Error(String(rec.detail?.message || rec.detail))
+        setBuildDraft({
+          draft_id: rec.draft_id,
+          kind: rec.kind,
+          title: rec.title,
+          body: rec.body,
+          revision: rec.revision,
+          source: rec.source,
+          status: rec.status,
+          created_at: rec.created_at,
+        })
+        push(`草案已生成：${rec.title}`)
+        return
+      } catch {
+        const fallback = localBuildDraftContent(kind, nextRevision)
+        setBuildDraft({
+          kind,
+          title: kind === 'story_overview' ? '故事总控草案' : kind === 'character_seed' ? '人物初设草案' : kind === 'lines' ? '明线/暗线草案' : '伏笔草案',
+          body: JSON.stringify(fallback, null, 2),
+          revision: nextRevision,
+          source: 'local_fallback',
+          status: 'pending',
+        })
+        push('后端草案接口不可用，已使用本地 fallback', 'error')
+      } finally {
+        setBuildDraftBusy(false)
+      }
+    }
+
+    const acceptBuildDraft = async () => {
+      if (!buildDraft) return
+      let parsed: any
+      try {
+        parsed = JSON.parse(buildDraft.body || '{}')
+      } catch {
+        push('草案 JSON 无法解析，请先修正', 'error')
+        return
+      }
+      if (buildDraft.kind === 'character_seed') {
+        const id = parsed.id || `character_${Date.now()}`
+        const body = { ...parsed, id, type: 'character', tags: uniq([...(parsed.tags || []), 'author_confirmed']) }
+        await api.put(`/api/projects/${project}/cards/${id}`, body)
+        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id })
+        setCharacterForm(body)
+        mutateCards()
+        setView('characters')
+        push('人物草案已确认写入')
+        return
+      }
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        if (buildDraft.kind === 'story_overview') {
+          Object.assign(payload, parsed)
+        } else if (buildDraft.kind === 'lines') {
+          payload.open_line = [...(payload.open_line || []), ...(parsed.open_line || [])]
+          payload.hidden_line = [...(payload.hidden_line || []), ...(parsed.hidden_line || [])]
+        } else if (buildDraft.kind === 'foreshadowing') {
+          payload.foreshadowings = [...(payload.foreshadowings || []), ...(parsed.foreshadowings || [])]
+        }
+        return normalizeStoryCard({ ...prev, payload })
+      })
+      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new' })
+      push('草案已确认写入 Story 表单，请保存故事卡')
+    }
+
+    const storyPayload = normalizeStoryCard(storyForm).payload
+    const renderStoryRows = (section: string, rows: any[], fields: Array<{ key: string; label: string; span?: string }>, template: any) => (
+      <div className='space-y-2'>
+        {rows.map((row: any, index: number) => (
+          <div key={`${section}-${index}`} className='rounded-ui border border-border bg-surface p-3'>
+            <div className='grid grid-cols-12 gap-2'>
+              {fields.map((field) => (
+                <div key={field.key} className={field.span || 'col-span-6'}>
+                  <label className='text-xs text-muted'>{field.label}</label>
+                  <Input
+                    value={row?.[field.key] || ''}
+                    onChange={(e) => updateStoryArrayItem(section, index, field.key, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className='mt-2 flex justify-end'>
+              <Button className='text-xs' onClick={() => removeStoryArrayItem(section, index)}>删除</Button>
+            </div>
           </div>
-        </Card>
+        ))}
+        <Button onClick={() => addStoryArrayItem(section, template)}>新增</Button>
+      </div>
+    )
+
+    if (view === 'projects') {
+      const recentChapters = [...chapterRows].sort((a: any, b: any) => Number(b.order_index || 0) - Number(a.order_index || 0)).slice(0, 6)
+      const unsupportedMarks = evidenceMarkRows.filter((m: any) => m?.detection?.support_level === 'unsupported' || m?.detection?.support_level === 'contradicted')
+      const runningEvent = events.length > 0 && events.slice(-1)[0]?.event !== 'DONE'
+      const pendingPatchCount = latestPatch?.ops?.length || 0
+      return (
+        <div className='space-y-3 density-space'>
+          <Card
+            title='写作工作台'
+            extra={<Button variant='primary' onClick={() => { setView('chapter'); setActiveActivity('explorer') }}>打开当前章节</Button>}
+          >
+            <div className='grid grid-cols-4 gap-3'>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>生成状态</div>
+                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (pendingPatchCount ? '待审稿' : '空闲')}</div>
+                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || 'no job event'}</div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>待审 Patch</div>
+                <div className='mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
+                <div className='text-xs text-muted'>AI 改动默认需确认</div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>待确认 Canon</div>
+                <div className='mt-1 text-lg font-semibold'>{(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length}</div>
+                <div className='text-xs text-muted'>事实不会自动转正</div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>风险标记</div>
+                <div className='mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
+                <div className='text-xs text-muted'>unsupported / contradicted</div>
+              </div>
+            </div>
+          </Card>
+
+          <Card title='最近章节'>
+            <div className='grid grid-cols-2 gap-2'>
+              {recentChapters.map((ch: any) => (
+                <button
+                  key={ch.chapter_id}
+                  onClick={() => { setSelectedChapter(ch.chapter_id); setView('chapter'); setActiveActivity('explorer') }}
+                  className='rounded-ui border border-border bg-surface px-3 py-2 text-left hover:bg-surface-2'
+                >
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-sm font-medium'>{ch.chapter_title || ch.title || ch.chapter_id}</span>
+                    <Badge>{ch.chapter_status || '未开始'}</Badge>
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>{ch.chapter_id} · {ch.volume_id || 'volume_default'}</div>
+                </button>
+              ))}
+              {!recentChapters.length && <p className='text-sm text-muted'>暂无章节。</p>}
+            </div>
+          </Card>
+
+          <Card title='项目'>
+            <div className='space-y-2'>
+              {(projects || []).map((p: any) => (
+                <button key={p.id} onClick={() => setProject(p.id)} className={`w-full rounded-ui border px-3 py-2 text-left ${project === p.id ? 'border-brand-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}>
+                  <div className='text-sm font-medium'>{p.id}</div>
+                  <div className='text-xs text-muted'>{p.title}</div>
+                </button>
+              ))}
+              <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
+            </div>
+          </Card>
+
+          <div className='grid grid-cols-2 gap-3'>
+            <Card title='待审 AI Patch'>
+              <div className='space-y-1'>
+                {(latestPatch?.ops || []).slice(0, 5).map((op: any) => (
+                  <button key={op.op_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => setView('chapter')}>
+                    {op.op_id} · {op.rationale || op.type}
+                  </button>
+                ))}
+                {!latestPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+              </div>
+            </Card>
+            <Card title='可信风险'>
+              <div className='space-y-1'>
+                {unsupportedMarks.slice(0, 5).map((mark: any) => (
+                  <button key={mark.mark_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedMarkId(mark.mark_id); setView('chapter') }}>
+                    {mark.target_type} · {mark.label || mark.target_id}
+                  </button>
+                ))}
+                {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有未证实风险。</p>}
+              </div>
+            </Card>
+          </div>
+        </div>
+      )
+    }
+
+    if (view === 'story') {
+      return (
+        <div className='space-y-3 density-space'>
+          <Card
+            title='小说建设向导 / 待确认草案'
+            extra={<Badge>单环节生成 · 可刷新 · 可编辑 · 确认后写入</Badge>}
+          >
+            <div className='grid grid-cols-12 gap-3'>
+              <div className='col-span-5 space-y-2'>
+                <div className='grid grid-cols-2 gap-2'>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('story_overview')}>生成故事总控草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('character_seed')}>生成人物初设草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('lines')}>生成明线/暗线草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>
+                </div>
+                <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
+                  草案不会自动覆盖卡片。你可以单独刷新某个环节，也可以直接改右侧 JSON，再确认写入。
+                </div>
+              </div>
+              <div className='col-span-7'>
+                {buildDraft ? (
+                  <div className='space-y-2'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <div className='text-sm font-medium'>{buildDraft.title} <span className='text-xs text-muted'>rev {buildDraft.revision}</span></div>
+                      <div className='flex gap-2'>
+                        <Button className='text-xs' disabled={buildDraftBusy} onClick={() => generateBuildDraft(buildDraft.kind)}>{buildDraftBusy ? '生成中...' : '刷新这一环节'}</Button>
+                        <Button className='text-xs' variant='primary' onClick={acceptBuildDraft}>确认写入</Button>
+                      </div>
+                    </div>
+                    <div className='flex flex-wrap gap-2 text-xs text-muted'>
+                      <Badge>{buildDraft.status || 'pending'}</Badge>
+                      <Badge>{buildDraft.source || 'local'}</Badge>
+                      {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
+                    </div>
+                    <Textarea className='h-56 mono' value={buildDraft.body} onChange={(e) => setBuildDraft({ ...buildDraft, body: e.target.value })} />
+                  </div>
+                ) : (
+                  <div className='flex h-56 items-center justify-center rounded-ui border border-dashed border-border bg-surface-2 text-sm text-muted'>
+                    选择左侧环节生成待确认草案
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+          <Card
+            title='故事卡 / Story Control'
+            extra={
+              <div className='flex gap-2'>
+                <Button onClick={() => setStoryForm(normalizeStoryCard(null))}>新建故事卡</Button>
+                <Button variant='primary' onClick={saveStoryCard}>保存故事卡</Button>
+              </div>
+            }
+          >
+            <div className='grid grid-cols-12 gap-3'>
+              <div className='col-span-3'>
+                <label className='text-xs text-muted'>ID</label>
+                <Input value={storyForm?.id || ''} onChange={(e) => updateStoryRoot('id', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>标题</label>
+                <Input value={storyForm?.title || ''} onChange={(e) => updateStoryRoot('title', e.target.value)} />
+              </div>
+              <div className='col-span-3'>
+                <label className='text-xs text-muted'>类型/题材</label>
+                <Input value={storyPayload.genre || ''} onChange={(e) => updateStoryPayload('genre', e.target.value)} />
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Tags</label>
+                <Input value={(storyForm?.tags || []).join(',')} onChange={(e) => updateStoryRoot('tags', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>关键词</label>
+                <Input value={(storyPayload.keywords || []).join(',')} onChange={(e) => updateStoryPayload('keywords', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>目标读者</label>
+                <Input value={storyPayload.target_reader || ''} onChange={(e) => updateStoryPayload('target_reader', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>平台风格</label>
+                <Input value={storyPayload.platform_style || ''} onChange={(e) => updateStoryPayload('platform_style', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>一句话故事</label>
+                <Textarea className='h-20' value={storyPayload.logline || ''} onChange={(e) => updateStoryPayload('logline', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>主题</label>
+                <Textarea className='h-20' value={storyPayload.theme || ''} onChange={(e) => updateStoryPayload('theme', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>世界/背景</label>
+                <Textarea className='h-24' value={storyPayload.worldview || ''} onChange={(e) => updateStoryPayload('worldview', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>总冲突</label>
+                <Textarea className='h-24' value={storyPayload.main_conflict || ''} onChange={(e) => updateStoryPayload('main_conflict', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>禁写事项</label>
+                <Textarea className='h-24' value={(storyPayload.banned_items || []).join('\n')} onChange={(e) => updateStoryPayload('banned_items', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>重要场景 JSON</label>
+                <Textarea
+                  className='h-24 mono'
+                  value={JSON.stringify(storyPayload.important_scenes || [], null, 2)}
+                  onChange={(e) => {
+                    try {
+                      updateStoryPayload('important_scenes', JSON.parse(e.target.value || '[]'))
+                    } catch {
+                      // keep typing tolerant
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card title='已有故事卡'>
+            <div className='flex flex-wrap gap-2'>
+              {(storyCards || []).map((card: any) => (
+                <Button key={card.id} onClick={() => setStoryForm(normalizeStoryCard(card))}>{card.title || card.id}</Button>
+              ))}
+              {(!storyCards || storyCards.length === 0) && <p className='text-sm text-muted'>暂无故事卡，保存后会出现在这里。</p>}
+            </div>
+          </Card>
+
+          <Tabs
+            items={['Overview', 'Stages', 'Lines', 'Foreshadowings', 'Chapter Matrix']}
+            active={storyPlanningTab}
+            onChange={setStoryPlanningTab}
+          />
+
+          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Stages') && <Card title='阶段性目标 / 冲突 / 结果'>
+            {renderStoryRows('stages', storyPayload.stages || [], [
+              { key: 'stage', label: '阶段', span: 'col-span-2' },
+              { key: 'goal', label: '阶段目标', span: 'col-span-3' },
+              { key: 'conflict', label: '阶段冲突', span: 'col-span-3' },
+              { key: 'result', label: '阶段结果', span: 'col-span-2' },
+              { key: 'turning_point', label: '转折点', span: 'col-span-2' },
+            ], STORY_PAYLOAD_TEMPLATE.stages[0])}
+          </Card>}
+
+          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Lines') && (
+            <>
+              <Card title='明线'>
+                {renderStoryRows('open_line', storyPayload.open_line || [], [
+                  { key: 'chapter', label: '章节', span: 'col-span-2' },
+                  { key: 'event', label: '表面事件', span: 'col-span-3' },
+                  { key: 'goal', label: '角色目标', span: 'col-span-3' },
+                  { key: 'conflict', label: '阻碍/冲突', span: 'col-span-2' },
+                  { key: 'result', label: '结果', span: 'col-span-2' },
+                ], STORY_PAYLOAD_TEMPLATE.open_line[0])}
+              </Card>
+
+              <Card title='暗线'>
+                {renderStoryRows('hidden_line', storyPayload.hidden_line || [], [
+                  { key: 'chapter', label: '章节', span: 'col-span-2' },
+                  { key: 'truth', label: '真实发生的事', span: 'col-span-3' },
+                  { key: 'visible_hint', label: '可见提示', span: 'col-span-3' },
+                  { key: 'hidden_meaning', label: '隐藏含义', span: 'col-span-2' },
+                  { key: 'reveal_timing', label: '揭示时机', span: 'col-span-2' },
+                ], STORY_PAYLOAD_TEMPLATE.hidden_line[0])}
+              </Card>
+            </>
+          )}
+
+          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Foreshadowings') && <Card title='伏笔追踪表'>
+            {renderStoryRows('foreshadowings', storyPayload.foreshadowings || [], [
+              { key: 'id', label: '伏笔ID', span: 'col-span-2' },
+              { key: 'status', label: '状态', span: 'col-span-2' },
+              { key: 'content', label: '伏笔内容', span: 'col-span-4' },
+              { key: 'first_chapter', label: '首次出现', span: 'col-span-2' },
+              { key: 'surface_signal', label: '显示方式', span: 'col-span-3' },
+              { key: 'reader_feeling', label: '读者感受', span: 'col-span-3' },
+              { key: 'true_meaning', label: '真实意义', span: 'col-span-4' },
+              { key: 'payoff_chapter', label: '回收章节', span: 'col-span-2' },
+              { key: 'payoff', label: '回收方式', span: 'col-span-4' },
+              { key: 'emphasis', label: '强调方式', span: 'col-span-6' },
+            ], STORY_PAYLOAD_TEMPLATE.foreshadowings[0])}
+          </Card>}
+
+          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Chapter Matrix') && <Card title='章节矩阵'>
+            {renderStoryRows('chapter_plan', storyPayload.chapter_plan || [], [
+              { key: 'chapter', label: '计划编号', span: 'col-span-2' },
+              { key: 'chapter_id', label: '绑定章节', span: 'col-span-2' },
+              { key: 'title', label: '章节标题', span: 'col-span-2' },
+              { key: 'focus', label: '本章重点', span: 'col-span-3' },
+              { key: 'key_events', label: '发生的事', span: 'col-span-4' },
+              { key: 'conflict', label: '冲突', span: 'col-span-3' },
+              { key: 'result', label: '结果', span: 'col-span-3' },
+              { key: 'stage_result', label: '阶段性结果', span: 'col-span-3' },
+              { key: 'open_line', label: '明线推进', span: 'col-span-3' },
+              { key: 'hidden_line', label: '暗线推进', span: 'col-span-3' },
+              { key: 'foreshadowing', label: '伏笔/回收', span: 'col-span-3' },
+            ], STORY_PAYLOAD_TEMPLATE.chapter_plan[0])}
+          </Card>}
+
+          <Card title='JSON Preview'>
+            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(normalizeStoryCard(storyForm), null, 2)}</pre>
+          </Card>
+        </div>
       )
     }
 
@@ -1324,13 +2239,72 @@ export default function App() {
     }
 
     if (view === 'chapter') {
+      const supportClass = (level: string) => {
+        if (level === 'supported') return 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200'
+        if (level === 'partial') return 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-200'
+        if (level === 'contradicted') return 'border-red-300 bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-200'
+        return 'border-border bg-surface-2 text-muted'
+      }
+      const marksByLine = evidenceMarkRows.reduce((acc: Record<string, any[]>, mark: any) => {
+        const line = Number(mark?.span?.start_line || 0)
+        const key = line > 0 ? String(line) : '未证实'
+        acc[key] = [...(acc[key] || []), mark]
+        return acc
+      }, {})
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Chapter Editor'>
+          <Card
+            title='Chapter Manuscript'
+            extra={
+              <div className='flex flex-wrap gap-2'>
+                <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? 'Saving...' : 'Save'}</Button>
+                <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
+                <Button onClick={analyzeMarks} disabled={chapterSaving}>Analyze Marks</Button>
+                <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
+              </div>
+            }
+          >
             <div className='grid grid-cols-12 gap-3'>
               <div className='col-span-4'>
-                <label className='text-xs text-muted'>Chapter</label>
+                <label className='text-xs text-muted'>Chapter ID</label>
                 <Input value={selectedChapter} onChange={(e) => setSelectedChapter(e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>Title</label>
+                <Input value={chapterTitleDraft} onChange={(e) => setChapterTitleDraft(e.target.value)} />
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Volume</label>
+                <Select
+                  value={currentChapterMeta?.volume_id || currentVolume?.id || 'volume_default'}
+                  onChange={async (e) => {
+                    const meta = { ...(draft?.meta || currentChapterMeta || {}), volume_id: e.target.value }
+                    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
+                    mutateDraft()
+                    mutateDraftDetails()
+                    mutateVolumes()
+                  }}
+                >
+                  {volumeRows.map((v: any) => <option key={v.id} value={v.id}>{v.title || v.id}</option>)}
+                </Select>
+              </div>
+              <div className='col-span-2'>
+                <label className='text-xs text-muted'>Status</label>
+                <Select
+                  value={currentChapterMeta?.chapter_status || 'draft'}
+                  onChange={async (e) => {
+                    const meta = { ...(draft?.meta || currentChapterMeta || {}), chapter_status: e.target.value }
+                    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
+                    mutateDraft()
+                    mutateDraftDetails()
+                  }}
+                >
+                  <option value='draft'>draft</option>
+                  <option value='drafting'>drafting</option>
+                  <option value='planned'>planned</option>
+                  <option value='revising'>revising</option>
+                  <option value='done'>done</option>
+                </Select>
               </div>
               <div className='col-span-5'>
                 <label className='text-xs text-muted'>Model profile</label>
@@ -1364,18 +2338,60 @@ export default function App() {
                 <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='end' />
               </div>
               <div className='col-span-6 flex items-end gap-2'>
-                <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
                 <Button onClick={() => runJob(160)}>超预算模拟</Button>
-                <Button onClick={analyzeChapter} disabled={analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
                 {selectionRange ? <Button onClick={() => runJob(1200, selectionRange)}>Edit Selection</Button> : null}
               </div>
             </div>
             {selectionRange ? <p className='mt-2 text-xs text-muted'>Selection range: L{selectionRange.start}-L{selectionRange.end}</p> : <p className='mt-2 text-xs text-muted'>Set start/end to enable Edit Selection.</p>}
             {analyzeResult ? <p className='mt-1 text-xs text-muted'>Analyze result: +{analyzeResult.new_facts_count || 0} facts, +{analyzeResult.new_proposals_count || 0} proposals.</p> : null}
-          </Card>
-
-          <Card title={highlightRange ? `Evidence: ${selectedChapter} L${highlightRange.start}-L${highlightRange.end}` : 'Draft Preview'}>
-            <pre className='editor-text mono whitespace-pre-wrap rounded-ui bg-surface-2 p-3'>{highlighted || '暂无正文'}</pre>
+            {highlightRange ? (
+              <div className='mt-3 rounded-ui border border-border bg-surface-2 p-2'>
+                <div className='mb-1 text-xs font-medium'>Evidence: {selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
+                <pre className='editor-text mono max-h-40 overflow-auto whitespace-pre-wrap text-xs'>{highlighted || '暂无正文'}</pre>
+              </div>
+            ) : null}
+            <div className='mt-3 grid grid-cols-12 gap-3'>
+              <div className='col-span-3 rounded-ui border border-border bg-surface p-2'>
+                <div className='mb-2 flex items-center justify-between'>
+                  <span className='text-xs font-medium'>段落标记</span>
+                  <Badge>{evidenceMarkRows.length}</Badge>
+                </div>
+                <div className='max-h-[560px] space-y-2 overflow-auto'>
+                  {Object.entries(marksByLine).map(([line, marks]) => (
+                    <div key={line} className='rounded-ui border border-border bg-panel p-2'>
+                      <div className='mb-1 text-[11px] text-muted'>{line === '未证实' ? '未证实' : `L${line}`}</div>
+                      <div className='space-y-1'>
+                        {(marks as any[]).map((mark: any) => {
+                          const level = mark?.detection?.support_level || 'unsupported'
+                          return (
+                            <button
+                              key={mark.mark_id}
+                              className={`w-full rounded-ui border px-2 py-1 text-left text-[11px] ${supportClass(level)}`}
+                              onClick={() => {
+                                setSelectedMarkId(mark.mark_id)
+                                const start = Number(mark?.span?.start_line || 0)
+                                const end = Number(mark?.span?.end_line || start)
+                                if (start > 0) setHighlightRange({ start, end })
+                              }}
+                            >
+                              <div className='font-medium'>{mark.target_type} · {mark.label || mark.target_id}</div>
+                              <div>{level}</div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {!evidenceMarkRows.length && <p className='text-xs text-muted'>运行生成或 Analyze Marks 后显示人物、技法、明线、暗线、伏笔命中。</p>}
+                </div>
+              </div>
+              <Textarea
+                className='editor-text col-span-9 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7'
+                value={chapterEditorText}
+                onChange={(e) => setChapterEditorText(e.target.value)}
+                placeholder='开始写这一章...'
+              />
+            </div>
           </Card>
 
           <Card title='Chapter Techniques'>
@@ -1426,51 +2442,6 @@ export default function App() {
             </div>
           </Card>
 
-          <Card title='TECHNIQUE_BRIEF'>
-            <pre className='mono text-xs whitespace-pre-wrap rounded-ui bg-surface-2 p-3'>{JSON.stringify(events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}, null, 2)}</pre>
-          </Card>
-
-          <Card
-            title='Patch Review'
-            extra={
-              <div className='flex gap-1'>
-                <Button className='text-xs' onClick={() => setSelectedOpIds((latestPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
-                <Button className='text-xs' onClick={() => setSelectedOpIds([])}>清空</Button>
-              </div>
-            }
-          >
-            <div className='space-y-3'>
-              {(latestPatch?.ops || []).map((op: any) => (
-                <div key={op.op_id} className='rounded-ui border border-border bg-surface p-2'>
-                  <label className='flex items-center gap-2 text-sm'>
-                    <input type='checkbox' checked={selectedOpIds.includes(op.op_id)} onChange={(e) => setSelectedOpIds((x) => (e.target.checked ? [...x, op.op_id] : x.filter((id) => id !== op.op_id)))} />
-                    <span className='font-medium'>{op.op_id}</span>
-                    <Badge>{op.type}</Badge>
-                    <span className='text-xs text-muted'>{JSON.stringify(op.target_range)}</span>
-                  </label>
-                  <div className='mt-2 grid grid-cols-2 gap-2'>
-                    <pre className='mono text-xs rounded-ui bg-red-50 p-2 dark:bg-red-950/20'>- {op.before || ''}</pre>
-                    <pre className='mono text-xs rounded-ui bg-emerald-50 p-2 dark:bg-emerald-950/20'>+ {op.after || ''}</pre>
-                  </div>
-                  <p className='mt-1 text-xs text-muted'>rationale: {op.rationale || 'n/a'}</p>
-                </div>
-              ))}
-              {!latestPatch?.ops?.length && <p className='text-sm text-muted'>No patch generated yet.</p>}
-              <Button variant='primary' onClick={applySelectedPatch}>应用勾选改动</Button>
-            </div>
-          </Card>
-
-          <Card title='Version Tree'>
-            <div className='space-y-2'>
-              {(versions?.versions || []).map((v: any) => (
-                <div key={v.version_id} className='flex items-center justify-between rounded-ui border border-border px-2 py-1.5'>
-                  <span className='text-sm'>{v.version_id} <span className='text-xs text-muted'>{v.reason}</span></span>
-                  <Button className='text-xs' onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
-                </div>
-              ))}
-              {(!versions?.versions || versions.versions.length === 0) && <p className='text-sm text-muted'>No versions yet.</p>}
-            </div>
-          </Card>
         </div>
       )
     }
@@ -1556,44 +2527,89 @@ export default function App() {
         if (!q) return true
         return String(t.title || '').toLowerCase().includes(q) || String(t.id || '').toLowerCase().includes(q) || JSON.stringify(t.payload || {}).toLowerCase().includes(q)
       })
+      const toolRows = (Array.isArray(toolSkillCards) ? toolSkillCards : []).filter((t: any) => {
+        const q = techniqueQuery.trim().toLowerCase()
+        if (!q) return true
+        return String(t.title || '').toLowerCase().includes(q) || String(t.id || '').toLowerCase().includes(q) || JSON.stringify(t.payload || {}).toLowerCase().includes(q)
+      })
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Technique Categories (Tree)'>
-            <div className='space-y-1'>
-              {cats.filter((c: any) => !(c.payload || {}).parent_id).map((c: any) => (
-                <div key={c.id} className='rounded-ui border border-border p-2'>
-                  <button className='text-sm font-medium' onClick={() => setCategoryForm(c)}>{c.title}</button>
-                  <div className='ml-3 mt-1 space-y-1'>
-                    {cats.filter((x: any) => (x.payload || {}).parent_id === c.id).map((x: any) => (
-                      <button key={x.id} className='block text-xs text-muted hover:underline' onClick={() => setCategoryForm(x)}>{x.title}</button>
-                    ))}
-                  </div>
+          <Tabs
+            items={['Narrative Techniques', 'AI Tool Skills']}
+            active={techniqueLibraryTab}
+            onChange={setTechniqueLibraryTab}
+          />
+          {techniqueLibraryTab === 'Narrative Techniques' ? (
+            <>
+              <Card title='Technique Categories (Tree)'>
+                <div className='space-y-1'>
+                  {cats.filter((c: any) => !(c.payload || {}).parent_id).map((c: any) => (
+                    <div key={c.id} className='rounded-ui border border-border p-2'>
+                      <button className='text-sm font-medium' onClick={() => setCategoryForm(c)}>{c.title}</button>
+                      <div className='ml-3 mt-1 space-y-1'>
+                        {cats.filter((x: any) => (x.payload || {}).parent_id === c.id).map((x: any) => (
+                          <button key={x.id} className='block text-xs text-muted hover:underline' onClick={() => setCategoryForm(x)}>{x.title}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </Card>
-          <Card title='Technique Library'>
-            <div className='flex gap-2 mb-2'>
-              <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search technique/category keywords...' />
-              <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
-            </div>
-            <div className='max-h-72 overflow-auto space-y-1'>
-              {rows.map((r: any) => (
-                <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>{r.title} <span className='text-muted'>({r.id})</span></button>
-              ))}
-            </div>
-          </Card>
-          {techniqueForm && (
-            <div className='space-y-2'>
-              <SchemaForm schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
-              <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>Save Technique</Button>
-            </div>
-          )}
-          {categoryForm && (
-            <div className='space-y-2'>
-              <SchemaForm schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
-              <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>Save Category</Button>
-            </div>
+              </Card>
+              <Card title='Narrative Technique Library'>
+                <div className='flex gap-2 mb-2'>
+                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search technique/category keywords...' />
+                  <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
+                </div>
+                <div className='max-h-72 overflow-auto space-y-1'>
+                  {rows.map((r: any) => (
+                    <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>
+                      {r.title} <span className='text-muted'>({r.id})</span>
+                      <span className='ml-2 text-muted'>{(r.payload?.signals || []).slice(0, 2).join(' / ')}</span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+              {techniqueForm && (
+                <div className='space-y-2'>
+                  <SchemaForm schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>Save Technique</Button>
+                </div>
+              )}
+              {categoryForm && (
+                <div className='space-y-2'>
+                  <SchemaForm schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>Save Category</Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <Card title='AI Tool Skills'>
+                <div className='flex gap-2 mb-2'>
+                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search problem checker, bio generator, outline research...' />
+                  <Button onClick={async () => { mutateToolSkillCards(); push('Tool skill list refreshed') }}>Refresh</Button>
+                </div>
+                <div className='grid grid-cols-2 gap-2'>
+                  {toolRows.map((r: any) => (
+                    <button key={r.id} className='rounded-ui border border-border bg-surface px-3 py-2 text-left text-xs hover:bg-surface-2' onClick={() => setToolSkillForm(r)}>
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='text-sm font-medium'>{r.title || r.id}</span>
+                        <Badge>{r.payload?.category || 'tool'}</Badge>
+                      </div>
+                      <div className='mt-1 text-muted'>{r.payload?.description || r.id}</div>
+                      <div className='mt-1 text-muted'>auto apply: {r.payload?.auto_apply_allowed ? 'allowed' : 'off'} · evidence: {r.payload?.evidence_required ? 'required' : 'optional'}</div>
+                    </button>
+                  ))}
+                  {!toolRows.length && <p className='text-sm text-muted'>暂无工具 skill，可用 Command Palette 创建：+ tool_skill 小说问题检查 --category checker</p>}
+                </div>
+              </Card>
+              {toolSkillForm && (
+                <div className='space-y-2'>
+                  <SchemaForm schema={toolSkillSchema} value={toolSkillForm} onChange={setToolSkillForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${toolSkillForm.id}`, toolSkillForm); mutateToolSkillCards(); push('Tool skill saved') }}>Save Tool Skill</Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )
@@ -1845,6 +2861,17 @@ export default function App() {
     llmProfileId,
     profiles,
     selectedChapter,
+    currentChapterMeta,
+    currentVolume,
+    volumeRows,
+    chapterRows,
+    chapterEditorText,
+    chapterTitleDraft,
+    chapterSaving,
+    storyPlanningTab,
+    evidenceMarkRows,
+    trustReport,
+    selectedMarkId,
     highlighted,
     latestPatch,
     selectedOpIds,
@@ -1863,6 +2890,11 @@ export default function App() {
     techniqueCards,
     techniqueCategories,
     techniqueQuery,
+    techniqueLibraryTab,
+    toolSkillCards,
+    toolSkillSchema,
+    toolSkillForm,
+    buildDraft,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
@@ -1877,6 +2909,35 @@ export default function App() {
   ])
 
   const providerInfo = events.filter((e) => e.event === 'WRITER_DRAFT').slice(-1)[0]?.data
+  const latestTechniqueBriefForRight = events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}
+  const latestEvent = (name: string) => events.filter((e) => e.event === name).slice(-1)[0]?.data
+  const agentSteps = [
+    { name: '审查 Agent', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN'), desc: '人设 / 明线 / 暗线 / 伏笔 / 技法' },
+    { name: '撰写 Agent', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT'), desc: '正文生成 / 模型 / fallback / 字数进度' },
+    { name: '校对 Agent', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH'), desc: '错字 / 标点 / 病句 / 基础 patch' },
+  ]
+  const markTone = (level?: string) => {
+    if (level === 'supported') return 'success'
+    if (level === 'partial') return 'warn'
+    return 'default'
+  }
+  const findRequirementMark = (targetType: string, candidates: string[]) => {
+    const normalized = candidates.map((x) => String(x || '').trim()).filter(Boolean)
+    return evidenceMarkRows.find((m: any) => {
+      if (m.target_type !== targetType) return false
+      const hay = [m.target_id, m.label, m.span?.quote, ...(m.detection?.matched_signals || [])].map((x) => String(x || ''))
+      return normalized.some((needle) => hay.some((h) => h.includes(needle) || needle.includes(h)))
+    })
+  }
+  const requirementLights = [
+    ...currentStoryLinks.openLine.map((row: any) => ({ type: 'open_line', label: row.event || row.result || row.chapter, mark: findRequirementMark('open_line', [row.id, row.chapter, row.event, row.result]) })),
+    ...currentStoryLinks.hiddenLine.map((row: any) => ({ type: 'hidden_line', label: row.visible_hint || row.truth || row.chapter, mark: findRequirementMark('hidden_line', [row.id, row.chapter, row.visible_hint, row.hidden_meaning, row.truth]) })),
+    ...currentStoryLinks.foreshadowings.map((row: any) => ({ type: 'foreshadowing', label: row.content || row.id, mark: findRequirementMark('foreshadowing', [row.id, row.content, row.surface_signal, row.true_meaning]) })),
+    ...((currentChapterMeta?.pinned_techniques || []) as any[]).map((row: any) => {
+      const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+      return { type: 'technique', label: tech?.title || row.technique_id, mark: findRequirementMark('technique', [row.technique_id, tech?.title, tech?.payload?.name, ...(tech?.payload?.signals || [])]) }
+    }),
+  ]
 
   const eventGroups = useMemo(() => {
     const map: Record<string, any[]> = {
@@ -1912,8 +2973,196 @@ export default function App() {
       >
         <div className='text-xs text-muted'>fallback: {providerInfo?.fallback ? 'yes' : 'no'}</div>
       </Card>
+
+      <Card title='Three Agent Progress'>
+        <div className='space-y-2'>
+          {agentSteps.map((step) => {
+            const done = Boolean(step.data)
+            return (
+              <div key={step.event} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
+                <div className='flex items-center justify-between gap-2'>
+                  <span className='text-sm font-medium'>{step.name}</span>
+                  <Badge tone={done ? 'success' : 'default'}>{done ? 'done' : 'waiting'}</Badge>
+                </div>
+                <div className='mt-1 text-xs text-muted'>{step.desc}</div>
+                <div className='mt-1 text-xs'>{step.data?.output_summary || '等待本次 job 事件'}</div>
+                {step.data?.provider ? <div className='mt-1 text-[11px] text-muted'>{step.data.provider}/{step.data.model || '-'} {step.data.fallback ? '(fallback)' : ''}</div> : null}
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      <Card title='Trust Report' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '-'}</Badge>}>
+        <div className='grid grid-cols-4 gap-1 text-center text-xs'>
+          {['supported', 'partial', 'unsupported', 'contradicted'].map((level) => (
+            <div key={level} className='rounded-ui border border-border bg-surface p-1'>
+              <div className='font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
+              <div className='text-[10px] text-muted'>{level}</div>
+            </div>
+          ))}
+        </div>
+        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>重新分析证据标记</Button>
+      </Card>
+
+      <Card title='Current Context' extra={<Badge>{selectedChapter}</Badge>}>
+        <div className='space-y-2 text-xs'>
+          <div className='rounded-ui border border-border bg-surface-2 p-2'>
+            <div className='font-medium'>{currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
+            <div className='text-muted'>{chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
+          </div>
+          <div>
+            <div className='mb-1 font-medium'>Chapter Plan</div>
+            {(currentStoryLinks.chapterPlan || []).map((row: any, idx: number) => (
+              <div key={`plan-${idx}`} className='mb-1 rounded-ui border border-border bg-surface px-2 py-1'>
+                {row.title || row.focus || row.chapter || row.chapter_id}
+              </div>
+            ))}
+            {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>No linked plan row.</div>}
+          </div>
+          <div className='grid grid-cols-2 gap-2'>
+            <div className='rounded-ui border border-border bg-surface p-2'>
+              <div className='font-medium'>明线</div>
+              <div className='text-muted'>{currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : 'none'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-2'>
+              <div className='font-medium'>暗线</div>
+              <div className='text-muted'>{currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.truth || x.visible_hint || x.chapter).join(' / ') : 'none'}</div>
+            </div>
+          </div>
+          <div>
+            <div className='mb-1 font-medium'>伏笔</div>
+            {currentStoryLinks.foreshadowings.map((x: any) => (
+              <div key={x.id || x.content} className='mb-1 rounded-ui border border-border bg-surface px-2 py-1'>
+                {x.content || x.id} <span className='text-muted'>({x.status || '未出现'})</span>
+              </div>
+            ))}
+            {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>No linked foreshadowing.</div>}
+          </div>
+        </div>
+      </Card>
+
+      <Card title='本章要求点亮'>
+        <div className='space-y-1'>
+          {requirementLights.map((item: any, idx: number) => {
+            const level = item.mark?.detection?.support_level || 'unsupported'
+            return (
+              <button
+                key={`${item.type}:${item.label}:${idx}`}
+                className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
+                onClick={() => {
+                  if (!item.mark) return
+                  setSelectedMarkId(item.mark.mark_id)
+                  const start = Number(item.mark?.span?.start_line || 0)
+                  const end = Number(item.mark?.span?.end_line || start)
+                  if (start > 0) setHighlightRange({ start, end })
+                }}
+              >
+                <div className='flex items-center justify-between gap-2'>
+                  <span>{item.type} · {item.label || '未命名要求'}</span>
+                  <Badge tone={markTone(level) as any}>{item.mark?.span?.quote ? level : '未证实'}</Badge>
+                </div>
+                {item.mark?.span?.quote ? <div className='mt-1 truncate text-muted'>L{item.mark.span.start_line}: {item.mark.span.quote}</div> : <div className='mt-1 text-muted'>没有真实 quote，不能显示为已命中</div>}
+              </button>
+            )
+          })}
+          {!requirementLights.length && <p className='text-xs text-muted'>当前章节还没有绑定明线、暗线、伏笔或 pinned 技法。</p>}
+        </div>
+      </Card>
+
+      <Card title='Evidence Mark' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{selectedMark?.detection?.support_level || '-'}</Badge> : undefined}>
+        {selectedMark ? (
+          <div className='space-y-2 text-xs'>
+            <div className='font-medium'>{selectedMark.target_type} · {selectedMark.label || selectedMark.target_id}</div>
+            <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
+            <button
+              className='w-full rounded-ui border border-border bg-surface-2 p-2 text-left hover:bg-surface'
+              onClick={() => {
+                const start = Number(selectedMark?.span?.start_line || 0)
+                const end = Number(selectedMark?.span?.end_line || start)
+                if (start > 0) setHighlightRange({ start, end })
+              }}
+            >
+              <div>L{selectedMark.span?.start_line || 0}-L{selectedMark.span?.end_line || 0}</div>
+              <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '无真实 quote，不能视为已命中'}</div>
+            </button>
+            <div className='grid grid-cols-2 gap-1'>
+              <Button className='text-xs'>确认命中</Button>
+              <Button className='text-xs'>标为误判</Button>
+              <Button className='text-xs'>让 AI 改段</Button>
+              <Button className='text-xs'>忽略本章</Button>
+            </div>
+          </div>
+        ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
+      </Card>
+
+      <Card title='Pinned Techniques'>
+        <pre className='mono text-xs max-h-40 overflow-auto rounded-ui bg-surface-2 p-2'>{JSON.stringify({
+          techniques: currentChapterMeta?.pinned_techniques || [],
+          categories: currentChapterMeta?.pinned_technique_categories || [],
+        }, null, 2)}</pre>
+      </Card>
+
+      <details open className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({latestPatch?.ops?.length || 0})</span></summary>
+        <div className='space-y-2 border-t border-border p-2'>
+          {(latestPatch?.ops || []).map((op: any) => (
+            <div key={op.op_id} className='rounded-ui border border-border bg-surface-2 p-2'>
+              <label className='flex items-center gap-2 text-xs'>
+                <input type='checkbox' checked={selectedOpIds.includes(op.op_id)} onChange={(e) => setSelectedOpIds((x) => (e.target.checked ? [...x, op.op_id] : x.filter((id) => id !== op.op_id)))} />
+                <span className='font-medium'>{op.op_id}</span>
+                <Badge>{op.type}</Badge>
+              </label>
+              <pre className='mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-red-50 p-2 text-[11px] dark:bg-red-950/20'>- {op.before || ''}</pre>
+              <pre className='mono mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-emerald-50 p-2 text-[11px] dark:bg-emerald-950/20'>+ {op.after || ''}</pre>
+            </div>
+          ))}
+          {!latestPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
+          <div className='flex gap-2'>
+            <Button className='text-xs' onClick={() => setSelectedOpIds((latestPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
+            <Button className='text-xs' onClick={applySelectedPatch}>应用</Button>
+          </div>
+        </div>
+      </details>
+
+      <details className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Version Tree <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
+        <div className='space-y-1 border-t border-border p-2'>
+          {(versions?.versions || []).map((v: any) => (
+            <div key={v.version_id} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-surface-2 px-2 py-1'>
+              <span className='truncate text-xs'>{v.version_id}</span>
+              <Button className='text-xs' onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
+            </div>
+          ))}
+          {(!versions?.versions || versions.versions.length === 0) && <p className='text-xs text-muted'>No versions yet.</p>}
+        </div>
+      </details>
+
+      <details className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Technique Brief</summary>
+        <pre className='mono max-h-60 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-2 text-xs'>{JSON.stringify(latestTechniqueBriefForRight, null, 2)}</pre>
+      </details>
+
+      <details className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Memory Packs <span className='text-xs text-muted'>({Array.isArray(memoryPacks) ? memoryPacks.length : 0})</span></summary>
+        <div className='space-y-1 border-t border-border p-2'>
+          {(Array.isArray(memoryPacks) ? memoryPacks : []).slice(0, 6).map((p: any) => (
+            <button key={p.pack_id} className='w-full rounded-ui border border-border bg-surface-2 px-2 py-1 text-left text-xs hover:bg-surface' onClick={() => { setSelectedMemoryPackId(p.pack_id); setView('context') }}>
+              {p.chapter_id} / {p.job_id}
+              {p.summary?.compression_reason ? <div className='text-[11px] text-muted'>{p.summary.compression_reason}</div> : null}
+            </button>
+          ))}
+          {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-xs text-muted'>No memory packs yet.</p> : null}
+        </div>
+      </details>
+
+      <details className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Context Manifest</summary>
+        <pre className='mono max-h-60 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-2 text-xs'>{JSON.stringify(currentManifest || {}, null, 2)}</pre>
+      </details>
+
       {Object.entries(eventGroups).map(([group, rows]) => (
-        <details key={group} open={group === 'Canon' || group === 'Patch' || group === 'Technique'} className='rounded-ui border border-border bg-surface'>
+        <details key={group} className='rounded-ui border border-border bg-surface'>
           <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>{group} <span className='text-xs text-muted'>({rows.length})</span></summary>
           <div className='border-t border-border p-2'>
             <pre className={`mono text-xs ${settings.evidenceWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'} overflow-auto max-h-60 rounded-ui bg-surface-2 p-2`}>

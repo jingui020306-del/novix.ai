@@ -1,0 +1,33 @@
+{
+  "id": "tool_skill_problem_checker",
+  "type": "tool_skill",
+  "title": "小说问题检查工具",
+  "tags": [
+    "tool_skill",
+    "checker"
+  ],
+  "links": [],
+  "payload": {
+    "name": "小说问题检查工具",
+    "category": "checker",
+    "description": "小说问题检查工具，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "chapter",
+      "story",
+      "character",
+      "canon"
+    ],
+    "output_type": "risk_report",
+    "agent_role": "reviewer",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "人设一致性",
+      "场景描述一致性",
+      "时间线顺序",
+      "伏笔埋设与回收"
+    ],
+    "proposal_fields": []
+  }
+}

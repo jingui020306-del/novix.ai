@@ -1,0 +1,95 @@
+{
+  "id": "story_001",
+  "type": "story",
+  "title": "临港城主线",
+  "tags": [
+    "story-control"
+  ],
+  "links": [
+    "character_001",
+    "outline_001"
+  ],
+  "payload": {
+    "logline": "调查记者林秋在雨夜匿名线索中追索父亲死亡真相。",
+    "theme": "真相的代价与自我边界",
+    "genre": "近未来悬疑",
+    "keywords": [
+      "调查记者",
+      "封港",
+      "旧案",
+      "记忆篡改"
+    ],
+    "target_reader": "喜欢近未来悬疑、人物秘密和连续伏笔的长篇读者。",
+    "platform_style": "节奏紧、章节末保留问题，重视可追踪线索和强钩子。",
+    "worldview": "沿海巨型都市临港城，灰色航运网络与封港法并存。",
+    "main_conflict": "林秋追查真相时不断撞上黑潮同盟和城市封锁规则。",
+    "banned_items": [
+      "不要提前揭示发信人真实身份",
+      "不要让主角无证据相信陌生人",
+      "不要把蓝色车票解释成普通纪念品"
+    ],
+    "important_scenes": [
+      {
+        "scene": "雨夜码头赴约",
+        "purpose": "把主角推入旧案",
+        "chapter": "chapter_001"
+      }
+    ],
+    "stages": [
+      {
+        "stage": "开局",
+        "goal": "确认匿名线索可信度",
+        "conflict": "线索引向封锁港区",
+        "result": "林秋决定赴约",
+        "turning_point": "短信提到父亲生前代号"
+      }
+    ],
+    "open_line": [
+      {
+        "chapter": "chapter_001",
+        "event": "林秋收到匿名短信",
+        "goal": "找到发信人",
+        "conflict": "港区封锁",
+        "result": "她前往码头"
+      }
+    ],
+    "hidden_line": [
+      {
+        "chapter": "chapter_001",
+        "truth": "短信来自父亲旧案相关人",
+        "visible_hint": "短信用词像旧档案编号",
+        "hidden_meaning": "发信人知道父亲调查路线",
+        "reveal_timing": "中段揭示"
+      }
+    ],
+    "foreshadowings": [
+      {
+        "id": "foreshadow_001",
+        "content": "蓝色车票",
+        "first_chapter": "chapter_001",
+        "surface_signal": "林秋摸到口袋里的旧票根",
+        "reader_feeling": "觉得它和雨夜赴约有关",
+        "true_meaning": "她三天前已去过禁区车站",
+        "payoff_chapter": "chapter_018",
+        "payoff": "票根证明记忆被动过手脚",
+        "emphasis": "反复出现但不解释",
+        "status": "已埋"
+      }
+    ],
+    "chapter_plan": [
+      {
+        "chapter": "chapter_001",
+        "chapter_id": "chapter_001",
+        "title": "雨夜来信",
+        "focus": "建立不安感与追索动机",
+        "key_events": "匿名短信、封港、赴约",
+        "stage_result": "主角进入案件",
+        "conflict": "外部封锁与内部犹疑",
+        "result": "林秋选择行动",
+        "open_line": "找到发信人",
+        "hidden_line": "发信人身份未明",
+        "foreshadowing": "蓝色车票"
+      }
+    ]
+  }
+}

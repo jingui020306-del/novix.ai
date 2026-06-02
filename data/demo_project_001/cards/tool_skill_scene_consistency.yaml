@@ -1,0 +1,31 @@
+{
+  "id": "tool_skill_scene_consistency",
+  "type": "tool_skill",
+  "title": "场景一致性检查",
+  "tags": [
+    "tool_skill",
+    "checker"
+  ],
+  "links": [],
+  "payload": {
+    "name": "场景一致性检查",
+    "category": "checker",
+    "description": "场景一致性检查，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "world",
+      "chapter"
+    ],
+    "output_type": "scene_risks",
+    "agent_role": "reviewer",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "地点状态",
+      "天气/时间",
+      "物品位置",
+      "空间连续性"
+    ],
+    "proposal_fields": []
+  }
+}

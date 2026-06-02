@@ -1,34 +1,33 @@
 {
   "id": "technique_007",
   "type": "technique",
-  "title": "反讽",
+  "title": "延迟满足",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_performance"
   ],
   "payload": {
-    "name": "反讽",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "反讽"
-    ],
-    "description": "反讽：用于提升段落表达与可检验性。",
+    "name": "延迟满足",
+    "category_id": "technique_category_performance",
+    "aliases": [],
+    "description": "推迟读者期待的胜利、揭秘或情感释放，让回收更有重量。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施反讽",
-      "回读并收束过度使用"
+      "确认读者期待点",
+      "安排合理阻断",
+      "在回收时补偿更大情绪价值"
     ],
     "signals": [
-      "出现反讽可观察信号",
-      "节奏/语义与目标一致"
+      "目标接近但暂时失手",
+      "回收前出现额外代价",
+      "满足发生时解决多个积累问题"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +35,18 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.1
+      "metaphor_density": 0.06
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "延迟期间持续给小进展",
+        "回收要兑现承诺"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "无限拖延",
+        "回收弱于铺垫"
       ]
     },
-    "examples": [
-      "示例：用反讽改写一句场景句。"
-    ]
+    "examples": []
   }
 }

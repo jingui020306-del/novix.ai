@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from services.evidence_service import EvidenceService
 from storage.fs_store import FSStore
 
 
@@ -75,16 +76,22 @@ def proposals(project_id: str, s: FSStore = Depends(get_store)):
 def append_fact(project_id: str, body: dict, s: FSStore = Depends(get_store)):
     if not body.get('evidence') or not body['evidence'].get('chapter_id'):
         raise HTTPException(status_code=400, detail='Missing evidence.chapter_id')
-    s.append_jsonl(project_id, 'canon/facts.jsonl', body)
-    return {"ok": True}
+    verification = EvidenceService(s).verify_fact_evidence(project_id, body)
+    next_body = {**body, 'evidence_verification': verification}
+    if verification.get('support_level') == 'unsupported':
+        next_body['confidence'] = min(float(next_body.get('confidence', 0.4) or 0.4), 0.2)
+        next_body['status'] = next_body.get('status') or 'unverified'
+    s.append_jsonl(project_id, 'canon/facts.jsonl', next_body)
+    return {"ok": True, "evidence_verification": verification}
 
 
 @router.post('/append-issue')
 def append_issue(project_id: str, body: dict, s: FSStore = Depends(get_store)):
     if not body.get('evidence') or not body['evidence'].get('chapter_id'):
         raise HTTPException(status_code=400, detail='Missing evidence.chapter_id')
-    s.append_jsonl(project_id, 'canon/issues.jsonl', body)
-    return {"ok": True}
+    verification = EvidenceService(s).verify_fact_evidence(project_id, body)
+    s.append_jsonl(project_id, 'canon/issues.jsonl', {**body, 'evidence_verification': verification})
+    return {"ok": True, "evidence_verification": verification}
 
 
 

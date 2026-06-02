@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from schemas.json_schemas import BLUEPRINT_SCHEMA, CARD_TYPE_SCHEMAS
+from schemas.json_schemas import BLUEPRINT_SCHEMA, CARD_TYPE_SCHEMAS, VOLUME_SCHEMA
 
 router = APIRouter(prefix="/api/schema")
 
@@ -20,3 +20,8 @@ def card_schema(type_name: str):
 @router.get('/blueprint')
 def blueprint_schema():
     return BLUEPRINT_SCHEMA
+
+
+@router.get('/volume')
+def volume_schema():
+    return VOLUME_SCHEMA

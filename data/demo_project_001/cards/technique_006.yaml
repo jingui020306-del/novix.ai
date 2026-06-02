@@ -1,34 +1,33 @@
 {
   "id": "technique_006",
   "type": "technique",
-  "title": "反复",
+  "title": "冲突升级",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "反复",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "反复"
-    ],
-    "description": "反复：用于提升段落表达与可检验性。",
+    "name": "冲突升级",
+    "category_id": "technique_category_structure",
+    "aliases": [],
+    "description": "让阻碍从小到大、从外部到内部推进，迫使人物付出更高代价。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施反复",
-      "回读并收束过度使用"
+      "列出当前目标",
+      "增加更高代价或更短时限",
+      "让角色必须做选择"
     ],
     "signals": [
-      "出现反复可观察信号",
-      "节奏/语义与目标一致"
+      "新阻碍比前一个更难",
+      "人物选择代价上升",
+      "外部冲突压到人物底线"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +35,18 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.09
+      "metaphor_density": 0.06
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "每次升级改变局面",
+        "把升级压到人物弱点"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "只增加噪音或敌人数量",
+        "升级后结果不影响后文"
       ]
     },
-    "examples": [
-      "示例：用反复改写一句场景句。"
-    ]
+    "examples": []
   }
 }

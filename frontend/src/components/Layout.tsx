@@ -13,12 +13,12 @@ export default function Layout({ left, center, right, header }: { left: any; cen
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
-            className='col-span-2 rounded-xl border border-border bg-panel shadow-soft panel-scroll'
+            className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'
           >
             <div className='flex items-center justify-between border-b border-border px-3 py-2'>
               <div className='flex items-center gap-2 font-semibold text-sm'>
                 <BookOpen size={16} />
-                Workbench
+                Novix IDE
               </div>
               <button className='focus-ring rounded-ui p-1 hover:bg-surface-2' onClick={() => setHideLeft(true)} title='Hide sidebar'>
                 <PanelLeftClose size={15} />
@@ -29,7 +29,7 @@ export default function Layout({ left, center, right, header }: { left: any; cen
         )}
       </AnimatePresence>
 
-      <main className={`${hideLeft ? 'col-span-9' : 'col-span-7'} rounded-xl border border-border bg-panel shadow-soft panel-scroll`}>
+      <main className={`${hideLeft ? 'col-span-9' : 'col-span-6'} rounded-xl border border-border bg-panel shadow-soft panel-scroll`}>
         <div className='sticky top-0 z-10 border-b border-border bg-panel/95 backdrop-blur px-4 py-2'>
           <div className='flex items-center justify-between'>
             <div className='flex items-center gap-2'>

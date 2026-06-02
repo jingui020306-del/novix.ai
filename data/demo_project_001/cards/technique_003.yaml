@@ -1,34 +1,33 @@
 {
   "id": "technique_003",
   "type": "technique",
-  "title": "通感",
+  "title": "反转",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "通感",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "通感"
-    ],
-    "description": "通感：用于提升段落表达与可检验性。",
+    "name": "反转",
+    "category_id": "technique_category_structure",
+    "aliases": [],
+    "description": "改变读者对事件性质、人物动机或局势胜负的判断。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施通感",
-      "回读并收束过度使用"
+      "建立读者默认判断",
+      "保留能支撑反向解释的证据",
+      "在动作或决定中揭示反向意义"
     ],
     "signals": [
-      "出现通感可观察信号",
-      "节奏/语义与目标一致"
+      "同一事实出现新解释",
+      "优势关系突然倒置",
+      "人物选择暴露隐藏动机"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -40,16 +39,14 @@
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "反转后让前文更合理",
+        "让反转带来新的冲突"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "为了惊讶牺牲人设",
+        "用随机新设定完成反转"
       ]
     },
-    "examples": [
-      "示例：用通感改写一句场景句。"
-    ]
+    "examples": []
   }
 }

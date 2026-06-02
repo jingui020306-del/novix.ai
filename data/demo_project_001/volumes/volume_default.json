@@ -1,0 +1,9 @@
+{
+  "id": "volume_default",
+  "title": "第一卷",
+  "summary": "临港城主线开篇。",
+  "order_index": 1,
+  "chapter_ids": [
+    "chapter_001"
+  ]
+}

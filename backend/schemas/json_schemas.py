@@ -102,6 +102,36 @@ CARD_TYPE_SCHEMAS = {
             },
         },
     },
+    "story": {
+        "type": "object", "required": ["id", "type", "title", "payload"],
+        "properties": {
+            "id": {"type": "string"},
+            "type": {"const": "story"},
+            "title": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "links": {"type": "array", "items": {"type": "string"}},
+            "payload": {
+                "type": "object",
+                "properties": {
+                    "logline": {"type": "string"},
+                    "theme": {"type": "string"},
+                    "genre": {"type": "string"},
+                    "keywords": {"type": "array", "items": {"type": "string"}},
+                    "target_reader": {"type": "string"},
+                    "platform_style": {"type": "string"},
+                    "worldview": {"type": "string"},
+                    "main_conflict": {"type": "string"},
+                    "banned_items": {"type": "array", "items": {"type": "string"}},
+                    "important_scenes": {"type": "array", "items": {"type": "object"}},
+                    "stages": {"type": "array", "items": {"type": "object"}},
+                    "open_line": {"type": "array", "items": {"type": "object"}},
+                    "hidden_line": {"type": "array", "items": {"type": "object"}},
+                    "foreshadowings": {"type": "array", "items": {"type": "object"}},
+                    "chapter_plan": {"type": "array", "items": {"type": "object"}},
+                },
+            },
+        },
+    },
     "technique_category": {
         "type": "object", "required": ["id", "type", "title", "payload"],
         "properties": {
@@ -140,6 +170,30 @@ CARD_TYPE_SCHEMAS = {
             }},
         },
     },
+    "tool_skill": {
+        "type": "object",
+        "required": ["id", "type", "title", "payload"],
+        "properties": {
+            "id": {"type": "string"},
+            "type": {"const": "tool_skill"},
+            "title": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "links": {"type": "array", "items": {"type": "string"}},
+            "payload": {"type": "object", "properties": {
+                "name": {"type": "string"},
+                "category": {"type": "string", "enum": ["checker", "generator", "research", "tracker", "memory"]},
+                "description": {"type": "string"},
+                "input_types": {"type": "array", "items": {"type": "string"}},
+                "output_type": {"type": "string"},
+                "agent_role": {"type": "string", "enum": ["reviewer", "writer", "proofreader", "researcher", "system"]},
+                "evidence_required": {"type": "boolean", "default": True},
+                "auto_apply_allowed": {"type": "boolean", "default": False},
+                "review_policy": {"type": "string"},
+                "check_rules": {"type": "array", "items": {"type": "string"}},
+                "proposal_fields": {"type": "array", "items": {"type": "string"}},
+            }},
+        },
+    },
 }
 
 BLUEPRINT_SCHEMA = {
@@ -161,6 +215,18 @@ BLUEPRINT_SCHEMA = {
                 },
             },
         },
+    },
+}
+
+VOLUME_SCHEMA = {
+    "type": "object",
+    "required": ["id", "title"],
+    "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "summary": {"type": "string"},
+        "order_index": {"type": "integer", "minimum": 0},
+        "chapter_ids": {"type": "array", "items": {"type": "string"}},
     },
 }
 
