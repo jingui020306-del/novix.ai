@@ -293,6 +293,26 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert pending_after_accept.status_code == 200
     assert all(x["draft_id"] != body["draft_id"] for x in pending_after_accept.json())
 
+    partial_seed = client.post("/api/projects/p1/build-drafts", json={
+        "kind": "foreshadowing",
+        "selected_chapter": "chapter_001",
+        "story_card": story,
+    })
+    assert partial_seed.status_code == 200
+    partial_body = partial_seed.json()
+    partial = client.put(f"/api/projects/p1/build-drafts/{partial_body['draft_id']}", json={
+        "status": "partially_accepted",
+        "accepted_target": "story_001",
+        "accepted_scope": ["foreshadowings"],
+    })
+    assert partial.status_code == 200
+    assert partial.json()["status"] == "partially_accepted"
+    assert partial.json()["accepted_scope"] == ["foreshadowings"]
+
+    partial_list = client.get("/api/projects/p1/build-drafts?status=partially_accepted")
+    assert partial_list.status_code == 200
+    assert any(x["draft_id"] == partial_body["draft_id"] for x in partial_list.json())
+
     rejected_seed = client.post("/api/projects/p1/build-drafts", json={
         "kind": "lines",
         "selected_chapter": "chapter_001",

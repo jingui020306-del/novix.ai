@@ -183,7 +183,7 @@ export default function App() {
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
-  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string } | null>(null)
+  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[] } | null>(null)
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
   const [buildWizardStep, setBuildWizardStep] = useState('basics')
 
@@ -338,6 +338,7 @@ export default function App() {
     },
   ]
   const completedBuildSteps = storyBuildProgress.filter((x) => x.done).length
+  const activeBuildWizardStep = BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep) || BUILD_WIZARD_STEPS[0]
 
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
@@ -1806,6 +1807,7 @@ export default function App() {
         source: rec.source,
         status: rec.status,
         created_at: rec.created_at,
+        accepted_scope: rec.accepted_scope,
       })
       setView('story')
       setStoryPlanningTab('Overview')
@@ -1842,6 +1844,7 @@ export default function App() {
           source: rec.source,
           status: rec.status,
           created_at: rec.created_at,
+          accepted_scope: rec.accepted_scope,
         })
         push(`草案已生成：${rec.title}`)
         mutateBuildDraftRows()
@@ -1855,6 +1858,7 @@ export default function App() {
           revision: nextRevision,
           source: 'local_fallback',
           status: 'pending',
+          accepted_scope: [],
         })
         push('后端草案接口不可用，已使用本地 fallback', 'error')
       } finally {
@@ -1893,14 +1897,16 @@ export default function App() {
       writeBuildDraftBody({ ...parsedBuildDraft, [section]: rows })
     }
 
-    const markBuildDraftPartiallyAccepted = async () => {
+    const markBuildDraftPartiallyAccepted = async (scope: string[]) => {
       if (!buildDraft?.draft_id) return
+      const acceptedScope = uniq([...(buildDraft.accepted_scope || []), ...scope])
       await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, {
         body: buildDraft.body,
         status: 'partially_accepted',
         accepted_target: storyForm?.id || 'story_new',
+        accepted_scope: acceptedScope,
       })
-      setBuildDraft({ ...buildDraft, status: 'partially_accepted' })
+      setBuildDraft({ ...buildDraft, status: 'partially_accepted', accepted_scope: acceptedScope })
       mutateBuildDraftRows()
     }
 
@@ -1919,7 +1925,7 @@ export default function App() {
         payload[section] = [...(payload[section] || []), ...annotated]
         return normalizeStoryCard({ ...prev, payload })
       })
-      await markBuildDraftPartiallyAccepted()
+      await markBuildDraftPartiallyAccepted([section])
       push(`已局部写入 ${section}，请保存故事卡`)
     }
 
@@ -1937,7 +1943,7 @@ export default function App() {
         payload.author_modified = true
         return normalizeStoryCard({ ...prev, payload })
       })
-      await markBuildDraftPartiallyAccepted()
+      await markBuildDraftPartiallyAccepted(keys)
       push('已局部写入 Story 表单，请保存故事卡')
     }
 
@@ -1968,7 +1974,8 @@ export default function App() {
           },
         }
         await api.put(`/api/projects/${project}/cards/${id}`, body)
-        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id })
+        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id, accepted_scope: ['all'] })
+        setBuildDraft({ ...buildDraft, status: 'accepted', accepted_scope: ['all'] })
         setCharacterForm(body)
         mutateCards()
         setView('characters')
@@ -1993,7 +2000,8 @@ export default function App() {
         payload.author_modified = true
         return normalizeStoryCard({ ...prev, payload })
       })
-      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new' })
+      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new', accepted_scope: ['all'] })
+      setBuildDraft({ ...buildDraft, status: 'accepted', accepted_scope: ['all'] })
       mutateBuildDraftRows()
       push('草案已确认写入 Story 表单，请保存故事卡')
     }
@@ -2381,17 +2389,17 @@ export default function App() {
                 <div className='rounded-ui border border-border bg-surface p-2'>
                   <div className='flex items-center justify-between gap-2'>
                     <div>
-                      <div className='text-xs font-medium'>{BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep)?.label || '建设步骤'}</div>
+                      <div className='text-xs font-medium'>{activeBuildWizardStep.label || '建设步骤'}</div>
                       <div className='mt-1 flex flex-wrap gap-1'>
-                        {(BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep)?.checks || []).map((check) => <Badge key={check}>{check}</Badge>)}
+                        {(activeBuildWizardStep.checks || []).map((check) => <Badge key={check}>{check}</Badge>)}
                       </div>
                     </div>
-                    {BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep)?.draftKind ? (
+                    {activeBuildWizardStep.draftKind ? (
                       <div className='flex flex-col gap-1'>
                         <Button
                           className='text-xs'
                           disabled={buildDraftBusy}
-                          onClick={() => generateBuildDraft(BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep)?.draftKind || 'story_overview')}
+                          onClick={() => generateBuildDraft(activeBuildWizardStep.draftKind || 'story_overview')}
                         >
                           {buildDraftBusy ? '生成中...' : '生成此步草案'}
                         </Button>
@@ -2443,6 +2451,7 @@ export default function App() {
                     <div className='flex flex-wrap gap-2 text-xs text-muted'>
                       <Badge>{buildDraft.status || 'pending'}</Badge>
                       <Badge>{buildDraft.source || 'local'}</Badge>
+                      {(buildDraft.accepted_scope || []).length ? <Badge tone='success'>已接受: {(buildDraft.accepted_scope || []).join(', ')}</Badge> : null}
                       {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
                     </div>
                     {renderBuildDraftEditor()}
@@ -3394,6 +3403,7 @@ export default function App() {
     buildDraft,
     buildDraftBusy,
     buildWizardStep,
+    activeBuildWizardStep,
     storyBuildProgress,
     completedBuildSteps,
     pendingBuildDrafts,

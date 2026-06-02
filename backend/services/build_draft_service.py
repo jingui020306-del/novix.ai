@@ -82,7 +82,7 @@ class BuildDraftService:
         rec = self.get_draft(project_id, draft_id)
         if not rec:
             raise FileNotFoundError(draft_id)
-        for key in ["body", "status", "accepted_target", "rejection_reason"]:
+        for key in ["body", "status", "accepted_target", "accepted_scope", "rejection_reason"]:
             if key in patch:
                 rec[key] = patch[key]
         if rec.get("status") == "rejected" and not rec.get("rejection_reason"):
