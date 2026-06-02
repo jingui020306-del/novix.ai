@@ -183,7 +183,7 @@ export default function App() {
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
-  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[] } | null>(null)
+  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[]; accepted_target?: string; rejection_reason?: string } | null>(null)
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
   const [buildWizardStep, setBuildWizardStep] = useState('basics')
 
@@ -294,6 +294,7 @@ export default function App() {
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
+  const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -1808,6 +1809,8 @@ export default function App() {
         status: rec.status,
         created_at: rec.created_at,
         accepted_scope: rec.accepted_scope,
+        accepted_target: rec.accepted_target,
+        rejection_reason: rec.rejection_reason,
       })
       setView('story')
       setStoryPlanningTab('Overview')
@@ -1822,6 +1825,21 @@ export default function App() {
       if (buildDraft?.draft_id === rec.draft_id) setBuildDraft({ ...buildDraft, status: 'rejected' })
       mutateBuildDraftRows()
       push('草案已拒绝')
+    }
+
+    const restoreBuildDraft = async (rec: any) => {
+      if (!rec?.draft_id) return
+      await api.put(`/api/projects/${project}/build-drafts/${rec.draft_id}`, {
+        status: 'pending',
+        accepted_target: '',
+        accepted_scope: [],
+        rejection_reason: '',
+      })
+      if (buildDraft?.draft_id === rec.draft_id) {
+        setBuildDraft({ ...buildDraft, status: 'pending', accepted_target: '', accepted_scope: [], rejection_reason: '' })
+      }
+      mutateBuildDraftRows()
+      push('草案已恢复为待确认')
     }
 
     const generateBuildDraft = async (kind: string) => {
@@ -1845,6 +1863,8 @@ export default function App() {
           status: rec.status,
           created_at: rec.created_at,
           accepted_scope: rec.accepted_scope,
+          accepted_target: rec.accepted_target,
+          rejection_reason: rec.rejection_reason,
         })
         push(`草案已生成：${rec.title}`)
         mutateBuildDraftRows()
@@ -1859,6 +1879,8 @@ export default function App() {
           source: 'local_fallback',
           status: 'pending',
           accepted_scope: [],
+          accepted_target: '',
+          rejection_reason: '',
         })
         push('后端草案接口不可用，已使用本地 fallback', 'error')
       } finally {
@@ -2306,7 +2328,7 @@ export default function App() {
             </div>
           </Card>
 
-          <div className='grid grid-cols-2 gap-3'>
+          <div className='grid grid-cols-3 gap-3'>
             <Card title='待确认建书草案'>
               <div className='space-y-1'>
                 {pendingBuildDrafts.slice(0, 5).map((rec: any) => (
@@ -2322,6 +2344,23 @@ export default function App() {
                   </div>
                 ))}
                 {!pendingBuildDrafts.length && <p className='text-sm text-muted'>没有待确认建书草案。</p>}
+              </div>
+            </Card>
+            <Card title='建书草案历史'>
+              <div className='space-y-1'>
+                {processedBuildDrafts.slice(0, 5).map((rec: any) => (
+                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
+                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                      <span className='font-medium'>{rec.title || rec.kind}</span>
+                      <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
+                    </button>
+                    <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
+                      {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
+                      {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
+                    </div>
+                  </div>
+                ))}
+                {!processedBuildDrafts.length && <p className='text-sm text-muted'>暂无已处理草案。</p>}
               </div>
             </Card>
             <Card title='待审 AI Patch'>
@@ -2437,6 +2476,32 @@ export default function App() {
                     {!pendingBuildDrafts.length && <div className='text-xs text-muted'>暂无待确认草案。</div>}
                   </div>
                 </div>
+                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-xs font-medium'>已处理草案</span>
+                    <Badge>{processedBuildDrafts.length}</Badge>
+                  </div>
+                  <div className='max-h-36 space-y-1 overflow-auto'>
+                    {processedBuildDrafts.slice(0, 6).map((rec: any) => (
+                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                          <span className='font-medium'>{rec.title || rec.kind}</span>
+                          <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
+                        </button>
+                        <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
+                          {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
+                          {rec.accepted_target ? <span>target: {rec.accepted_target}</span> : null}
+                          {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
+                        </div>
+                        <div className='mt-1 flex gap-1'>
+                          <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                          <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!processedBuildDrafts.length && <div className='text-xs text-muted'>暂无已处理草案。</div>}
+                  </div>
+                </div>
               </div>
               <div className='col-span-7'>
                 {buildDraft ? (
@@ -2452,6 +2517,8 @@ export default function App() {
                       <Badge>{buildDraft.status || 'pending'}</Badge>
                       <Badge>{buildDraft.source || 'local'}</Badge>
                       {(buildDraft.accepted_scope || []).length ? <Badge tone='success'>已接受: {(buildDraft.accepted_scope || []).join(', ')}</Badge> : null}
+                      {buildDraft.accepted_target ? <Badge>写入: {buildDraft.accepted_target}</Badge> : null}
+                      {buildDraft.rejection_reason ? <Badge tone='warn'>拒绝: {buildDraft.rejection_reason}</Badge> : null}
                       {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
                     </div>
                     {renderBuildDraftEditor()}
@@ -3407,6 +3474,7 @@ export default function App() {
     storyBuildProgress,
     completedBuildSteps,
     pendingBuildDrafts,
+    processedBuildDrafts,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
