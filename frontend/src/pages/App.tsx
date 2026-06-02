@@ -242,6 +242,7 @@ export default function App() {
   const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
   const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
+  const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -281,6 +282,8 @@ export default function App() {
   }
   const evidenceMarkRows = Array.isArray(evidenceMarks) ? evidenceMarks : []
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
+  const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
+  const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
 
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
@@ -1735,6 +1738,32 @@ export default function App() {
       return draftByKind[kind]
     }
 
+    const openBuildDraft = (rec: any) => {
+      setBuildDraft({
+        draft_id: rec.draft_id,
+        kind: rec.kind,
+        title: rec.title,
+        body: rec.body,
+        revision: rec.revision || 1,
+        source: rec.source,
+        status: rec.status,
+        created_at: rec.created_at,
+      })
+      setView('story')
+      setStoryPlanningTab('Overview')
+    }
+
+    const rejectBuildDraft = async (rec: any) => {
+      if (!rec?.draft_id) return
+      await api.put(`/api/projects/${project}/build-drafts/${rec.draft_id}`, {
+        status: 'rejected',
+        rejection_reason: '作者在待确认队列中拒绝',
+      })
+      if (buildDraft?.draft_id === rec.draft_id) setBuildDraft({ ...buildDraft, status: 'rejected' })
+      mutateBuildDraftRows()
+      push('草案已拒绝')
+    }
+
     const generateBuildDraft = async (kind: string) => {
       const nextRevision = (buildDraft?.kind === kind ? buildDraft.revision + 1 : 1)
       setBuildDraftBusy(true)
@@ -1757,6 +1786,7 @@ export default function App() {
           created_at: rec.created_at,
         })
         push(`草案已生成：${rec.title}`)
+        mutateBuildDraftRows()
         return
       } catch {
         const fallback = localBuildDraftContent(kind, nextRevision)
@@ -1791,6 +1821,7 @@ export default function App() {
         setCharacterForm(body)
         mutateCards()
         setView('characters')
+        mutateBuildDraftRows()
         push('人物草案已确认写入')
         return
       }
@@ -1807,6 +1838,7 @@ export default function App() {
         return normalizeStoryCard({ ...prev, payload })
       })
       if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new' })
+      mutateBuildDraftRows()
       push('草案已确认写入 Story 表单，请保存故事卡')
     }
 
@@ -1858,9 +1890,9 @@ export default function App() {
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
-                <div className='text-xs text-muted'>待确认 Canon</div>
-                <div className='mt-1 text-lg font-semibold'>{(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length}</div>
-                <div className='text-xs text-muted'>事实不会自动转正</div>
+                <div className='text-xs text-muted'>待确认草案</div>
+                <div className='mt-1 text-lg font-semibold'>{pendingBuildDrafts.length}</div>
+                <div className='text-xs text-muted'>建书草案不会自动写入</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>风险标记</div>
@@ -1902,6 +1934,23 @@ export default function App() {
           </Card>
 
           <div className='grid grid-cols-2 gap-3'>
+            <Card title='待确认建书草案'>
+              <div className='space-y-1'>
+                {pendingBuildDrafts.slice(0, 5).map((rec: any) => (
+                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
+                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                      <span className='font-medium'>{rec.title || rec.kind}</span>
+                      <span className='ml-2 text-muted'>rev {rec.revision || 1} · {rec.source || 'unknown'}</span>
+                    </button>
+                    <div className='mt-1 flex gap-2'>
+                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                      <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
+                    </div>
+                  </div>
+                ))}
+                {!pendingBuildDrafts.length && <p className='text-sm text-muted'>没有待确认建书草案。</p>}
+              </div>
+            </Card>
             <Card title='待审 AI Patch'>
               <div className='space-y-1'>
                 {(latestPatch?.ops || []).slice(0, 5).map((op: any) => (
@@ -1910,6 +1959,19 @@ export default function App() {
                   </button>
                 ))}
                 {!latestPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+              </div>
+            </Card>
+          </div>
+
+          <div className='grid grid-cols-2 gap-3'>
+            <Card title='待确认 Canon'>
+              <div className='space-y-1'>
+                {(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').slice(-5).reverse().map((p: any) => (
+                  <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
+                    {p.name || p.proposal_id || p.id}
+                  </button>
+                ))}
+                {!(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length && <p className='text-sm text-muted'>没有待确认 canon proposal。</p>}
               </div>
             </Card>
             <Card title='可信风险'>
@@ -1944,6 +2006,30 @@ export default function App() {
                 </div>
                 <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
                   草案不会自动覆盖卡片。你可以单独刷新某个环节，也可以直接改右侧 JSON，再确认写入。
+                </div>
+                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-xs font-medium'>待确认队列</span>
+                    <Badge>{pendingBuildDrafts.length}</Badge>
+                  </div>
+                  <div className='max-h-36 space-y-1 overflow-auto'>
+                    {pendingBuildDrafts.slice(0, 6).map((rec: any) => (
+                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                          <span className='font-medium'>{rec.title || rec.kind}</span>
+                          <span className='ml-2 text-muted'>rev {rec.revision || 1}</span>
+                        </button>
+                        <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
+                          <span>{rec.source || 'unknown'} · {rec.selected_chapter || 'no chapter'}</span>
+                          <div className='flex gap-1'>
+                            <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                            <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {!pendingBuildDrafts.length && <div className='text-xs text-muted'>暂无待确认草案。</div>}
+                  </div>
                 </div>
               </div>
               <div className='col-span-7'>
@@ -2895,6 +2981,8 @@ export default function App() {
     toolSkillSchema,
     toolSkillForm,
     buildDraft,
+    buildDraftBusy,
+    pendingBuildDrafts,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,

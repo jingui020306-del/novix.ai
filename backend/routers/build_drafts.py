@@ -20,8 +20,8 @@ router = APIRouter(prefix="/api/projects/{project_id}/build-drafts", tags=["buil
 
 
 @router.get("")
-def list_build_drafts(project_id: str, kind: str | None = None, svc: BuildDraftService = Depends(get_service)):
-    return svc.list_drafts(project_id, kind=kind)
+def list_build_drafts(project_id: str, kind: str | None = None, status: str | None = None, svc: BuildDraftService = Depends(get_service)):
+    return svc.list_drafts(project_id, kind=kind, status=status)
 
 
 @router.post("")

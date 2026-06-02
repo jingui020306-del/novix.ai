@@ -270,6 +270,10 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert listed.status_code == 200
     assert any(x["draft_id"] == body["draft_id"] for x in listed.json())
 
+    pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert pending.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in pending.json())
+
     updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
         "body": '{"accepted": true}',
         "status": "accepted",
@@ -278,6 +282,33 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert updated.status_code == 200
     assert updated.json()["status"] == "accepted"
     assert updated.json()["accepted_target"] == "story_001"
+
+    accepted = client.get("/api/projects/p1/build-drafts?status=accepted")
+    assert accepted.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in accepted.json())
+
+    pending_after_accept = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert pending_after_accept.status_code == 200
+    assert all(x["draft_id"] != body["draft_id"] for x in pending_after_accept.json())
+
+    rejected_seed = client.post("/api/projects/p1/build-drafts", json={
+        "kind": "lines",
+        "selected_chapter": "chapter_001",
+        "story_card": story,
+    })
+    assert rejected_seed.status_code == 200
+    rejected_body = rejected_seed.json()
+    rejected = client.put(f"/api/projects/p1/build-drafts/{rejected_body['draft_id']}", json={
+        "status": "rejected",
+        "rejection_reason": "明线太弱，重新生成",
+    })
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["rejection_reason"] == "明线太弱，重新生成"
+
+    rejected_list = client.get("/api/projects/p1/build-drafts?status=rejected")
+    assert rejected_list.status_code == 200
+    assert any(x["draft_id"] == rejected_body["draft_id"] for x in rejected_list.json())
 
     bad = client.post("/api/projects/p1/build-drafts", json={"kind": "not_real"})
     assert bad.status_code == 400

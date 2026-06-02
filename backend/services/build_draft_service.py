@@ -27,7 +27,7 @@ class BuildDraftService:
     def _draft_path(self, draft_id: str) -> str:
         return f"meta/build_drafts/{draft_id}.json"
 
-    def list_drafts(self, project_id: str, kind: str | None = None) -> list[dict[str, Any]]:
+    def list_drafts(self, project_id: str, kind: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
         root = self.store._safe_path(project_id, "meta/build_drafts")
         rows: list[dict[str, Any]] = []
         for path in root.glob("*.json"):
@@ -35,6 +35,8 @@ class BuildDraftService:
             if not row:
                 continue
             if kind and row.get("kind") != kind:
+                continue
+            if status and row.get("status") != status:
                 continue
             rows.append(row)
         return sorted(rows, key=lambda x: str(x.get("created_at") or ""), reverse=True)
@@ -80,9 +82,11 @@ class BuildDraftService:
         rec = self.get_draft(project_id, draft_id)
         if not rec:
             raise FileNotFoundError(draft_id)
-        for key in ["body", "status", "accepted_target"]:
+        for key in ["body", "status", "accepted_target", "rejection_reason"]:
             if key in patch:
                 rec[key] = patch[key]
+        if rec.get("status") == "rejected" and not rec.get("rejection_reason"):
+            rec["rejection_reason"] = "作者拒绝"
         rec["updated_at"] = now_iso()
         self.store.write_json(project_id, self._draft_path(draft_id), rec)
         return rec
