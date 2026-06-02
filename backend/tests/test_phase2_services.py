@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from context_engine.budget_manager import BudgetManager
 from jobs.manager import JobManager
 from services.context_engine import ContextEngine
+from services.evidence_service import EvidenceService
 from services.kb_service import KBService
 from services.llm_gateway import LLMGateway
 from services.wiki_import_service import WikiImportService
@@ -27,6 +28,27 @@ def make_store(tmp_path: Path) -> FSStore:
     store = FSStore(tmp_path / "data")
     store.init_demo_project("p1")
     return store
+
+
+def test_read_yaml_accepts_simple_yaml_cards(tmp_path: Path):
+    s = make_store(tmp_path)
+    path = s._safe_path("p1", "cards/simple_yaml_card.yaml")
+    path.write_text(
+        "id: simple_yaml_card\n"
+        "type: lore\n"
+        "title: 简单 YAML 卡\n"
+        "tags: [lore, test]\n"
+        "links: []\n"
+        "payload:\n"
+        "  summary: 可被兼容读取。\n"
+        "  level: 2\n",
+        encoding="utf-8",
+    )
+    got = s.read_yaml("p1", "cards/simple_yaml_card.yaml")
+    assert got["type"] == "lore"
+    assert got["tags"] == ["lore", "test"]
+    assert got["payload"]["summary"] == "可被兼容读取。"
+    assert got["payload"]["level"] == 2
 
 
 def test_budget_manager_allocation(tmp_path: Path):
@@ -191,14 +213,94 @@ def test_cards_api_roundtrip_character_role_importance_age(tmp_path: Path):
 
 
 def test_schema_contains_technique_and_category_payloads(tmp_path: Path):
-    from schemas.json_schemas import CARD_TYPE_SCHEMAS
+    from schemas.json_schemas import CARD_TYPE_SCHEMAS, VOLUME_SCHEMA
 
     assert "technique" in CARD_TYPE_SCHEMAS
     assert "technique_category" in CARD_TYPE_SCHEMAS
+    assert "tool_skill" in CARD_TYPE_SCHEMAS
+    assert VOLUME_SCHEMA["properties"]["chapter_ids"]["type"] == "array"
+    story_props = CARD_TYPE_SCHEMAS["story"]["properties"]["payload"]["properties"]
     t_props = CARD_TYPE_SCHEMAS["technique"]["properties"]["payload"]["properties"]
     c_props = CARD_TYPE_SCHEMAS["technique_category"]["properties"]["payload"]["properties"]
+    tool_props = CARD_TYPE_SCHEMAS["tool_skill"]["properties"]["payload"]["properties"]
+    assert "keywords" in story_props and "target_reader" in story_props and "banned_items" in story_props
     assert "apply_steps" in t_props and "signals" in t_props and "intensity_levels" in t_props
     assert "name" in c_props and "sort_order" in c_props and "core_techniques" in c_props
+    assert tool_props["auto_apply_allowed"]["default"] is False
+    assert tool_props["evidence_required"]["default"] is True
+
+
+def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
+    s = make_store(tmp_path)
+
+    story = s.read_yaml("p1", "cards/story_001.yaml")
+    tool_skill = s.read_yaml("p1", "cards/tool_skill_problem_checker.yaml")
+    technique = s.read_yaml("p1", "cards/technique_001.yaml")
+
+    assert story["payload"]["keywords"]
+    assert story["payload"]["target_reader"]
+    assert story["payload"]["banned_items"]
+    assert tool_skill["type"] == "tool_skill"
+    assert tool_skill["payload"]["auto_apply_allowed"] is False
+    assert "悬念" in technique["title"]
+
+
+def test_volumes_api_and_chapter_meta_binding(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    client = TestClient(app_main.app)
+
+    created = client.post('/api/projects/p1/volumes', json={
+        'id': 'volume_001',
+        'title': '第一卷',
+        'summary': '开篇卷',
+        'order_index': 1,
+    })
+    assert created.status_code == 200
+
+    put = client.put('/api/projects/p1/drafts/chapter_002', json={
+        'content': '# Chapter 002\n\n新的线索出现。',
+        'title': '第二章',
+        'volume_id': 'volume_001',
+        'order_index': 2,
+        'chapter_status': 'drafting',
+    })
+    assert put.status_code == 200
+    meta = client.get('/api/projects/p1/drafts/chapter_002/meta').json()
+    assert meta['volume_id'] == 'volume_001'
+    assert meta['chapter_title'] == '第二章'
+
+    volumes = client.get('/api/projects/p1/volumes')
+    assert volumes.status_code == 200
+    rows = volumes.json()
+    volume = [x for x in rows if x['id'] == 'volume_001'][0]
+    assert any(ch['chapter_id'] == 'chapter_002' for ch in volume['chapters'])
+
+
+def test_legacy_chapter_defaults_to_default_volume(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.store.write_md('p1', 'drafts/chapter_legacy.md', '# Legacy')
+    app_main.store.write_md('p1', 'drafts/.chapter_order', 'chapter_legacy\n')
+    app_main.store.write_json('p1', 'drafts/chapter_legacy.meta.json', {'chapter_id': 'chapter_legacy', 'title': '旧章节'})
+
+    client = TestClient(app_main.app)
+    details = client.get('/api/projects/p1/drafts/details').json()
+    assert details[0]['volume_id'] == 'volume_default'
+    assert details[0]['chapter_status'] == 'drafting'
+
+
+def test_story_structure_roundtrip_with_chapter_binding(tmp_path: Path):
+    s = make_store(tmp_path)
+    story = s.read_yaml('p1', 'cards/story_001.yaml')
+    story['payload']['chapter_plan'][0]['chapter_id'] = 'chapter_001'
+    story['payload']['foreshadowings'][0]['status'] = '已埋'
+    s.write_yaml('p1', 'cards/story_001.yaml', story)
+    got = s.read_yaml('p1', 'cards/story_001.yaml')
+    assert got['payload']['chapter_plan'][0]['chapter_id'] == 'chapter_001'
+    assert got['payload']['foreshadowings'][0]['status'] == '已埋'
 
 
 def test_technique_merge_chapter_pinned_overrides_outline(tmp_path: Path):
@@ -436,6 +538,83 @@ def test_memory_pack_generated_and_readable(tmp_path: Path):
     assert pack['job_id'] == job_id
     assert 'budget_report' in pack and isinstance(pack['budget_report'], dict)
     assert 'evidence' in pack and isinstance(pack['evidence'], list)
+
+
+def test_evidence_marks_and_trust_report_verify_quotes(tmp_path: Path):
+    s = make_store(tmp_path)
+    s.write_md('p1', 'drafts/chapter_001.md', '# c1\n\n林秋摸到口袋里的旧票根。蓝色车票被雨水浸湿。')
+    svc = EvidenceService(s)
+
+    marks = svc.build_marks('p1', 'chapter_001', job_id='job_test', model='mock', technique_checklist=[
+        {'technique_id': 'technique_001', 'must_have_signals': ['蓝色车票']},
+        {'technique_id': 'technique_missing', 'must_have_signals': ['不存在的技法信号']},
+    ])
+    svc.save_marks('p1', 'chapter_001', marks)
+    report = svc.build_trust_report('p1', 'chapter_001', marks)
+
+    assert any(m['target_type'] == 'technique' and m['detection']['support_level'] == 'supported' for m in marks)
+    assert any(m['target_id'] == 'technique_missing' and m['detection']['support_level'] == 'unsupported' for m in marks)
+    assert report['unsupported_count'] >= 1
+    bad = svc.verify_mark('p1', {'chapter_id': 'chapter_001', 'span': {'quote': '假的引用'}, 'detection': {'support_level': 'supported', 'confidence': 0.9}})
+    assert bad['detection']['support_level'] == 'unsupported'
+
+
+def test_canon_append_fact_marks_unverified_quote(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    client = TestClient(app_main.app)
+    res = client.post('/api/projects/p1/canon/append-fact', json={
+        'id': 'fact_bad_quote',
+        'scope': 'chapter_summary',
+        'key': 'summary',
+        'value': 'AI 声称的事实',
+        'confidence': 0.9,
+        'evidence': {'chapter_id': 'chapter_001', 'quote': '正文里没有这句话'},
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body['evidence_verification']['support_level'] == 'unsupported'
+    fact = [x for x in app_main.store.read_jsonl('p1', 'canon/facts.jsonl') if x.get('id') == 'fact_bad_quote'][0]
+    assert fact['status'] == 'unverified'
+    assert fact['confidence'] <= 0.2
+
+
+def test_write_job_emits_three_agent_trust_events_and_marks(tmp_path: Path):
+    s = make_store(tmp_path)
+    kb = KBService(s)
+    ctx = ContextEngine(s, kb)
+    jm = JobManager(s, ctx, LLMGateway())
+
+    import asyncio
+
+    async def _run():
+        jid = await jm.run_write_job('p1', {
+            'chapter_id': 'chapter_001',
+            'blueprint_id': 'blueprint_001',
+            'scene_index': 0,
+            'auto_apply_patch': False,
+            'word_checkpoint_chars': 10,
+        })
+        events = []
+        async for e in jm.stream(jid):
+            events.append(e)
+        return jid, events
+
+    job_id, events = asyncio.run(_run())
+    seen = [e['event'] for e in events]
+    for required in ['PRE_REVIEW_PLAN', 'CONTEXT_MANIFEST', 'WRITER_DRAFT', 'MARK_EXTRACTION', 'CLAIM_VERIFICATION', 'CRITIC_REVIEW', 'PROOFREAD_PATCH', 'TRUST_REPORT']:
+        assert required in seen
+    for evt in events:
+        if evt['event'] == 'DONE':
+            continue
+        data = evt['data']
+        assert data['job_id'] == job_id
+        assert 'stage' in data and 'provider' in data and 'model' in data and 'fallback' in data
+    assert s.read_jsonl('p1', 'meta/evidence_marks/chapter_001.jsonl')
+    assert s.read_json('p1', 'meta/trust_reports/chapter_001.json')['chapter_id'] == 'chapter_001'
+    pack = s.read_json('p1', f'meta/memory_packs/chapter_001/{job_id}.json')
+    assert 'source_mark_ids' in pack and 'compression_reason' in pack
 
 
 def test_kb_query_card_stars_importance_weighting_affects_rank(tmp_path: Path):

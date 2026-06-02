@@ -1,34 +1,33 @@
 {
   "id": "technique_002",
   "type": "technique",
-  "title": "象征",
+  "title": "误导",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "象征",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "象征"
-    ],
-    "description": "象征：用于提升段落表达与可检验性。",
+    "name": "误导",
+    "category_id": "technique_category_structure",
+    "aliases": [],
+    "description": "用真实但不完整的线索引导读者形成错误判断，后续再回收。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施象征",
-      "回读并收束过度使用"
+      "确定真实答案",
+      "选择一个合理错误解释",
+      "埋入可回查的双义细节"
     ],
     "signals": [
-      "出现象征可观察信号",
-      "节奏/语义与目标一致"
+      "线索真实但解释方向可错",
+      "角色根据有限信息做判断",
+      "后文能重新解释前文细节"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +35,18 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.05
+      "metaphor_density": 0.06
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "误导必须公平",
+        "让误判来自人物视角限制"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "靠作者隐瞒关键事实作弊",
+        "回收时否定前文证据"
       ]
     },
-    "examples": [
-      "示例：用象征改写一句场景句。"
-    ]
+    "examples": []
   }
 }

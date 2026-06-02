@@ -2,13 +2,16 @@ export type CreateType =
   | 'character'
   | 'world'
   | 'style'
+  | 'story'
   | 'outline'
   | 'lore'
   | 'world_rule'
   | 'blueprint'
   | 'chapter'
+  | 'volume'
   | 'project'
   | 'technique'
+  | 'tool_skill'
 
 export type KeyValueItem = {
   raw: string
@@ -31,17 +34,20 @@ const ALLOWED: Record<CreateType, Set<string>> = {
   character: new Set(['tag', 'age', 'importance', 'role', 'identity', 'appearance', 'motivation', 'trait', 'family', 'voice', 'boundary', 'rel', 'arc']),
   world: new Set(['tag', 'type', 'atmosphere', 'desc']),
   style: new Set(['lock', 'max_examples', 'max_chars']),
+  story: new Set(['tag', 'logline', 'theme', 'genre', 'keyword', 'target_reader', 'platform_style', 'banned', 'scene', 'note']),
   outline: new Set(['tag', 'note']),
   lore: new Set(['tag', 'type', 'desc']),
   world_rule: new Set(['tag', 'desc']),
   blueprint: new Set(['story_type', 'scenes']),
-  chapter: new Set(['bind', 'scene', 'signals', 'no-signals']),
+  chapter: new Set(['bind', 'scene', 'signals', 'no-signals', 'volume', 'status', 'order']),
+  volume: new Set(['tag', 'summary', 'order']),
   project: new Set([]),
   technique: new Set(['category', 'alias', 'tag', 'desc', 'signal', 'step', 'intensity']),
+  tool_skill: new Set(['category', 'agent_role', 'input', 'output', 'rule', 'proposal_field', 'desc', 'tag', 'no-evidence', 'auto-apply']),
 }
 
-const BOOL_FLAGS = new Set(['signals', 'no-signals', 'auto-apply', 'no-auto-apply'])
-const NUM_KEYS = new Set(['age', 'importance', 'scenes', 'scene', 'max_examples', 'max_chars', 'weight'])
+const BOOL_FLAGS = new Set(['signals', 'no-signals', 'auto-apply', 'no-auto-apply', 'no-evidence'])
+const NUM_KEYS = new Set(['age', 'importance', 'scenes', 'scene', 'max_examples', 'max_chars', 'weight', 'order'])
 
 function stripPrefix(input: string): string {
   const t = input.trim()
@@ -188,7 +194,7 @@ export function parseCreateInput(input: string): ParsedCreate | null {
       locks.push(val)
       continue
     }
-    if (key === 'trait' || key === 'boundary' || key === 'alias' || key === 'signal' || key === 'step') {
+    if (key === 'trait' || key === 'boundary' || key === 'alias' || key === 'signal' || key === 'step' || key === 'input' || key === 'rule' || key === 'proposal_field' || key === 'keyword' || key === 'banned') {
       const prev = (opts[key] as string[] | undefined) || []
       opts[key] = [...prev, val]
       continue
@@ -232,9 +238,12 @@ export function createHelpText(): string[] {
     '+ character Alice --tag 主角 --age 24 --importance 5 --role protagonist --identity "医学院研究生" --trait 冷静 --trait 克制',
     '+ world 旧城区天桥 --tag 地点 --type location --atmosphere 冷清',
     '+ style 冷峻现实主义 --lock pov --lock tense --max_examples 5 --max_chars 800',
+    '+ story 第一卷主线 --tag 主线 --genre 悬疑 --theme 真相与代价',
     '+ blueprint 三幕结构测试 --story_type three_act --scenes 3',
-    '+ chapter 第一章 --bind blueprint_001 --scene 0 --signals',
+    '+ volume 第一卷 --summary 风暴开始 --order 1',
+    '+ chapter 第一章 --volume volume_001 --order 1 --signals',
     '+ project MyNovel',
     '+ technique 冷笔触 --category 表达手法 --signal 词句冷静 --step 缩短句子',
+    '+ tool_skill 小说问题检查 --category checker --agent_role reviewer --input chapter --rule 人设一致性',
   ]
 }

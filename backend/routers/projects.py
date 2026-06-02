@@ -63,6 +63,9 @@ def list_memory_packs(project_id: str, chapter_id: str | None = None, s: FSStore
                 'summary': {
                     'evidence_count': len(data.get('evidence', [])) if isinstance(data, dict) else 0,
                     'compression_steps': len(data.get('compression_steps', [])) if isinstance(data, dict) else 0,
+                    'source_mark_count': len(data.get('source_mark_ids', [])) if isinstance(data, dict) else 0,
+                    'dropped_mark_count': len(data.get('dropped_mark_ids', [])) if isinstance(data, dict) else 0,
+                    'compression_reason': data.get('compression_reason', '') if isinstance(data, dict) else '',
                 },
             })
     rows.sort(key=lambda x: (x['chapter_id'], x['job_id']), reverse=True)

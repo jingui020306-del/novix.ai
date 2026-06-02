@@ -1,0 +1,31 @@
+{
+  "id": "tool_skill_outline_research",
+  "type": "tool_skill",
+  "title": "小说大纲调研工具",
+  "tags": [
+    "tool_skill",
+    "research"
+  ],
+  "links": [],
+  "payload": {
+    "name": "小说大纲调研工具",
+    "category": "research",
+    "description": "小说大纲调研工具，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "story",
+      "keywords"
+    ],
+    "output_type": "research_notes",
+    "agent_role": "researcher",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "题材读者期待",
+      "同类结构观察",
+      "套路风险",
+      "差异化建议"
+    ],
+    "proposal_fields": []
+  }
+}

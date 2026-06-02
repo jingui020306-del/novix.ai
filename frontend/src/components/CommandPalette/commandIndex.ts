@@ -1,6 +1,6 @@
 import { LucideIcon, Bolt, FileText, Globe, Settings, UserRound, Wand2 } from 'lucide-react'
 
-export type CommandGroup = 'Navigate' | 'Actions' | 'Help'
+export type CommandGroup = 'Navigate' | 'Actions' | 'Create' | 'Help'
 
 export type CommandItem = {
   id: string

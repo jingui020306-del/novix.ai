@@ -28,9 +28,23 @@ router = APIRouter(prefix='/api/projects/{project_id}/drafts')
 
 def _chapter_meta(s: FSStore, project_id: str, chapter_id: str) -> dict:
     meta = s.read_json(project_id, f'drafts/{chapter_id}.meta.json')
+    meta.setdefault('chapter_id', chapter_id)
+    meta.setdefault('title', meta.get('chapter_title') or chapter_id)
+    meta.setdefault('chapter_title', meta.get('title') or chapter_id)
+    meta.setdefault('chapter_status', 'drafting')
+    meta.setdefault('volume_id', 'volume_default')
+    meta.setdefault('order_index', 0)
     meta.setdefault('versions', [])
     meta.setdefault('current_version', None)
     return meta
+
+
+def _chapter_order(s: FSStore, project_id: str) -> list[str]:
+    return [c for c in s.read_md(project_id, 'drafts/.chapter_order').splitlines() if c.strip()]
+
+
+def _write_chapter_order(s: FSStore, project_id: str, chapter_ids: list[str]) -> None:
+    s.write_md(project_id, 'drafts/.chapter_order', "\n".join(chapter_ids) + ("\n" if chapter_ids else ""))
 
 
 def _save_snapshot(s: FSStore, project_id: str, chapter_id: str, content: str, reason: str, patch_id: str | None = None) -> dict:
@@ -88,13 +102,32 @@ def _normalize_ops(patch_ops: list[dict]) -> list[dict]:
 
 @router.get('')
 def list_drafts(project_id: str, s: FSStore = Depends(get_store)):
-    order = s.read_md(project_id, 'drafts/.chapter_order').splitlines()
-    return [c for c in order if c]
+    return _chapter_order(s, project_id)
+
+
+@router.get('/details')
+def list_draft_details(project_id: str, s: FSStore = Depends(get_store)):
+    rows = []
+    for i, chapter_id in enumerate(_chapter_order(s, project_id)):
+        meta = _chapter_meta(s, project_id, chapter_id)
+        if not meta.get('order_index'):
+            meta['order_index'] = i + 1
+        rows.append({
+            "chapter_id": chapter_id,
+            "title": meta.get("title") or meta.get("chapter_title") or chapter_id,
+            "chapter_title": meta.get("chapter_title") or meta.get("title") or chapter_id,
+            "chapter_status": meta.get("chapter_status", "drafting"),
+            "volume_id": meta.get("volume_id", "volume_default"),
+            "order_index": meta.get("order_index", i + 1),
+            "chapter_summary": meta.get("chapter_summary", ""),
+            "word_count": len(s.read_md(project_id, f'drafts/{chapter_id}.md')),
+        })
+    return rows
 
 
 @router.get('/{chapter_id}')
 def get_draft(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
-    return {"chapter_id": chapter_id, "content": s.read_md(project_id, f'drafts/{chapter_id}.md')}
+    return {"chapter_id": chapter_id, "content": s.read_md(project_id, f'drafts/{chapter_id}.md'), "meta": _chapter_meta(s, project_id, chapter_id)}
 
 
 @router.get('/{chapter_id}/lines')
@@ -110,8 +143,23 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
     if old:
         _save_snapshot(s, project_id, chapter_id, old, reason='manual_save')
     s.write_md(project_id, f'drafts/{chapter_id}.md', body.get('content', ''))
+    order = _chapter_order(s, project_id)
+    if chapter_id not in order:
+        order.append(chapter_id)
+        _write_chapter_order(s, project_id, order)
+    meta = _chapter_meta(s, project_id, chapter_id)
+    for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index']:
+        if key in body:
+            meta[key] = body[key]
+    if 'title' in body and 'chapter_title' not in body:
+        meta['chapter_title'] = body['title']
+    if 'chapter_title' in body and 'title' not in body:
+        meta['title'] = body['chapter_title']
+    if not meta.get('order_index'):
+        meta['order_index'] = len(order)
+    s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
     kb.reindex_manuscript_chapter(project_id, chapter_id)
-    return {"ok": True}
+    return {"ok": True, "meta": meta}
 
 
 @router.get('/{chapter_id}/versions')

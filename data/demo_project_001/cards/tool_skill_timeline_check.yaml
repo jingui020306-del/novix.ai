@@ -1,0 +1,30 @@
+{
+  "id": "tool_skill_timeline_check",
+  "type": "tool_skill",
+  "title": "时间线检查",
+  "tags": [
+    "tool_skill",
+    "checker"
+  ],
+  "links": [],
+  "payload": {
+    "name": "时间线检查",
+    "category": "checker",
+    "description": "时间线检查，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "chapter_plan",
+      "canon"
+    ],
+    "output_type": "timeline_risks",
+    "agent_role": "reviewer",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "事件先后",
+      "年龄/日期",
+      "人物是否提前知道信息"
+    ],
+    "proposal_fields": []
+  }
+}

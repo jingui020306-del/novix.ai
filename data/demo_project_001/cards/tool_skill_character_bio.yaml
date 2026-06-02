@@ -1,0 +1,30 @@
+{
+  "id": "tool_skill_character_bio",
+  "type": "tool_skill",
+  "title": "人物小传工具",
+  "tags": [
+    "tool_skill",
+    "generator"
+  ],
+  "links": [],
+  "payload": {
+    "name": "人物小传工具",
+    "category": "generator",
+    "description": "人物小传工具，输出进入待确认队列，不自动覆盖作者卡片。",
+    "input_types": [
+      "character",
+      "story"
+    ],
+    "output_type": "character_proposal",
+    "agent_role": "writer",
+    "evidence_required": true,
+    "auto_apply_allowed": false,
+    "review_policy": "AI 只能生成 proposal；没有 quote/line 的判断不能显示为已命中。",
+    "check_rules": [
+      "补全欲望/恐惧/伤口",
+      "生成说话方式",
+      "生成行为边界"
+    ],
+    "proposal_fields": []
+  }
+}

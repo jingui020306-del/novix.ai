@@ -1,34 +1,33 @@
 {
   "id": "technique_005",
   "type": "technique",
-  "title": "排比",
+  "title": "对话潜台词",
   "tags": [
     "technique",
-    "rhetoric"
+    "narrative"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "排比",
-    "category_id": "technique_category_rhetoric",
-    "aliases": [
-      "排比"
-    ],
-    "description": "排比：用于提升段落表达与可检验性。",
+    "name": "对话潜台词",
+    "category_id": "technique_category_expression",
+    "aliases": [],
+    "description": "让角色嘴上谈一件事，真正争夺的是关系、秘密或立场。",
     "apply_steps": [
-      "明确段落目标",
-      "在关键句实施排比",
-      "回读并收束过度使用"
+      "写出角色不能直说的真实目的",
+      "设计表层话题",
+      "用动作和反应露出潜台词"
     ],
     "signals": [
-      "出现排比可观察信号",
-      "节奏/语义与目标一致"
+      "台词回避核心问题",
+      "停顿/动作承担真实情绪",
+      "对话双方理解不同层含义"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿关键段",
-      "high": "成为主导"
+      "med": "贯穿",
+      "high": "主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -36,20 +35,18 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.08
+      "metaphor_density": 0.06
     },
     "do_dont": {
       "do": [
-        "服务目标",
-        "保持可观察"
+        "让潜台词来自人物关系",
+        "保留读者可读懂的信号"
       ],
       "dont": [
-        "堆砌",
-        "跑偏"
+        "让角色替作者解释",
+        "每句台词都过度隐喻"
       ]
     },
-    "examples": [
-      "示例：用排比改写一句场景句。"
-    ]
+    "examples": []
   }
 }
