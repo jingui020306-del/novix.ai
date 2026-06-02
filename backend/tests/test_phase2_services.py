@@ -245,6 +245,44 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     assert "悬念" in technique["title"]
 
 
+def test_build_drafts_api_roundtrip(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    client = TestClient(app_main.app)
+    story = app_main.store.read_yaml("p1", "cards/story_001.yaml")
+
+    created = client.post("/api/projects/p1/build-drafts", json={
+        "kind": "story_overview",
+        "revision": 2,
+        "selected_chapter": "chapter_001",
+        "story_card": story,
+    })
+    assert created.status_code == 200
+    body = created.json()
+    assert body["kind"] == "story_overview"
+    assert body["revision"] == 2
+    assert body["status"] == "pending"
+    assert body["draft_id"].startswith("build_story_overview_")
+    assert "keywords" in body["body"]
+
+    listed = client.get("/api/projects/p1/build-drafts?kind=story_overview")
+    assert listed.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in listed.json())
+
+    updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
+        "body": '{"accepted": true}',
+        "status": "accepted",
+        "accepted_target": "story_001",
+    })
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "accepted"
+    assert updated.json()["accepted_target"] == "story_001"
+
+    bad = client.post("/api/projects/p1/build-drafts", json={"kind": "not_real"})
+    assert bad.status_code == 400
+
+
 def test_volumes_api_and_chapter_meta_binding(tmp_path: Path):
     import main as app_main
 

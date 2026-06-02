@@ -22,6 +22,7 @@ EXT_SUBDIRS = [
     "meta/wiki",
     "meta/evidence_marks",
     "meta/trust_reports",
+    "meta/build_drafts",
 ]
 
 

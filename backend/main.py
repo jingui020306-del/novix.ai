@@ -12,7 +12,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from jobs.manager import JobManager
-from routers import analyze, blueprints, canon, cards, chapters, config_llm, drafts, health, jobs, kb, projects, schema, sessions, style, uploads, volumes, wiki, world
+from routers import analyze, blueprints, build_drafts, canon, cards, chapters, config_llm, drafts, health, jobs, kb, projects, schema, sessions, style, uploads, volumes, wiki, world
 from services.context_engine import ContextEngine
 from services.kb_service import KBService
 from services.style_service import StyleService
@@ -61,6 +61,7 @@ app.include_router(health.router)
 app.include_router(schema.router)
 app.include_router(projects.router)
 app.include_router(analyze.router)
+app.include_router(build_drafts.router)
 app.include_router(cards.router)
 app.include_router(chapters.router)
 app.include_router(blueprints.router)

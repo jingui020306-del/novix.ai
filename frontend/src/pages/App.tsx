@@ -174,7 +174,8 @@ export default function App() {
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
-  const [buildDraft, setBuildDraft] = useState<{ kind: string; title: string; body: string; revision: number } | null>(null)
+  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string } | null>(null)
+  const [buildDraftBusy, setBuildDraftBusy] = useState(false)
 
   const paletteCacheRef = useRef<PaletteCache>({
     storyCards: [],
@@ -1676,12 +1677,11 @@ export default function App() {
       push('Story card saved')
     }
 
-    const generateBuildDraft = (kind: string) => {
+    const localBuildDraftContent = (kind: string, revision: number) => {
       const payload = normalizeStoryCard(storyForm).payload || {}
       const title = storyForm?.title || '未命名小说'
-      const nextRevision = (buildDraft?.kind === kind ? buildDraft.revision + 1 : 1)
       const chapterId = selectedChapter || 'chapter_001'
-      const seed = `${nextRevision}`
+      const seed = `${revision}`
       const draftByKind: Record<string, any> = {
         story_overview: {
           logline: payload.logline || `${title}的主角在关键事件中被迫面对核心秘密。`,
@@ -1732,12 +1732,46 @@ export default function App() {
           }],
         },
       }
-      setBuildDraft({
-        kind,
-        title: kind === 'story_overview' ? '故事总控草案' : kind === 'character_seed' ? '人物初设草案' : kind === 'lines' ? '明线/暗线草案' : '伏笔草案',
-        body: JSON.stringify(draftByKind[kind], null, 2),
-        revision: nextRevision,
-      })
+      return draftByKind[kind]
+    }
+
+    const generateBuildDraft = async (kind: string) => {
+      const nextRevision = (buildDraft?.kind === kind ? buildDraft.revision + 1 : 1)
+      setBuildDraftBusy(true)
+      try {
+        const rec = await api.post(`/api/projects/${project}/build-drafts`, {
+          kind,
+          revision: nextRevision,
+          selected_chapter: selectedChapter,
+          story_card: normalizeStoryCard(storyForm),
+        })
+        if (rec?.detail) throw new Error(String(rec.detail?.message || rec.detail))
+        setBuildDraft({
+          draft_id: rec.draft_id,
+          kind: rec.kind,
+          title: rec.title,
+          body: rec.body,
+          revision: rec.revision,
+          source: rec.source,
+          status: rec.status,
+          created_at: rec.created_at,
+        })
+        push(`草案已生成：${rec.title}`)
+        return
+      } catch {
+        const fallback = localBuildDraftContent(kind, nextRevision)
+        setBuildDraft({
+          kind,
+          title: kind === 'story_overview' ? '故事总控草案' : kind === 'character_seed' ? '人物初设草案' : kind === 'lines' ? '明线/暗线草案' : '伏笔草案',
+          body: JSON.stringify(fallback, null, 2),
+          revision: nextRevision,
+          source: 'local_fallback',
+          status: 'pending',
+        })
+        push('后端草案接口不可用，已使用本地 fallback', 'error')
+      } finally {
+        setBuildDraftBusy(false)
+      }
     }
 
     const acceptBuildDraft = async () => {
@@ -1753,6 +1787,7 @@ export default function App() {
         const id = parsed.id || `character_${Date.now()}`
         const body = { ...parsed, id, type: 'character', tags: uniq([...(parsed.tags || []), 'author_confirmed']) }
         await api.put(`/api/projects/${project}/cards/${id}`, body)
+        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id })
         setCharacterForm(body)
         mutateCards()
         setView('characters')
@@ -1771,6 +1806,7 @@ export default function App() {
         }
         return normalizeStoryCard({ ...prev, payload })
       })
+      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new' })
       push('草案已确认写入 Story 表单，请保存故事卡')
     }
 
@@ -1901,10 +1937,10 @@ export default function App() {
             <div className='grid grid-cols-12 gap-3'>
               <div className='col-span-5 space-y-2'>
                 <div className='grid grid-cols-2 gap-2'>
-                  <Button onClick={() => generateBuildDraft('story_overview')}>生成故事总控草案</Button>
-                  <Button onClick={() => generateBuildDraft('character_seed')}>生成人物初设草案</Button>
-                  <Button onClick={() => generateBuildDraft('lines')}>生成明线/暗线草案</Button>
-                  <Button onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('story_overview')}>生成故事总控草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('character_seed')}>生成人物初设草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('lines')}>生成明线/暗线草案</Button>
+                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>
                 </div>
                 <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
                   草案不会自动覆盖卡片。你可以单独刷新某个环节，也可以直接改右侧 JSON，再确认写入。
@@ -1916,9 +1952,14 @@ export default function App() {
                     <div className='flex items-center justify-between gap-2'>
                       <div className='text-sm font-medium'>{buildDraft.title} <span className='text-xs text-muted'>rev {buildDraft.revision}</span></div>
                       <div className='flex gap-2'>
-                        <Button className='text-xs' onClick={() => generateBuildDraft(buildDraft.kind)}>刷新这一环节</Button>
+                        <Button className='text-xs' disabled={buildDraftBusy} onClick={() => generateBuildDraft(buildDraft.kind)}>{buildDraftBusy ? '生成中...' : '刷新这一环节'}</Button>
                         <Button className='text-xs' variant='primary' onClick={acceptBuildDraft}>确认写入</Button>
                       </div>
+                    </div>
+                    <div className='flex flex-wrap gap-2 text-xs text-muted'>
+                      <Badge>{buildDraft.status || 'pending'}</Badge>
+                      <Badge>{buildDraft.source || 'local'}</Badge>
+                      {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
                     </div>
                     <Textarea className='h-56 mono' value={buildDraft.body} onChange={(e) => setBuildDraft({ ...buildDraft, body: e.target.value })} />
                   </div>
