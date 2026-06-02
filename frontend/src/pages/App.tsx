@@ -294,6 +294,11 @@ export default function App() {
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
+  const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
+  const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
+  const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
+  const hiddenLineRows = meaningfulRows(activeStoryPayload.hidden_line, ['truth', 'visible_hint', 'hidden_meaning', 'reveal_timing'])
+  const foreshadowingRows = meaningfulRows(activeStoryPayload.foreshadowings, ['content', 'surface_signal', 'true_meaning', 'payoff'])
   const storyBuildProgress = [
     {
       id: 'basics',
@@ -316,14 +321,14 @@ export default function App() {
     {
       id: 'scenes',
       label: '重要场景',
-      done: (activeStoryPayload.important_scenes || []).filter((x: any) => x.scene || x.purpose).length > 0,
-      detail: `${(activeStoryPayload.important_scenes || []).filter((x: any) => x.scene || x.purpose).length} 个场景`,
+      done: importantSceneRows.length > 0,
+      detail: `${importantSceneRows.length} 个场景`,
     },
     {
       id: 'lines',
       label: '明线暗线伏笔',
-      done: (activeStoryPayload.open_line || []).length > 0 && (activeStoryPayload.hidden_line || []).length > 0 && (activeStoryPayload.foreshadowings || []).length > 0,
-      detail: `明线 ${(activeStoryPayload.open_line || []).length} · 暗线 ${(activeStoryPayload.hidden_line || []).length} · 伏笔 ${(activeStoryPayload.foreshadowings || []).length}`,
+      done: openLineRows.length > 0 && hiddenLineRows.length > 0 && foreshadowingRows.length > 0,
+      detail: `明线 ${openLineRows.length} · 暗线 ${hiddenLineRows.length} · 伏笔 ${foreshadowingRows.length}`,
     },
     {
       id: 'confirm',
@@ -1734,15 +1739,19 @@ export default function App() {
       const title = storyForm?.title || '未命名小说'
       const chapterId = selectedChapter || 'chapter_001'
       const seed = `${revision}`
+      const scenes = meaningfulRows(payload.important_scenes, ['scene', 'purpose', 'chapter'])
       const draftByKind: Record<string, any> = {
         story_overview: {
           logline: payload.logline || `${title}的主角在关键事件中被迫面对核心秘密。`,
           theme: payload.theme || '选择的代价与自我边界',
+          genre: payload.genre || '长篇类型小说',
+          worldview: payload.worldview || '请补充世界背景、关键规则和限制。',
+          main_conflict: payload.main_conflict || '主角目标与外部压力、隐藏真相之间形成持续冲突。',
           keywords: payload.keywords?.length ? payload.keywords : ['主角秘密', '阶段冲突', `刷新${seed}`],
           target_reader: payload.target_reader || '喜欢人物动机清晰、伏笔可回查、章节钩子明确的长篇读者。',
           platform_style: payload.platform_style || '章节节奏紧，每章有明确推进和未解问题。',
           banned_items: payload.banned_items?.length ? payload.banned_items : ['不要提前揭示最终真相', '不要让角色违背硬设定'],
-          important_scenes: payload.important_scenes?.length ? payload.important_scenes : [{ scene: '开篇关键场景', purpose: '触发主冲突', chapter: chapterId }],
+          important_scenes: scenes.length ? scenes : [{ scene: '开篇关键场景', purpose: '触发主冲突', chapter: chapterId }],
         },
         character_seed: {
           id: `character_${Date.now()}`,
@@ -1884,7 +1893,18 @@ export default function App() {
       writeBuildDraftBody({ ...parsedBuildDraft, [section]: rows })
     }
 
-    const appendDraftRowsToStory = (section: string, rows: any[]) => {
+    const markBuildDraftPartiallyAccepted = async () => {
+      if (!buildDraft?.draft_id) return
+      await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, {
+        body: buildDraft.body,
+        status: 'partially_accepted',
+        accepted_target: storyForm?.id || 'story_new',
+      })
+      setBuildDraft({ ...buildDraft, status: 'partially_accepted' })
+      mutateBuildDraftRows()
+    }
+
+    const appendDraftRowsToStory = async (section: string, rows: any[]) => {
       if (!buildDraft || !rows.length) return
       setStoryForm((prev: any) => {
         const payload = { ...(prev?.payload || {}) }
@@ -1899,10 +1919,11 @@ export default function App() {
         payload[section] = [...(payload[section] || []), ...annotated]
         return normalizeStoryCard({ ...prev, payload })
       })
+      await markBuildDraftPartiallyAccepted()
       push(`已局部写入 ${section}，请保存故事卡`)
     }
 
-    const acceptDraftStoryFields = (keys: string[]) => {
+    const acceptDraftStoryFields = async (keys: string[]) => {
       if (!parsedBuildDraft || !buildDraft) return
       setStoryForm((prev: any) => {
         const payload = { ...(prev?.payload || {}) }
@@ -1916,6 +1937,7 @@ export default function App() {
         payload.author_modified = true
         return normalizeStoryCard({ ...prev, payload })
       })
+      await markBuildDraftPartiallyAccepted()
       push('已局部写入 Story 表单，请保存故事卡')
     }
 
@@ -2038,6 +2060,10 @@ export default function App() {
                 <Textarea className='h-16' value={parsedBuildDraft.theme || ''} onChange={(e) => updateBuildDraftRoot('theme', e.target.value)} />
               </div>
               <div className='col-span-4'>
+                <label className='text-xs text-muted'>题材</label>
+                <Input value={parsedBuildDraft.genre || ''} onChange={(e) => updateBuildDraftRoot('genre', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
                 <label className='text-xs text-muted'>关键词</label>
                 <Input value={(parsedBuildDraft.keywords || []).join(',')} onChange={(e) => updateBuildDraftRoot('keywords', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
               </div>
@@ -2045,7 +2071,15 @@ export default function App() {
                 <label className='text-xs text-muted'>目标读者</label>
                 <Input value={parsedBuildDraft.target_reader || ''} onChange={(e) => updateBuildDraftRoot('target_reader', e.target.value)} />
               </div>
-              <div className='col-span-4'>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>世界观</label>
+                <Textarea className='h-16' value={parsedBuildDraft.worldview || ''} onChange={(e) => updateBuildDraftRoot('worldview', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>主冲突</label>
+                <Textarea className='h-16' value={parsedBuildDraft.main_conflict || ''} onChange={(e) => updateBuildDraftRoot('main_conflict', e.target.value)} />
+              </div>
+              <div className='col-span-12'>
                 <label className='text-xs text-muted'>平台风格</label>
                 <Input value={parsedBuildDraft.platform_style || ''} onChange={(e) => updateBuildDraftRoot('platform_style', e.target.value)} />
               </div>
@@ -2055,8 +2089,8 @@ export default function App() {
               </div>
             </div>
             <div className='flex flex-wrap gap-2'>
-              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['keywords', 'target_reader', 'platform_style', 'banned_items'])}>只写入基础约束</Button>
-              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['logline', 'theme'])}>只写入大纲核心</Button>
+              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['genre', 'keywords', 'target_reader', 'platform_style', 'banned_items'])}>只写入基础约束</Button>
+              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['logline', 'theme', 'worldview', 'main_conflict'])}>只写入大纲核心</Button>
               <Button className='text-xs' onClick={() => acceptDraftStoryFields(['important_scenes'])}>只写入重要场景</Button>
             </div>
             <div className='space-y-2'>
@@ -2477,19 +2511,32 @@ export default function App() {
                 <label className='text-xs text-muted'>禁写事项</label>
                 <Textarea className='h-24' value={(storyPayload.banned_items || []).join('\n')} onChange={(e) => updateStoryPayload('banned_items', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
               </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>重要场景 JSON</label>
-                <Textarea
-                  className='h-24 mono'
-                  value={JSON.stringify(storyPayload.important_scenes || [], null, 2)}
-                  onChange={(e) => {
-                    try {
-                      updateStoryPayload('important_scenes', JSON.parse(e.target.value || '[]'))
-                    } catch {
-                      // keep typing tolerant
-                    }
-                  }}
-                />
+              <div className='col-span-6 space-y-2'>
+                <div className='flex items-center justify-between gap-2'>
+                  <label className='text-xs text-muted'>重要场景</label>
+                  <Button className='text-xs' onClick={() => addStoryArrayItem('important_scenes', STORY_PAYLOAD_TEMPLATE.important_scenes[0])}>新增场景</Button>
+                </div>
+                {(storyPayload.important_scenes || []).map((row: any, index: number) => (
+                  <div key={`story-scene-${index}`} className='rounded-ui border border-border bg-surface p-2'>
+                    <div className='grid grid-cols-12 gap-2'>
+                      <div className='col-span-4'>
+                        <label className='text-xs text-muted'>场景</label>
+                        <Input value={row.scene || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'scene', e.target.value)} />
+                      </div>
+                      <div className='col-span-5'>
+                        <label className='text-xs text-muted'>作用</label>
+                        <Input value={row.purpose || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'purpose', e.target.value)} />
+                      </div>
+                      <div className='col-span-3'>
+                        <label className='text-xs text-muted'>章节</label>
+                        <Input value={row.chapter || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'chapter', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className='mt-2 flex justify-end'>
+                      <Button className='text-xs' onClick={() => removeStoryArrayItem('important_scenes', index)}>删除</Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </Card>

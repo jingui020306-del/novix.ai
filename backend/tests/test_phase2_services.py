@@ -265,6 +265,8 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert body["status"] == "pending"
     assert body["draft_id"].startswith("build_story_overview_")
     assert "keywords" in body["body"]
+    assert "main_conflict" in body["body"]
+    assert "worldview" in body["body"]
 
     listed = client.get("/api/projects/p1/build-drafts?kind=story_overview")
     assert listed.status_code == 200
