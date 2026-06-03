@@ -171,6 +171,7 @@ export default function App() {
   const [selectionMode, setSelectionMode] = useState<'line' | 'paragraph'>('line')
   const [selectionStart, setSelectionStart] = useState('')
   const [selectionEnd, setSelectionEnd] = useState('')
+  const [pendingWriteJob, setPendingWriteJob] = useState<{ maxTokens: number; range: { start: number; end: number } | null; label: string } | null>(null)
   const [analyzeBusy, setAnalyzeBusy] = useState(false)
   const [analyzeResult, setAnalyzeResult] = useState<any>(null)
   const [factRevisionModal, setFactRevisionModal] = useState<{ open: boolean; fact: any | null; patch: string; reason: string }>({ open: false, fact: null, patch: '{}', reason: '' })
@@ -1240,6 +1241,10 @@ export default function App() {
     } catch {
       push('Run job failed', 'error')
     }
+  }
+
+  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章') => {
+    setPendingWriteJob({ maxTokens, range, label })
   }
 
   const analyzeChapter = async () => {
@@ -3106,7 +3111,7 @@ export default function App() {
                 <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? 'Saving...' : 'Save'}</Button>
                 <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
                 <Button onClick={analyzeMarks} disabled={chapterSaving}>Analyze Marks</Button>
-                <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
+                <Button variant='primary' onClick={() => requestRunJob(2400, null, '生成本章')}>生成本章</Button>
               </div>
             }
           >
@@ -3206,8 +3211,8 @@ export default function App() {
                 <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='end' />
               </div>
               <div className='col-span-6 flex items-end gap-2'>
-                <Button onClick={() => runJob(160)}>超预算模拟</Button>
-                {selectionRange ? <Button onClick={() => runJob(1200, selectionRange)}>Edit Selection</Button> : null}
+                <Button onClick={() => requestRunJob(160, null, '超预算模拟')}>超预算模拟</Button>
+                {selectionRange ? <Button onClick={() => requestRunJob(1200, selectionRange, 'Edit Selection')}>Edit Selection</Button> : null}
               </div>
             </div>
             {selectionRange ? <p className='mt-2 text-xs text-muted'>Selection range: L{selectionRange.start}-L{selectionRange.end}</p> : <p className='mt-2 text-xs text-muted'>Set start/end to enable Edit Selection.</p>}
@@ -3905,6 +3910,7 @@ export default function App() {
     buildDraftBusy,
     buildWizardStep,
     activeBuildWizardStep,
+    pendingWriteJob,
     storyBuildProgress,
     completedBuildSteps,
     pendingBuildDrafts,
@@ -4236,5 +4242,112 @@ export default function App() {
     </div>
   )
 
-  return <Layout left={left} center={center} right={right} header={header} />
+  const writeConfirmOverlay = pendingWriteJob ? (
+    <div className='fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 py-10 backdrop-blur-[1px]' onMouseDown={() => setPendingWriteJob(null)}>
+      <div
+        role='dialog'
+        aria-modal='true'
+        aria-label='生成前确认'
+        className='w-[min(840px,96vw)] rounded-ui border border-border bg-panel shadow-soft'
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className='border-b border-border px-4 py-3'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div>
+              <h3 className='text-base font-semibold'>生成前确认</h3>
+              <p className='text-xs text-muted'>确认本次 job 的模型状态和当前 UI 已绑定材料，再启动三 Agent 流程。</p>
+            </div>
+            <Badge tone={selectedProfileHealth?.is_mock || selectedProfileHealth?.missing_fields?.length || !profiles[llmProfileId] ? 'warn' : 'success'}>
+              {selectedProfileHealth?.is_mock ? 'mock mode' : selectedProfileHealth?.missing_fields?.length ? 'incomplete' : profiles[llmProfileId] ? 'ready' : 'missing'}
+            </Badge>
+          </div>
+        </div>
+        <div className='max-h-[72vh] overflow-auto p-4'>
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 font-medium'>Job</div>
+              <div>Action: {pendingWriteJob.label}</div>
+              <div>Chapter: {selectedChapter}</div>
+              <div>Title: {chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
+              <div>Volume: {currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
+              <div>Max tokens: {pendingWriteJob.maxTokens}</div>
+              <div>Selection: {pendingWriteJob.range ? `L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : 'full chapter'}</div>
+              <div>Auto apply patch: {autoApplyPatch ? 'on' : 'off'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 font-medium'>LLM Profile</div>
+              <div>{llmProfileId}</div>
+              <div>{selectedProfileHealth?.provider || profiles[llmProfileId]?.provider || 'missing'} · {selectedProfileHealth?.model || profiles[llmProfileId]?.model || 'no model'}</div>
+              <div>API key: {selectedProfileHealth ? (selectedProfileHealth.requires_api_key ? (selectedProfileHealth.api_key_configured ? 'configured' : 'missing') : 'not required') : 'unknown'}</div>
+              {selectedProfileHealth?.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Missing: {selectedProfileHealth.missing_fields.join(', ')}</div> : null}
+              {selectedProfileHealth?.is_mock ? <div className='mt-1 text-amber-700 dark:text-amber-300'>当前是 mock 模式，会产生模拟结果。</div> : null}
+              {!profiles[llmProfileId] ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Profile not found; backend may fallback.</div> : null}
+            </div>
+          </div>
+          <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-3'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>章节计划</span><Badge>{currentStoryLinks.chapterPlan.length}</Badge></div>
+              {(currentStoryLinks.chapterPlan || []).slice(0, 4).map((row: any, idx: number) => (
+                <div key={`confirm-plan-${idx}`} className='mb-1 truncate text-muted'>{row.title || row.focus || row.chapter || row.chapter_id}</div>
+              ))}
+              {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>No linked plan row.</div>}
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>明线 / 暗线</span><Badge>{currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length}</Badge></div>
+              <div className='text-muted'>明线: {currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : 'none'}</div>
+              <div className='mt-1 text-muted'>暗线: {currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.visible_hint || x.truth || x.chapter).join(' / ') : 'none'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>伏笔</span><Badge>{currentStoryLinks.foreshadowings.length}</Badge></div>
+              {currentStoryLinks.foreshadowings.slice(0, 4).map((x: any) => (
+                <div key={x.id || x.content} className='mb-1 truncate text-muted'>{x.content || x.id} ({x.status || '未出现'})</div>
+              ))}
+              {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>No linked foreshadowing.</div>}
+            </div>
+          </div>
+          <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Pinned Techniques</span><Badge>{(currentChapterMeta?.pinned_techniques || []).length}</Badge></div>
+              {(currentChapterMeta?.pinned_techniques || []).slice(0, 6).map((row: any) => {
+                const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+                return <div key={row.technique_id} className='mb-1 truncate text-muted'>{tech?.title || row.technique_id} · {row.intensity || 'med'}</div>
+              })}
+              {!(currentChapterMeta?.pinned_techniques || []).length && <div className='text-muted'>No pinned techniques.</div>}
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Memory Packs</span><Badge>{Array.isArray(memoryPacks) ? memoryPacks.length : 0}</Badge></div>
+              {(Array.isArray(memoryPacks) ? memoryPacks : []).slice(0, 4).map((p: any) => (
+                <div key={p.pack_id} className='mb-1 truncate text-muted'>{p.chapter_id} / {p.job_id}</div>
+              ))}
+              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <div className='text-muted'>No memory packs yet.</div> : null}
+            </div>
+          </div>
+          <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3 text-xs text-muted'>
+            这些是当前界面可确认的绑定材料；真正传入模型的材料会在 job 事件的 Context Manifest 中记录。没有证据 quote 的判断不会被显示为已命中。
+          </div>
+        </div>
+        <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
+          <Button onClick={() => { setPendingWriteJob(null); setView('settings') }}>去配置 API</Button>
+          <Button onClick={() => setPendingWriteJob(null)}>取消</Button>
+          <Button
+            variant='primary'
+            onClick={() => {
+              const job = pendingWriteJob
+              setPendingWriteJob(null)
+              if (job) runJob(job.maxTokens, job.range)
+            }}
+          >
+            确认生成
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      <Layout left={left} center={center} right={right} header={header} />
+      {writeConfirmOverlay}
+    </>
+  )
 }
