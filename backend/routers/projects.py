@@ -1,8 +1,11 @@
 from pathlib import Path
+import io
 import json
 import uuid
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from storage.fs_store import FSStore
 
@@ -34,6 +37,54 @@ def get_project(project_id: str, s: FSStore = Depends(get_store)):
     if not data:
         raise HTTPException(status_code=404, detail='Not found')
     return data
+
+
+@router.get('/{project_id}/export.zip')
+def export_project_zip(project_id: str, s: FSStore = Depends(get_store)):
+    project_dir = s._project_dir(project_id)
+    project = s.read_yaml(project_id, 'project.yaml')
+    if not project or not project_dir.exists():
+        raise HTTPException(status_code=404, detail='Not found')
+
+    buf = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(project_dir.rglob('*')):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(project_dir)
+            if any(part.startswith('.') for part in rel.parts):
+                continue
+            zf.write(path, f'{project_id}/{rel.as_posix()}')
+            file_count += 1
+        manifest = {
+            'format': 'novix_project_backup',
+            'version': 1,
+            'project_id': project_id,
+            'project_title': project.get('title', project_id),
+            'file_count': file_count,
+            'includes': [
+                'drafts',
+                'cards',
+                'canon',
+                'volumes',
+                'sessions',
+                'meta/evidence_marks',
+                'meta/trust_reports',
+                'meta/chapter_reviews',
+                'meta/patch_reviews',
+                'meta/jobs',
+                'meta/memory_packs',
+            ],
+        }
+        zf.writestr(f'{project_id}/novix_backup_manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+    buf.seek(0)
+    filename = f'{project_id}-novix-backup.zip'
+    return StreamingResponse(
+        buf,
+        media_type='application/zip',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get('/{project_id}/memory_packs')

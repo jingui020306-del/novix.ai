@@ -1,5 +1,8 @@
 from pathlib import Path
+import io
+import json
 import sys
+import zipfile
 
 from fastapi.testclient import TestClient
 
@@ -243,6 +246,32 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     assert tool_skill["type"] == "tool_skill"
     assert tool_skill["payload"]["auto_apply_allowed"] is False
     assert "悬念" in technique["title"]
+
+
+def test_project_export_zip_contains_author_assets(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        resp = client.get('/api/projects/p1/export.zip')
+        assert resp.status_code == 200
+        assert resp.headers['content-disposition'].endswith('p1-novix-backup.zip"')
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            names = set(zf.namelist())
+            assert 'p1/novix_backup_manifest.json' in names
+            assert 'p1/project.yaml' in names
+            assert 'p1/drafts/chapter_001.md' in names
+            assert 'p1/cards/story_001.yaml' in names
+            manifest = json.loads(zf.read('p1/novix_backup_manifest.json').decode('utf-8'))
+            assert manifest['format'] == 'novix_project_backup'
+            assert manifest['project_id'] == 'p1'
+            assert manifest['file_count'] > 0
+    finally:
+        app_main.store = old_store
 
 
 def test_build_drafts_api_roundtrip(tmp_path: Path):
