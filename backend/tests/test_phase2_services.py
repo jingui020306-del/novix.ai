@@ -274,6 +274,52 @@ def test_project_export_zip_contains_author_assets(tmp_path: Path):
         app_main.store = old_store
 
 
+def test_project_import_zip_restores_as_new_project(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        exported = client.get('/api/projects/p1/export.zip')
+        assert exported.status_code == 200
+        imported = client.post('/api/projects/import.zip', files={'file': ('backup.zip', exported.content, 'application/zip')})
+        assert imported.status_code == 200
+        body = imported.json()
+        assert body['project_id'].startswith('restored_p1_')
+        assert body['restored_from_project_id'] == 'p1'
+        restored = store.read_yaml(body['project_id'], 'project.yaml')
+        assert restored['id'] == body['project_id']
+        assert restored['restored_from_project_id'] == 'p1'
+        assert store.read_md(body['project_id'], 'drafts/chapter_001.md')
+        listed_ids = [row['id'] for row in client.get('/api/projects').json()]
+        assert body['project_id'] in listed_ids
+    finally:
+        app_main.store = old_store
+
+
+def test_project_import_zip_rejects_path_traversal(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('p1/novix_backup_manifest.json', json.dumps({'format': 'novix_project_backup', 'project_id': 'p1'}))
+            zf.writestr('p1/../evil.txt', 'bad')
+        client = TestClient(app_main.app)
+        resp = client.post('/api/projects/import.zip', files={'file': ('bad.zip', buf.getvalue(), 'application/zip')})
+        assert resp.status_code == 400
+        assert not [row for row in client.get('/api/projects').json() if row['id'].startswith('restored_p1_')]
+    finally:
+        app_main.store = old_store
+
+
 def test_project_export_markdown_contains_ordered_manuscript(tmp_path: Path):
     store = make_store(tmp_path)
 

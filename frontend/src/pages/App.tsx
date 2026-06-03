@@ -203,6 +203,7 @@ export default function App() {
   })
 
   const schemaCacheRef = useRef<SchemaCache>({ cardSchemas: {} })
+  const backupImportInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const loaded = loadSettings()
@@ -1310,6 +1311,26 @@ export default function App() {
     window.location.href = `/api/projects/${project}/export.md`
   }
 
+  const importProjectBackup = async (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/projects/import.zip', { method: 'POST', body: form })
+      if (!res.ok) throw new Error(await res.text())
+      const body = await res.json()
+      await mutateProjects()
+      setProject(body.project_id)
+      setView('projects')
+      push(`备份已导入: ${body.project_id}`)
+    } catch {
+      push('备份导入失败', 'error')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
   const openEvidence = async (ev: any) => {
     const src = ev?.source || {}
     if (ev?.kb_id === 'kb_manuscript' || src.chapter_id) {
@@ -2395,7 +2416,9 @@ export default function App() {
                 <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
                 <Button onClick={downloadProjectBackup}>导出备份</Button>
                 <Button onClick={downloadManuscriptMarkdown}>导出正文</Button>
+                <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
               </div>
+              <input ref={backupImportInputRef} className='hidden' type='file' accept='.zip,application/zip' onChange={importProjectBackup} />
               <div className='text-xs text-muted'>备份用于恢复全项目；正文 Markdown 用于投稿、迁移和直接阅读。</div>
             </div>
           </Card>

@@ -1,10 +1,10 @@
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import io
 import json
 import uuid
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from storage.fs_store import FSStore
@@ -53,11 +53,80 @@ def _strip_duplicate_heading(content: str, chapter_id: str, title: str) -> str:
     return content.strip()
 
 
+def _safe_restore_member(project_dir: Path, rel: PurePosixPath) -> Path:
+    if not rel.parts or any(part in {'', '.', '..'} for part in rel.parts):
+        raise HTTPException(status_code=400, detail='invalid backup path')
+    target = (project_dir / Path(*rel.parts)).resolve()
+    root = project_dir.resolve()
+    if target == root or root not in target.parents:
+        raise HTTPException(status_code=400, detail='invalid backup path')
+    return target
+
+
 @router.post("")
 def create_project(body: dict, s: FSStore = Depends(get_store)):
     pid = f"project_{uuid.uuid4().hex[:8]}"
     s.ensure_project(pid, body.get("title", pid))
     return {"project_id": pid}
+
+
+@router.post('/import.zip')
+async def import_project_zip(file: UploadFile = File(...), s: FSStore = Depends(get_store)):
+    if not (file.filename or '').lower().endswith('.zip'):
+        raise HTTPException(status_code=400, detail='Only zip backups supported')
+    raw = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail='Invalid zip file') from exc
+
+    names = [name for name in zf.namelist() if not name.endswith('/')]
+    manifest_name = next((name for name in names if name.endswith('/novix_backup_manifest.json')), '')
+    if not manifest_name:
+        raise HTTPException(status_code=400, detail='novix backup manifest missing')
+    try:
+        manifest = json.loads(zf.read(manifest_name).decode('utf-8'))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail='invalid backup manifest') from exc
+    if manifest.get('format') != 'novix_project_backup':
+        raise HTTPException(status_code=400, detail='unsupported backup format')
+
+    root_prefix = manifest_name.rsplit('/', 1)[0]
+    old_project_id = str(manifest.get('project_id') or root_prefix or 'project')
+    new_project_id = f"restored_{old_project_id}_{uuid.uuid4().hex[:8]}".replace('-', '_')
+    restore_members: list[tuple[str, PurePosixPath]] = []
+    for name in names:
+        if any(part in {'', '.', '..'} for part in name.split('/')):
+            raise HTTPException(status_code=400, detail='invalid backup path')
+        if not name.startswith(f'{root_prefix}/'):
+            continue
+        rel = PurePosixPath(name).relative_to(PurePosixPath(root_prefix))
+        if rel.name == 'novix_backup_manifest.json':
+            continue
+        if any(part.startswith('.') for part in rel.parts):
+            continue
+        restore_members.append((name, rel))
+
+    project_dir = s.ensure_project(new_project_id, f"{manifest.get('project_title') or old_project_id} (restored)")
+
+    restored_files = 0
+    for name, rel in restore_members:
+        target = _safe_restore_member(project_dir, rel)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(zf.read(name))
+        restored_files += 1
+
+    project = s.read_yaml(new_project_id, 'project.yaml')
+    project['id'] = new_project_id
+    project.setdefault('title', manifest.get('project_title') or new_project_id)
+    project['restored_from_project_id'] = old_project_id
+    project['restore_source_file'] = file.filename or ''
+    s.write_yaml(new_project_id, 'project.yaml', project)
+    return {
+        'project_id': new_project_id,
+        'restored_from_project_id': old_project_id,
+        'restored_files': restored_files,
+    }
 
 
 @router.get("")
