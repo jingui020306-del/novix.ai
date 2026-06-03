@@ -19,6 +19,40 @@ def get_store() -> FSStore:
 router = APIRouter(prefix="/api/projects")
 
 
+def _chapter_order(s: FSStore, project_id: str) -> list[str]:
+    return [x for x in s.read_md(project_id, 'drafts/.chapter_order').splitlines() if x.strip()]
+
+
+def _chapter_meta(s: FSStore, project_id: str, chapter_id: str, index: int = 0) -> dict:
+    meta = s.read_json(project_id, f'drafts/{chapter_id}.meta.json')
+    meta.setdefault('chapter_id', chapter_id)
+    meta.setdefault('title', meta.get('chapter_title') or chapter_id)
+    meta.setdefault('chapter_title', meta.get('title') or chapter_id)
+    meta.setdefault('volume_id', 'volume_default')
+    meta.setdefault('order_index', index + 1)
+    return meta
+
+
+def _volume_rows(s: FSStore, project_id: str) -> list[dict]:
+    rows = []
+    volumes_dir = s._safe_path(project_id, 'volumes')
+    if volumes_dir.exists():
+        for path in volumes_dir.glob('*.json'):
+            row = s.read_json(project_id, f'volumes/{path.name}')
+            if row:
+                rows.append(row)
+    if not any(x.get('id') == 'volume_default' for x in rows):
+        rows.append({'id': 'volume_default', 'title': '默认卷', 'summary': '未分卷章节', 'order_index': 0})
+    return sorted(rows, key=lambda x: (x.get('order_index', 0), x.get('id', '')))
+
+
+def _strip_duplicate_heading(content: str, chapter_id: str, title: str) -> str:
+    lines = content.strip().splitlines()
+    if lines and lines[0].strip().startswith('# '):
+        return '\n'.join(lines[1:]).strip()
+    return content.strip()
+
+
 @router.post("")
 def create_project(body: dict, s: FSStore = Depends(get_store)):
     pid = f"project_{uuid.uuid4().hex[:8]}"
@@ -83,6 +117,57 @@ def export_project_zip(project_id: str, s: FSStore = Depends(get_store)):
     return StreamingResponse(
         buf,
         media_type='application/zip',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get('/{project_id}/export.md')
+def export_project_markdown(project_id: str, s: FSStore = Depends(get_store)):
+    project = s.read_yaml(project_id, 'project.yaml')
+    if not project:
+        raise HTTPException(status_code=404, detail='Not found')
+
+    title = project.get('title') or project_id
+    chapters = [_chapter_meta(s, project_id, chapter_id, i) for i, chapter_id in enumerate(_chapter_order(s, project_id))]
+    by_volume: dict[str, list[dict]] = {}
+    for chapter in chapters:
+        by_volume.setdefault(chapter.get('volume_id') or 'volume_default', []).append(chapter)
+
+    parts = [f'# {title}', '', f'> novix.ai manuscript export · project: {project_id}', '']
+    exported_chapters = 0
+    for volume in _volume_rows(s, project_id):
+        volume_id = volume.get('id') or 'volume_default'
+        rows = sorted(by_volume.pop(volume_id, []), key=lambda x: (x.get('order_index', 0), x.get('chapter_id', '')))
+        if not rows:
+            continue
+        parts.extend([f'## {volume.get("title") or volume_id}', ''])
+        if volume.get('summary'):
+            parts.extend([str(volume.get('summary')), ''])
+        for row in rows:
+            chapter_id = row.get('chapter_id')
+            chapter_title = row.get('chapter_title') or row.get('title') or chapter_id
+            content = _strip_duplicate_heading(s.read_md(project_id, f'drafts/{chapter_id}.md'), chapter_id, chapter_title)
+            parts.extend([f'### {chapter_title}', ''])
+            if content:
+                parts.extend([content, ''])
+            exported_chapters += 1
+    for volume_id, rows in sorted(by_volume.items()):
+        parts.extend([f'## {volume_id}', ''])
+        for row in sorted(rows, key=lambda x: (x.get('order_index', 0), x.get('chapter_id', ''))):
+            chapter_id = row.get('chapter_id')
+            chapter_title = row.get('chapter_title') or row.get('title') or chapter_id
+            content = _strip_duplicate_heading(s.read_md(project_id, f'drafts/{chapter_id}.md'), chapter_id, chapter_title)
+            parts.extend([f'### {chapter_title}', ''])
+            if content:
+                parts.extend([content, ''])
+            exported_chapters += 1
+
+    parts.extend([f'<!-- exported_chapters: {exported_chapters} -->', ''])
+    body = '\n'.join(parts)
+    filename = f'{project_id}-manuscript.md'
+    return StreamingResponse(
+        io.BytesIO(body.encode('utf-8')),
+        media_type='text/markdown; charset=utf-8',
         headers={'Content-Disposition': f'attachment; filename="{filename}"'},
     )
 

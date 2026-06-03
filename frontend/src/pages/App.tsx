@@ -1305,6 +1305,11 @@ export default function App() {
     window.location.href = `/api/projects/${project}/export.zip`
   }
 
+  const downloadManuscriptMarkdown = () => {
+    if (!project) return
+    window.location.href = `/api/projects/${project}/export.md`
+  }
+
   const openEvidence = async (ev: any) => {
     const src = ev?.source || {}
     if (ev?.kb_id === 'kb_manuscript' || src.chapter_id) {
@@ -2389,8 +2394,9 @@ export default function App() {
               <div className='flex flex-wrap gap-2'>
                 <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
                 <Button onClick={downloadProjectBackup}>导出备份</Button>
+                <Button onClick={downloadManuscriptMarkdown}>导出正文</Button>
               </div>
-              <div className='text-xs text-muted'>备份包含正文、卡片、canon、证据标记、信任报告和 AI 审阅记录。</div>
+              <div className='text-xs text-muted'>备份用于恢复全项目；正文 Markdown 用于投稿、迁移和直接阅读。</div>
             </div>
           </Card>
 

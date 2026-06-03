@@ -274,6 +274,29 @@ def test_project_export_zip_contains_author_assets(tmp_path: Path):
         app_main.store = old_store
 
 
+def test_project_export_markdown_contains_ordered_manuscript(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        resp = client.get('/api/projects/p1/export.md')
+        assert resp.status_code == 200
+        assert resp.headers['content-disposition'].endswith('p1-manuscript.md"')
+        body = resp.content.decode('utf-8')
+        assert body.startswith('# Demo Novel')
+        assert '## 第一卷' in body
+        assert '### 雨夜来信' in body
+        assert '# Chapter 001' not in body
+        assert '<!-- exported_chapters:' in body
+        assert '临港城' in body or '林秋' in body
+    finally:
+        app_main.store = old_store
+
+
 def test_build_drafts_api_roundtrip(tmp_path: Path):
     import main as app_main
 
