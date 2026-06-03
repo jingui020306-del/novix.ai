@@ -265,10 +265,38 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert body["status"] == "pending"
     assert body["draft_id"].startswith("build_story_overview_")
     assert "keywords" in body["body"]
+    assert "main_conflict" in body["body"]
+    assert "worldview" in body["body"]
 
     listed = client.get("/api/projects/p1/build-drafts?kind=story_overview")
     assert listed.status_code == 200
     assert any(x["draft_id"] == body["draft_id"] for x in listed.json())
+
+    pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert pending.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in pending.json())
+
+    app_main.store.write_json("p1", "meta/build_drafts/build_legacy_no_status.json", {
+        "draft_id": "build_legacy_no_status",
+        "kind": "story_overview",
+        "title": "旧草案",
+        "revision": 1,
+        "source": "legacy",
+        "body": "{}",
+        "created_at": "2000-01-01T00:00:00+00:00",
+    })
+    legacy_pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert legacy_pending.status_code == 200
+    assert any(x["draft_id"] == "build_legacy_no_status" and x["status"] == "pending" for x in legacy_pending.json())
+
+    bad_status = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={"status": "done-ish"})
+    assert bad_status.status_code == 400
+    still_pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert still_pending.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in still_pending.json())
+
+    bad_scope = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={"accepted_scope": "all"})
+    assert bad_scope.status_code == 400
 
     updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
         "body": '{"accepted": true}',
@@ -278,6 +306,54 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert updated.status_code == 200
     assert updated.json()["status"] == "accepted"
     assert updated.json()["accepted_target"] == "story_001"
+
+    accepted = client.get("/api/projects/p1/build-drafts?status=accepted")
+    assert accepted.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in accepted.json())
+    assert accepted.json()[0]["draft_id"] == body["draft_id"]
+
+    pending_after_accept = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert pending_after_accept.status_code == 200
+    assert all(x["draft_id"] != body["draft_id"] for x in pending_after_accept.json())
+
+    partial_seed = client.post("/api/projects/p1/build-drafts", json={
+        "kind": "foreshadowing",
+        "selected_chapter": "chapter_001",
+        "story_card": story,
+    })
+    assert partial_seed.status_code == 200
+    partial_body = partial_seed.json()
+    partial = client.put(f"/api/projects/p1/build-drafts/{partial_body['draft_id']}", json={
+        "status": "partially_accepted",
+        "accepted_target": "story_001",
+        "accepted_scope": ["foreshadowings"],
+    })
+    assert partial.status_code == 200
+    assert partial.json()["status"] == "partially_accepted"
+    assert partial.json()["accepted_scope"] == ["foreshadowings"]
+
+    partial_list = client.get("/api/projects/p1/build-drafts?status=partially_accepted")
+    assert partial_list.status_code == 200
+    assert any(x["draft_id"] == partial_body["draft_id"] for x in partial_list.json())
+
+    rejected_seed = client.post("/api/projects/p1/build-drafts", json={
+        "kind": "lines",
+        "selected_chapter": "chapter_001",
+        "story_card": story,
+    })
+    assert rejected_seed.status_code == 200
+    rejected_body = rejected_seed.json()
+    rejected = client.put(f"/api/projects/p1/build-drafts/{rejected_body['draft_id']}", json={
+        "status": "rejected",
+        "rejection_reason": "明线太弱，重新生成",
+    })
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["rejection_reason"] == "明线太弱，重新生成"
+
+    rejected_list = client.get("/api/projects/p1/build-drafts?status=rejected")
+    assert rejected_list.status_code == 200
+    assert any(x["draft_id"] == rejected_body["draft_id"] for x in rejected_list.json())
 
     bad = client.post("/api/projects/p1/build-drafts", json={"kind": "not_real"})
     assert bad.status_code == 400

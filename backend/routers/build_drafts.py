@@ -20,8 +20,8 @@ router = APIRouter(prefix="/api/projects/{project_id}/build-drafts", tags=["buil
 
 
 @router.get("")
-def list_build_drafts(project_id: str, kind: str | None = None, svc: BuildDraftService = Depends(get_service)):
-    return svc.list_drafts(project_id, kind=kind)
+def list_build_drafts(project_id: str, kind: str | None = None, status: str | None = None, svc: BuildDraftService = Depends(get_service)):
+    return svc.list_drafts(project_id, kind=kind, status=status)
 
 
 @router.post("")
@@ -46,3 +46,5 @@ def update_build_draft(project_id: str, draft_id: str, body: dict, svc: BuildDra
         return svc.update_draft(project_id, draft_id, body or {})
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="build draft not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

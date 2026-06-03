@@ -115,6 +115,15 @@ const STORY_CARD_TEMPLATE = {
   payload: STORY_PAYLOAD_TEMPLATE,
 }
 
+const BUILD_WIZARD_STEPS = [
+  { id: 'basics', label: '基础信息', draftKind: 'story_overview', checks: ['书名', '题材', '关键词', '目标读者', '禁写事项'] },
+  { id: 'outline', label: '小故事大纲', draftKind: 'story_overview', checks: ['一句话故事', '主题', '主冲突', '平台风格'] },
+  { id: 'characters', label: '人物初设', draftKind: 'character_seed', checks: ['人物卡', '动机', '边界', '小传'] },
+  { id: 'scenes', label: '重要场景', draftKind: 'story_overview', checks: ['开篇', '转折', '高潮', '回收'] },
+  { id: 'lines', label: '明线暗线伏笔', draftKind: 'lines', checks: ['明线', '暗线', '伏笔'] },
+  { id: 'confirm', label: '确认写入', draftKind: '', checks: ['局部接受', '保存故事卡', '拒绝草案'] },
+]
+
 const cloneJson = (value: any) => JSON.parse(JSON.stringify(value))
 
 const normalizeStoryCard = (card: any) => {
@@ -174,8 +183,10 @@ export default function App() {
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
-  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string } | null>(null)
+  const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[]; accepted_target?: string; rejection_reason?: string } | null>(null)
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
+  const [buildWizardStep, setBuildWizardStep] = useState('basics')
+  const [buildDraftHistoryFilter, setBuildDraftHistoryFilter] = useState('all')
 
   const paletteCacheRef = useRef<PaletteCache>({
     storyCards: [],
@@ -242,6 +253,7 @@ export default function App() {
   const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
   const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
+  const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -281,6 +293,62 @@ export default function App() {
   }
   const evidenceMarkRows = Array.isArray(evidenceMarks) ? evidenceMarks : []
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
+  const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
+  const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
+  const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
+  const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
+  const buildDraftHistoryCounts = {
+    all: processedBuildDrafts.length,
+    accepted: processedBuildDrafts.filter((x: any) => x.status === 'accepted').length,
+    partially_accepted: processedBuildDrafts.filter((x: any) => x.status === 'partially_accepted').length,
+    rejected: processedBuildDrafts.filter((x: any) => x.status === 'rejected').length,
+  }
+  const acceptedScopeLabels = (rec: any) => (Array.isArray(rec?.accepted_scope) ? rec.accepted_scope.filter((x: any) => typeof x === 'string' && x.trim()) : [])
+  const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
+  const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
+  const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
+  const hiddenLineRows = meaningfulRows(activeStoryPayload.hidden_line, ['truth', 'visible_hint', 'hidden_meaning', 'reveal_timing'])
+  const foreshadowingRows = meaningfulRows(activeStoryPayload.foreshadowings, ['content', 'surface_signal', 'true_meaning', 'payoff'])
+  const storyBuildProgress = [
+    {
+      id: 'basics',
+      label: '基础信息',
+      done: Boolean(storyForm?.title && activeStoryPayload.genre && (activeStoryPayload.keywords || []).length && activeStoryPayload.target_reader && (activeStoryPayload.banned_items || []).length),
+      detail: `${(activeStoryPayload.keywords || []).length} 个关键词 · ${(activeStoryPayload.banned_items || []).length} 条禁写`,
+    },
+    {
+      id: 'outline',
+      label: '小故事大纲',
+      done: Boolean(activeStoryPayload.logline && activeStoryPayload.theme && activeStoryPayload.main_conflict),
+      detail: activeStoryPayload.logline ? '已有一句话故事' : '缺一句话故事',
+    },
+    {
+      id: 'characters',
+      label: '人物初设',
+      done: Array.isArray(chars) && chars.length > 0,
+      detail: `${Array.isArray(chars) ? chars.length : 0} 张人物卡`,
+    },
+    {
+      id: 'scenes',
+      label: '重要场景',
+      done: importantSceneRows.length > 0,
+      detail: `${importantSceneRows.length} 个场景`,
+    },
+    {
+      id: 'lines',
+      label: '明线暗线伏笔',
+      done: openLineRows.length > 0 && hiddenLineRows.length > 0 && foreshadowingRows.length > 0,
+      detail: `明线 ${openLineRows.length} · 暗线 ${hiddenLineRows.length} · 伏笔 ${foreshadowingRows.length}`,
+    },
+    {
+      id: 'confirm',
+      label: '确认写入',
+      done: pendingBuildDrafts.length === 0,
+      detail: `${pendingBuildDrafts.length} 个待确认草案`,
+    },
+  ]
+  const completedBuildSteps = storyBuildProgress.filter((x) => x.done).length
+  const activeBuildWizardStep = BUILD_WIZARD_STEPS.find((x) => x.id === buildWizardStep) || BUILD_WIZARD_STEPS[0]
 
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
@@ -1682,15 +1750,19 @@ export default function App() {
       const title = storyForm?.title || '未命名小说'
       const chapterId = selectedChapter || 'chapter_001'
       const seed = `${revision}`
+      const scenes = meaningfulRows(payload.important_scenes, ['scene', 'purpose', 'chapter'])
       const draftByKind: Record<string, any> = {
         story_overview: {
           logline: payload.logline || `${title}的主角在关键事件中被迫面对核心秘密。`,
           theme: payload.theme || '选择的代价与自我边界',
+          genre: payload.genre || '长篇类型小说',
+          worldview: payload.worldview || '请补充世界背景、关键规则和限制。',
+          main_conflict: payload.main_conflict || '主角目标与外部压力、隐藏真相之间形成持续冲突。',
           keywords: payload.keywords?.length ? payload.keywords : ['主角秘密', '阶段冲突', `刷新${seed}`],
           target_reader: payload.target_reader || '喜欢人物动机清晰、伏笔可回查、章节钩子明确的长篇读者。',
           platform_style: payload.platform_style || '章节节奏紧，每章有明确推进和未解问题。',
           banned_items: payload.banned_items?.length ? payload.banned_items : ['不要提前揭示最终真相', '不要让角色违背硬设定'],
-          important_scenes: payload.important_scenes?.length ? payload.important_scenes : [{ scene: '开篇关键场景', purpose: '触发主冲突', chapter: chapterId }],
+          important_scenes: scenes.length ? scenes : [{ scene: '开篇关键场景', purpose: '触发主冲突', chapter: chapterId }],
         },
         character_seed: {
           id: `character_${Date.now()}`,
@@ -1735,6 +1807,50 @@ export default function App() {
       return draftByKind[kind]
     }
 
+    const openBuildDraft = (rec: any) => {
+      setBuildDraft({
+        draft_id: rec.draft_id,
+        kind: rec.kind,
+        title: rec.title,
+        body: rec.body,
+        revision: rec.revision || 1,
+        source: rec.source,
+        status: rec.status,
+        created_at: rec.created_at,
+        accepted_scope: rec.accepted_scope,
+        accepted_target: rec.accepted_target,
+        rejection_reason: rec.rejection_reason,
+      })
+      setView('story')
+      setStoryPlanningTab('Overview')
+    }
+
+    const rejectBuildDraft = async (rec: any) => {
+      if (!rec?.draft_id) return
+      await api.put(`/api/projects/${project}/build-drafts/${rec.draft_id}`, {
+        status: 'rejected',
+        rejection_reason: '作者在待确认队列中拒绝',
+      })
+      if (buildDraft?.draft_id === rec.draft_id) setBuildDraft({ ...buildDraft, status: 'rejected' })
+      mutateBuildDraftRows()
+      push('草案已拒绝')
+    }
+
+    const restoreBuildDraft = async (rec: any) => {
+      if (!rec?.draft_id) return
+      await api.put(`/api/projects/${project}/build-drafts/${rec.draft_id}`, {
+        status: 'pending',
+        accepted_target: '',
+        accepted_scope: [],
+        rejection_reason: '',
+      })
+      if (buildDraft?.draft_id === rec.draft_id) {
+        setBuildDraft({ ...buildDraft, status: 'pending', accepted_target: '', accepted_scope: [], rejection_reason: '' })
+      }
+      mutateBuildDraftRows()
+      push('草案已恢复为待确认')
+    }
+
     const generateBuildDraft = async (kind: string) => {
       const nextRevision = (buildDraft?.kind === kind ? buildDraft.revision + 1 : 1)
       setBuildDraftBusy(true)
@@ -1755,8 +1871,12 @@ export default function App() {
           source: rec.source,
           status: rec.status,
           created_at: rec.created_at,
+          accepted_scope: rec.accepted_scope,
+          accepted_target: rec.accepted_target,
+          rejection_reason: rec.rejection_reason,
         })
         push(`草案已生成：${rec.title}`)
+        mutateBuildDraftRows()
         return
       } catch {
         const fallback = localBuildDraftContent(kind, nextRevision)
@@ -1767,11 +1887,95 @@ export default function App() {
           revision: nextRevision,
           source: 'local_fallback',
           status: 'pending',
+          accepted_scope: [],
+          accepted_target: '',
+          rejection_reason: '',
         })
         push('后端草案接口不可用，已使用本地 fallback', 'error')
       } finally {
         setBuildDraftBusy(false)
       }
+    }
+
+    const parsedBuildDraft = (() => {
+      if (!buildDraft) return null
+      try {
+        return JSON.parse(buildDraft.body || '{}')
+      } catch {
+        return null
+      }
+    })()
+
+    const writeBuildDraftBody = (next: any) => {
+      if (!buildDraft) return
+      setBuildDraft({ ...buildDraft, body: JSON.stringify(next, null, 2) })
+    }
+
+    const updateBuildDraftRoot = (key: string, value: any) => {
+      if (!parsedBuildDraft) return
+      writeBuildDraftBody({ ...parsedBuildDraft, [key]: value })
+    }
+
+    const updateBuildDraftPayload = (key: string, value: any) => {
+      if (!parsedBuildDraft) return
+      writeBuildDraftBody({ ...parsedBuildDraft, payload: { ...(parsedBuildDraft.payload || {}), [key]: value } })
+    }
+
+    const updateBuildDraftArrayItem = (section: string, index: number, key: string, value: any) => {
+      if (!parsedBuildDraft) return
+      const rows = Array.isArray(parsedBuildDraft[section]) ? [...parsedBuildDraft[section]] : []
+      rows[index] = { ...(rows[index] || {}), [key]: value }
+      writeBuildDraftBody({ ...parsedBuildDraft, [section]: rows })
+    }
+
+    const markBuildDraftPartiallyAccepted = async (scope: string[]) => {
+      if (!buildDraft?.draft_id) return
+      const acceptedScope = uniq([...(buildDraft.accepted_scope || []), ...scope])
+      await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, {
+        body: buildDraft.body,
+        status: 'partially_accepted',
+        accepted_target: storyForm?.id || 'story_new',
+        accepted_scope: acceptedScope,
+      })
+      setBuildDraft({ ...buildDraft, status: 'partially_accepted', accepted_scope: acceptedScope })
+      mutateBuildDraftRows()
+    }
+
+    const appendDraftRowsToStory = async (section: string, rows: any[]) => {
+      if (!buildDraft || !rows.length) return
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        const annotated = rows.map((row) => ({
+          ...row,
+          source_draft_id: buildDraft.draft_id || '',
+          source_step: buildDraft.kind,
+          confirmation_status: 'accepted',
+          confirmed_by: 'author',
+          author_modified: true,
+        }))
+        payload[section] = [...(payload[section] || []), ...annotated]
+        return normalizeStoryCard({ ...prev, payload })
+      })
+      await markBuildDraftPartiallyAccepted([section])
+      push(`已局部写入 ${section}，请保存故事卡`)
+    }
+
+    const acceptDraftStoryFields = async (keys: string[]) => {
+      if (!parsedBuildDraft || !buildDraft) return
+      setStoryForm((prev: any) => {
+        const payload = { ...(prev?.payload || {}) }
+        for (const key of keys) {
+          if (parsedBuildDraft[key] !== undefined) payload[key] = parsedBuildDraft[key]
+        }
+        payload.source_draft_id = buildDraft.draft_id || payload.source_draft_id
+        payload.source_step = buildDraft.kind
+        payload.confirmation_status = 'partially_accepted'
+        payload.confirmed_by = 'author'
+        payload.author_modified = true
+        return normalizeStoryCard({ ...prev, payload })
+      })
+      await markBuildDraftPartiallyAccepted(keys)
+      push('已局部写入 Story 表单，请保存故事卡')
     }
 
     const acceptBuildDraft = async () => {
@@ -1785,12 +1989,28 @@ export default function App() {
       }
       if (buildDraft.kind === 'character_seed') {
         const id = parsed.id || `character_${Date.now()}`
-        const body = { ...parsed, id, type: 'character', tags: uniq([...(parsed.tags || []), 'author_confirmed']) }
+        const body = {
+          ...parsed,
+          id,
+          type: 'character',
+          tags: uniq([...(parsed.tags || []), 'author_confirmed']),
+          links: uniq([...(parsed.links || []), buildDraft.draft_id ? `build_draft:${buildDraft.draft_id}` : ''].filter(Boolean)),
+          payload: {
+            ...(parsed.payload || {}),
+            source_draft_id: buildDraft.draft_id || '',
+            source_step: buildDraft.kind,
+            confirmation_status: 'accepted',
+            confirmed_by: 'author',
+            author_modified: true,
+          },
+        }
         await api.put(`/api/projects/${project}/cards/${id}`, body)
-        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id })
+        if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: id, accepted_scope: ['all'] })
+        setBuildDraft({ ...buildDraft, status: 'accepted', accepted_scope: ['all'] })
         setCharacterForm(body)
         mutateCards()
         setView('characters')
+        mutateBuildDraftRows()
         push('人物草案已确认写入')
         return
       }
@@ -1799,14 +2019,21 @@ export default function App() {
         if (buildDraft.kind === 'story_overview') {
           Object.assign(payload, parsed)
         } else if (buildDraft.kind === 'lines') {
-          payload.open_line = [...(payload.open_line || []), ...(parsed.open_line || [])]
-          payload.hidden_line = [...(payload.hidden_line || []), ...(parsed.hidden_line || [])]
+          payload.open_line = [...(payload.open_line || []), ...(parsed.open_line || []).map((row: any) => ({ ...row, source_draft_id: buildDraft.draft_id || '', source_step: buildDraft.kind, confirmation_status: 'accepted', confirmed_by: 'author', author_modified: true }))]
+          payload.hidden_line = [...(payload.hidden_line || []), ...(parsed.hidden_line || []).map((row: any) => ({ ...row, source_draft_id: buildDraft.draft_id || '', source_step: buildDraft.kind, confirmation_status: 'accepted', confirmed_by: 'author', author_modified: true }))]
         } else if (buildDraft.kind === 'foreshadowing') {
-          payload.foreshadowings = [...(payload.foreshadowings || []), ...(parsed.foreshadowings || [])]
+          payload.foreshadowings = [...(payload.foreshadowings || []), ...(parsed.foreshadowings || []).map((row: any) => ({ ...row, source_draft_id: buildDraft.draft_id || '', source_step: buildDraft.kind, confirmation_status: 'accepted', confirmed_by: 'author', author_modified: true }))]
         }
+        payload.source_draft_id = buildDraft.draft_id || payload.source_draft_id
+        payload.source_step = buildDraft.kind
+        payload.confirmation_status = 'accepted'
+        payload.confirmed_by = 'author'
+        payload.author_modified = true
         return normalizeStoryCard({ ...prev, payload })
       })
-      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new' })
+      if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new', accepted_scope: ['all'] })
+      setBuildDraft({ ...buildDraft, status: 'accepted', accepted_scope: ['all'] })
+      mutateBuildDraftRows()
       push('草案已确认写入 Story 表单，请保存故事卡')
     }
 
@@ -1835,6 +2062,197 @@ export default function App() {
       </div>
     )
 
+    const renderBuildDraftJsonDebug = () => (
+      <details className='rounded-ui border border-border bg-surface-2 p-2'>
+        <summary className='cursor-pointer text-xs text-muted'>JSON debug / 原始草案</summary>
+        <Textarea className='mt-2 h-40 mono' value={buildDraft?.body || ''} onChange={(e) => buildDraft && setBuildDraft({ ...buildDraft, body: e.target.value })} />
+      </details>
+    )
+
+    const renderBuildDraftEditor = () => {
+      if (!buildDraft) {
+        return (
+          <div className='flex h-56 items-center justify-center rounded-ui border border-dashed border-border bg-surface-2 text-sm text-muted'>
+            选择左侧环节生成待确认草案
+          </div>
+        )
+      }
+      if (!parsedBuildDraft) {
+        return (
+          <div className='space-y-2'>
+            <div className='rounded-ui border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-200'>草案 JSON 暂时无法解析，修正后会恢复结构化编辑。</div>
+            {renderBuildDraftJsonDebug()}
+          </div>
+        )
+      }
+      if (buildDraft.kind === 'story_overview') {
+        const scenes = Array.isArray(parsedBuildDraft.important_scenes) ? parsedBuildDraft.important_scenes : []
+        return (
+          <div className='space-y-3'>
+            <div className='grid grid-cols-12 gap-2'>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>一句话故事</label>
+                <Textarea className='h-16' value={parsedBuildDraft.logline || ''} onChange={(e) => updateBuildDraftRoot('logline', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>主题</label>
+                <Textarea className='h-16' value={parsedBuildDraft.theme || ''} onChange={(e) => updateBuildDraftRoot('theme', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>题材</label>
+                <Input value={parsedBuildDraft.genre || ''} onChange={(e) => updateBuildDraftRoot('genre', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>关键词</label>
+                <Input value={(parsedBuildDraft.keywords || []).join(',')} onChange={(e) => updateBuildDraftRoot('keywords', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>目标读者</label>
+                <Input value={parsedBuildDraft.target_reader || ''} onChange={(e) => updateBuildDraftRoot('target_reader', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>世界观</label>
+                <Textarea className='h-16' value={parsedBuildDraft.worldview || ''} onChange={(e) => updateBuildDraftRoot('worldview', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>主冲突</label>
+                <Textarea className='h-16' value={parsedBuildDraft.main_conflict || ''} onChange={(e) => updateBuildDraftRoot('main_conflict', e.target.value)} />
+              </div>
+              <div className='col-span-12'>
+                <label className='text-xs text-muted'>平台风格</label>
+                <Input value={parsedBuildDraft.platform_style || ''} onChange={(e) => updateBuildDraftRoot('platform_style', e.target.value)} />
+              </div>
+              <div className='col-span-12'>
+                <label className='text-xs text-muted'>禁写事项</label>
+                <Textarea className='h-16' value={(parsedBuildDraft.banned_items || []).join('\n')} onChange={(e) => updateBuildDraftRoot('banned_items', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+            </div>
+            <div className='flex flex-wrap gap-2'>
+              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['genre', 'keywords', 'target_reader', 'platform_style', 'banned_items'])}>只写入基础约束</Button>
+              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['logline', 'theme', 'worldview', 'main_conflict'])}>只写入大纲核心</Button>
+              <Button className='text-xs' onClick={() => acceptDraftStoryFields(['important_scenes'])}>只写入重要场景</Button>
+            </div>
+            <div className='space-y-2'>
+              <div className='text-xs font-medium'>重要场景</div>
+              {scenes.map((row: any, index: number) => (
+                <div key={`scene-${index}`} className='grid grid-cols-12 gap-2 rounded-ui border border-border bg-surface p-2'>
+                  <div className='col-span-4'>
+                    <label className='text-xs text-muted'>场景</label>
+                    <Input value={row.scene || ''} onChange={(e) => updateBuildDraftArrayItem('important_scenes', index, 'scene', e.target.value)} />
+                  </div>
+                  <div className='col-span-5'>
+                    <label className='text-xs text-muted'>作用</label>
+                    <Input value={row.purpose || ''} onChange={(e) => updateBuildDraftArrayItem('important_scenes', index, 'purpose', e.target.value)} />
+                  </div>
+                  <div className='col-span-3'>
+                    <label className='text-xs text-muted'>章节</label>
+                    <Input value={row.chapter || ''} onChange={(e) => updateBuildDraftArrayItem('important_scenes', index, 'chapter', e.target.value)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {renderBuildDraftJsonDebug()}
+          </div>
+        )
+      }
+      if (buildDraft.kind === 'character_seed') {
+        const payload = parsedBuildDraft.payload || {}
+        return (
+          <div className='space-y-3'>
+            <div className='grid grid-cols-12 gap-2'>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>人物 ID</label>
+                <Input value={parsedBuildDraft.id || ''} onChange={(e) => updateBuildDraftRoot('id', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>显示标题</label>
+                <Input value={parsedBuildDraft.title || ''} onChange={(e) => updateBuildDraftRoot('title', e.target.value)} />
+              </div>
+              <div className='col-span-4'>
+                <label className='text-xs text-muted'>姓名</label>
+                <Input value={payload.name || ''} onChange={(e) => updateBuildDraftPayload('name', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>身份</label>
+                <Input value={payload.identity || ''} onChange={(e) => updateBuildDraftPayload('identity', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>说话方式</label>
+                <Input value={payload.voice || ''} onChange={(e) => updateBuildDraftPayload('voice', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>核心动机</label>
+                <Textarea className='h-20' value={payload.core_motivation || ''} onChange={(e) => updateBuildDraftPayload('core_motivation', e.target.value)} />
+              </div>
+              <div className='col-span-6'>
+                <label className='text-xs text-muted'>人物边界</label>
+                <Textarea className='h-20' value={(payload.boundaries || []).join('\n')} onChange={(e) => updateBuildDraftPayload('boundaries', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
+              </div>
+            </div>
+            <Button className='text-xs' variant='primary' onClick={acceptBuildDraft}>写入为人物卡</Button>
+            {renderBuildDraftJsonDebug()}
+          </div>
+        )
+      }
+      if (buildDraft.kind === 'lines') {
+        const openRows = Array.isArray(parsedBuildDraft.open_line) ? parsedBuildDraft.open_line : []
+        const hiddenRows = Array.isArray(parsedBuildDraft.hidden_line) ? parsedBuildDraft.hidden_line : []
+        return (
+          <div className='space-y-3'>
+            <div className='flex flex-wrap gap-2'>
+              <Button className='text-xs' onClick={() => appendDraftRowsToStory('open_line', openRows)}>只接受明线</Button>
+              <Button className='text-xs' onClick={() => appendDraftRowsToStory('hidden_line', hiddenRows)}>只接受暗线</Button>
+            </div>
+            <div className='space-y-2'>
+              <div className='text-xs font-medium'>明线草案</div>
+              {openRows.map((row: any, index: number) => (
+                <div key={`open-draft-${index}`} className='grid grid-cols-12 gap-2 rounded-ui border border-border bg-surface p-2'>
+                  {['chapter', 'event', 'goal', 'conflict', 'result'].map((key) => (
+                    <div key={key} className={key === 'event' || key === 'goal' ? 'col-span-3' : 'col-span-2'}>
+                      <label className='text-xs text-muted'>{key}</label>
+                      <Input value={row[key] || ''} onChange={(e) => updateBuildDraftArrayItem('open_line', index, key, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div className='text-xs font-medium'>暗线草案</div>
+              {hiddenRows.map((row: any, index: number) => (
+                <div key={`hidden-draft-${index}`} className='grid grid-cols-12 gap-2 rounded-ui border border-border bg-surface p-2'>
+                  {['chapter', 'truth', 'visible_hint', 'hidden_meaning', 'reveal_timing'].map((key) => (
+                    <div key={key} className={key === 'truth' || key === 'visible_hint' ? 'col-span-3' : 'col-span-2'}>
+                      <label className='text-xs text-muted'>{key}</label>
+                      <Input value={row[key] || ''} onChange={(e) => updateBuildDraftArrayItem('hidden_line', index, key, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {renderBuildDraftJsonDebug()}
+          </div>
+        )
+      }
+      if (buildDraft.kind === 'foreshadowing') {
+        const rows = Array.isArray(parsedBuildDraft.foreshadowings) ? parsedBuildDraft.foreshadowings : []
+        return (
+          <div className='space-y-3'>
+            <Button className='text-xs' onClick={() => appendDraftRowsToStory('foreshadowings', rows)}>只接受伏笔</Button>
+            {rows.map((row: any, index: number) => (
+              <div key={`foreshadow-draft-${index}`} className='grid grid-cols-12 gap-2 rounded-ui border border-border bg-surface p-2'>
+                {['id', 'status', 'content', 'first_chapter', 'surface_signal', 'true_meaning', 'payoff_chapter', 'payoff'].map((key) => (
+                  <div key={key} className={key === 'content' || key === 'true_meaning' || key === 'payoff' ? 'col-span-4' : 'col-span-2'}>
+                    <label className='text-xs text-muted'>{key}</label>
+                    <Input value={row[key] || ''} onChange={(e) => updateBuildDraftArrayItem('foreshadowings', index, key, e.target.value)} />
+                  </div>
+                ))}
+              </div>
+            ))}
+            {renderBuildDraftJsonDebug()}
+          </div>
+        )
+      }
+      return renderBuildDraftJsonDebug()
+    }
+
     if (view === 'projects') {
       const recentChapters = [...chapterRows].sort((a: any, b: any) => Number(b.order_index || 0) - Number(a.order_index || 0)).slice(0, 6)
       const unsupportedMarks = evidenceMarkRows.filter((m: any) => m?.detection?.support_level === 'unsupported' || m?.detection?.support_level === 'contradicted')
@@ -1858,15 +2276,33 @@ export default function App() {
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
-                <div className='text-xs text-muted'>待确认 Canon</div>
-                <div className='mt-1 text-lg font-semibold'>{(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length}</div>
-                <div className='text-xs text-muted'>事实不会自动转正</div>
+                <div className='text-xs text-muted'>待确认草案</div>
+                <div className='mt-1 text-lg font-semibold'>{pendingBuildDrafts.length}</div>
+                <div className='text-xs text-muted'>建书草案不会自动写入</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>风险标记</div>
                 <div className='mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
                 <div className='text-xs text-muted'>unsupported / contradicted</div>
               </div>
+            </div>
+          </Card>
+
+          <Card title='建书完成度' extra={<Badge tone={completedBuildSteps === storyBuildProgress.length ? 'success' : 'warn'}>{completedBuildSteps}/{storyBuildProgress.length}</Badge>}>
+            <div className='grid grid-cols-3 gap-2'>
+              {storyBuildProgress.map((step) => (
+                <button
+                  key={step.id}
+                  className={`rounded-ui border px-3 py-2 text-left ${step.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}
+                  onClick={() => { setView('story'); setBuildWizardStep(step.id) }}
+                >
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-sm font-medium'>{step.label}</span>
+                    <Badge tone={step.done ? 'success' : 'warn'}>{step.done ? '已完成' : '待补'}</Badge>
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>{step.detail}</div>
+                </button>
+              ))}
             </div>
           </Card>
 
@@ -1901,7 +2337,59 @@ export default function App() {
             </div>
           </Card>
 
-          <div className='grid grid-cols-2 gap-3'>
+          <div className='grid grid-cols-3 gap-3'>
+            <Card title='待确认建书草案'>
+              <div className='space-y-1'>
+                {pendingBuildDrafts.slice(0, 5).map((rec: any) => (
+                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
+                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                      <span className='font-medium'>{rec.title || rec.kind}</span>
+                      <span className='ml-2 text-muted'>rev {rec.revision || 1} · {rec.source || 'unknown'}</span>
+                    </button>
+                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
+                    <div className='mt-1 flex gap-2'>
+                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                      <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
+                    </div>
+                  </div>
+                ))}
+                {!pendingBuildDrafts.length && <p className='text-sm text-muted'>没有待确认建书草案。</p>}
+              </div>
+            </Card>
+            <Card title='建书草案历史'>
+              <div className='space-y-1'>
+                <div className='flex flex-wrap gap-1 pb-1'>
+                  {[
+                    ['all', '全部'],
+                    ['accepted', '已接受'],
+                    ['partially_accepted', '局部'],
+                    ['rejected', '已拒绝'],
+                  ].map(([key, label]) => (
+                    <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
+                      {label} {(buildDraftHistoryCounts as any)[key] || 0}
+                    </Button>
+                  ))}
+                </div>
+                {buildDraftHistoryRows.slice(0, 5).map((rec: any) => (
+                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
+                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                      <span className='font-medium'>{rec.title || rec.kind}</span>
+                      <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
+                    </button>
+                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
+                    <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
+                      {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
+                      {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
+                    </div>
+                    <div className='mt-1 flex gap-1'>
+                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                      <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
+                    </div>
+                  </div>
+                ))}
+                {!buildDraftHistoryRows.length && <p className='text-sm text-muted'>没有符合筛选的已处理草案。</p>}
+              </div>
+            </Card>
             <Card title='待审 AI Patch'>
               <div className='space-y-1'>
                 {(latestPatch?.ops || []).slice(0, 5).map((op: any) => (
@@ -1910,6 +2398,19 @@ export default function App() {
                   </button>
                 ))}
                 {!latestPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+              </div>
+            </Card>
+          </div>
+
+          <div className='grid grid-cols-2 gap-3'>
+            <Card title='待确认 Canon'>
+              <div className='space-y-1'>
+                {(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').slice(-5).reverse().map((p: any) => (
+                  <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
+                    {p.name || p.proposal_id || p.id}
+                  </button>
+                ))}
+                {!(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length && <p className='text-sm text-muted'>没有待确认 canon proposal。</p>}
               </div>
             </Card>
             <Card title='可信风险'>
@@ -1937,13 +2438,110 @@ export default function App() {
             <div className='grid grid-cols-12 gap-3'>
               <div className='col-span-5 space-y-2'>
                 <div className='grid grid-cols-2 gap-2'>
-                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('story_overview')}>生成故事总控草案</Button>
-                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('character_seed')}>生成人物初设草案</Button>
-                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('lines')}>生成明线/暗线草案</Button>
-                  <Button disabled={buildDraftBusy} onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>
+                  {storyBuildProgress.map((step) => (
+                    <button
+                      key={step.id}
+                      className={`rounded-ui border px-3 py-2 text-left ${buildWizardStep === step.id ? 'border-brand-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}
+                      onClick={() => setBuildWizardStep(step.id)}
+                    >
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='text-sm font-medium'>{step.label}</span>
+                        <Badge tone={step.done ? 'success' : 'warn'}>{step.done ? '已完成' : '待补'}</Badge>
+                      </div>
+                      <div className='mt-1 text-xs text-muted'>{step.detail}</div>
+                    </button>
+                  ))}
+                </div>
+                <div className='rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <div>
+                      <div className='text-xs font-medium'>{activeBuildWizardStep.label || '建设步骤'}</div>
+                      <div className='mt-1 flex flex-wrap gap-1'>
+                        {(activeBuildWizardStep.checks || []).map((check) => <Badge key={check}>{check}</Badge>)}
+                      </div>
+                    </div>
+                    {activeBuildWizardStep.draftKind ? (
+                      <div className='flex flex-col gap-1'>
+                        <Button
+                          className='text-xs'
+                          disabled={buildDraftBusy}
+                          onClick={() => generateBuildDraft(activeBuildWizardStep.draftKind || 'story_overview')}
+                        >
+                          {buildDraftBusy ? '生成中...' : '生成此步草案'}
+                        </Button>
+                        {buildWizardStep === 'lines' && <Button className='text-xs' disabled={buildDraftBusy} onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>}
+                      </div>
+                    ) : (
+                      <Button className='text-xs' onClick={saveStoryCard}>保存故事卡</Button>
+                    )}
+                  </div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
-                  草案不会自动覆盖卡片。你可以单独刷新某个环节，也可以直接改右侧 JSON，再确认写入。
+                  草案不会自动覆盖卡片。你可以按步骤生成、在右侧结构化修改，也可以局部确认某几条内容。
+                </div>
+                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-xs font-medium'>待确认队列</span>
+                    <Badge>{pendingBuildDrafts.length}</Badge>
+                  </div>
+                  <div className='max-h-36 space-y-1 overflow-auto'>
+                    {pendingBuildDrafts.slice(0, 6).map((rec: any) => (
+                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                          <span className='font-medium'>{rec.title || rec.kind}</span>
+                          <span className='ml-2 text-muted'>rev {rec.revision || 1}</span>
+                        </button>
+                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
+                        <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
+                          <span>{rec.source || 'unknown'} · {rec.selected_chapter || 'no chapter'}</span>
+                          <div className='flex gap-1'>
+                            <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                            <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {!pendingBuildDrafts.length && <div className='text-xs text-muted'>暂无待确认草案。</div>}
+                  </div>
+                </div>
+                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-xs font-medium'>已处理草案</span>
+                    <Badge>{buildDraftHistoryRows.length}/{processedBuildDrafts.length}</Badge>
+                  </div>
+                  <div className='flex flex-wrap gap-1'>
+                    {[
+                      ['all', '全部'],
+                      ['accepted', '已接受'],
+                      ['partially_accepted', '局部'],
+                      ['rejected', '已拒绝'],
+                    ].map(([key, label]) => (
+                      <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
+                        {label} {(buildDraftHistoryCounts as any)[key] || 0}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className='max-h-36 space-y-1 overflow-auto'>
+                    {buildDraftHistoryRows.slice(0, 6).map((rec: any) => (
+                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
+                          <span className='font-medium'>{rec.title || rec.kind}</span>
+                          <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
+                        </button>
+                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
+                        <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
+                          {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
+                          {rec.accepted_target ? <span>target: {rec.accepted_target}</span> : null}
+                          {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
+                        </div>
+                        <div className='mt-1 flex gap-1'>
+                          <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
+                          <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!buildDraftHistoryRows.length && <div className='text-xs text-muted'>没有符合筛选的已处理草案。</div>}
+                  </div>
                 </div>
               </div>
               <div className='col-span-7'>
@@ -1959,14 +2557,15 @@ export default function App() {
                     <div className='flex flex-wrap gap-2 text-xs text-muted'>
                       <Badge>{buildDraft.status || 'pending'}</Badge>
                       <Badge>{buildDraft.source || 'local'}</Badge>
+                      {acceptedScopeLabels(buildDraft).length ? <Badge tone='success'>已接受: {acceptedScopeLabels(buildDraft).join(', ')}</Badge> : null}
+                      {buildDraft.accepted_target ? <Badge>写入: {buildDraft.accepted_target}</Badge> : null}
+                      {buildDraft.rejection_reason ? <Badge tone='warn'>拒绝: {buildDraft.rejection_reason}</Badge> : null}
                       {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
                     </div>
-                    <Textarea className='h-56 mono' value={buildDraft.body} onChange={(e) => setBuildDraft({ ...buildDraft, body: e.target.value })} />
+                    {renderBuildDraftEditor()}
                   </div>
                 ) : (
-                  <div className='flex h-56 items-center justify-center rounded-ui border border-dashed border-border bg-surface-2 text-sm text-muted'>
-                    选择左侧环节生成待确认草案
-                  </div>
+                  renderBuildDraftEditor()
                 )}
               </div>
             </div>
@@ -2029,19 +2628,32 @@ export default function App() {
                 <label className='text-xs text-muted'>禁写事项</label>
                 <Textarea className='h-24' value={(storyPayload.banned_items || []).join('\n')} onChange={(e) => updateStoryPayload('banned_items', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
               </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>重要场景 JSON</label>
-                <Textarea
-                  className='h-24 mono'
-                  value={JSON.stringify(storyPayload.important_scenes || [], null, 2)}
-                  onChange={(e) => {
-                    try {
-                      updateStoryPayload('important_scenes', JSON.parse(e.target.value || '[]'))
-                    } catch {
-                      // keep typing tolerant
-                    }
-                  }}
-                />
+              <div className='col-span-6 space-y-2'>
+                <div className='flex items-center justify-between gap-2'>
+                  <label className='text-xs text-muted'>重要场景</label>
+                  <Button className='text-xs' onClick={() => addStoryArrayItem('important_scenes', STORY_PAYLOAD_TEMPLATE.important_scenes[0])}>新增场景</Button>
+                </div>
+                {(storyPayload.important_scenes || []).map((row: any, index: number) => (
+                  <div key={`story-scene-${index}`} className='rounded-ui border border-border bg-surface p-2'>
+                    <div className='grid grid-cols-12 gap-2'>
+                      <div className='col-span-4'>
+                        <label className='text-xs text-muted'>场景</label>
+                        <Input value={row.scene || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'scene', e.target.value)} />
+                      </div>
+                      <div className='col-span-5'>
+                        <label className='text-xs text-muted'>作用</label>
+                        <Input value={row.purpose || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'purpose', e.target.value)} />
+                      </div>
+                      <div className='col-span-3'>
+                        <label className='text-xs text-muted'>章节</label>
+                        <Input value={row.chapter || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'chapter', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className='mt-2 flex justify-end'>
+                      <Button className='text-xs' onClick={() => removeStoryArrayItem('important_scenes', index)}>删除</Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </Card>
@@ -2849,6 +3461,8 @@ export default function App() {
   }, [
     view,
     projects,
+    storyCards,
+    storyForm,
     charSchema,
     characterForm,
     chars,
@@ -2895,6 +3509,17 @@ export default function App() {
     toolSkillSchema,
     toolSkillForm,
     buildDraft,
+    buildDraftBusy,
+    buildWizardStep,
+    activeBuildWizardStep,
+    storyBuildProgress,
+    completedBuildSteps,
+    pendingBuildDrafts,
+    processedBuildDrafts,
+    buildDraftHistoryRows,
+    buildDraftHistoryCounts,
+    buildDraftHistoryFilter,
+    acceptedScopeLabels,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
