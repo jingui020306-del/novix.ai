@@ -14,7 +14,7 @@ from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
 from services.evidence_service import EvidenceService
 from services.llm_config_service import LLMConfigService
-from storage.fs_store import FSStore, apply_patch_ops
+from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
 
 class JobManager:
@@ -41,13 +41,109 @@ class JobManager:
             }
         payload = {"event": event, "data": data}
         self.store.append_jsonl(project_id, "sessions/session_001.jsonl", {"job_id": job_id, **payload})
+        self._record_job_event(project_id, job_id, event, data)
         await self.queues[job_id].put(payload)
 
     async def run_write_job(self, project_id: str, payload: dict[str, Any]) -> str:
-        self._validate_write_payload(project_id, payload)
+        chapter_id, _bp, scene_index = self._validate_write_payload(project_id, payload)
         job_id = f"job_{uuid.uuid4().hex[:10]}"
+        self._write_job_record(project_id, job_id, {
+            "job_id": job_id,
+            "project_id": project_id,
+            "chapter_id": chapter_id,
+            "scene_index": scene_index,
+            "job_type": "write",
+            "agent_mode": "three_agent",
+            "status": "queued",
+            "stage": "queued",
+            "requested_profile_id": payload.get("llm_profile_id") or "",
+            "auto_apply_patch": bool(payload.get("auto_apply_patch", False)),
+            "word_checkpoint_chars": int(payload.get("word_checkpoint_chars") or 1500),
+            "event_counts": {},
+            "last_event": "",
+            "last_error": "",
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "completed_at": "",
+            "input_summary": "作者请求生成本章；后端将自动编排审查、撰写、校对三 Agent。",
+            "output_summary": "",
+        })
         asyncio.create_task(self._pipeline(job_id, project_id, payload))
         return job_id
+
+    def _job_path(self, job_id: str) -> str:
+        return f"meta/jobs/{job_id}.json"
+
+    def _write_job_record(self, project_id: str, job_id: str, rec: dict[str, Any]) -> dict[str, Any]:
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {}
+        merged = {**current, **rec, "updated_at": rec.get("updated_at") or now_iso()}
+        self.store.write_json(project_id, self._job_path(job_id), merged)
+        return merged
+
+    def _record_job_event(self, project_id: str, job_id: str, event: str, data: Any) -> None:
+        if not isinstance(data, dict):
+            data = {}
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {"job_id": job_id, "project_id": project_id, "event_counts": {}}
+        counts = current.get("event_counts") if isinstance(current.get("event_counts"), dict) else {}
+        counts[event] = int(counts.get(event, 0)) + 1
+        next_status = current.get("status") or "running"
+        if event == "ERROR" and data.get("stage") == "pipeline":
+            next_status = "failed"
+        elif event == "ERROR":
+            next_status = "running"
+        elif event == "TRUST_REPORT":
+            next_status = "awaiting_review"
+        elif event in {"CANON_UPDATES", "MERGE_RESULT"} and next_status not in {"failed", "cancelled"}:
+            next_status = "finalizing"
+        elif next_status in {"queued", ""}:
+            next_status = "running"
+
+        patch = {
+            "status": next_status,
+            "stage": data.get("stage", event),
+            "last_event": event,
+            "last_error": data.get("message", current.get("last_error", "")) if event == "ERROR" else current.get("last_error", ""),
+            "provider": data.get("provider", current.get("provider", "")),
+            "model": data.get("model", current.get("model", "")),
+            "fallback": bool(current.get("fallback", False) or data.get("fallback", False)),
+            "input_summary": data.get("input_summary", current.get("input_summary", "")),
+            "output_summary": data.get("output_summary", current.get("output_summary", "")),
+            "event_counts": counts,
+            "updated_at": now_iso(),
+        }
+        self._write_job_record(project_id, job_id, patch)
+
+    def finish_job(self, project_id: str, job_id: str, status: str = "completed") -> dict[str, Any]:
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {"job_id": job_id, "project_id": project_id}
+        if current.get("status") == "failed":
+            status = "failed"
+        return self._write_job_record(project_id, job_id, {
+            "status": status,
+            "stage": "DONE",
+            "last_event": "DONE",
+            "completed_at": now_iso(),
+            "updated_at": now_iso(),
+            "output_summary": current.get("output_summary") or ("写作任务完成" if status == "completed" else current.get("last_error", "")),
+        })
+
+    def get_job(self, project_id: str, job_id: str) -> dict[str, Any]:
+        return self.store.read_json(project_id, self._job_path(job_id))
+
+    def list_jobs(self, project_id: str, status: str | None = None, chapter_id: str | None = None) -> list[dict[str, Any]]:
+        root = self.store._safe_path(project_id, "meta/jobs")
+        rows: list[dict[str, Any]] = []
+        if not root.exists():
+            return rows
+        for path in root.glob("*.json"):
+            row = self.store.read_json(project_id, f"meta/jobs/{path.name}")
+            if not row:
+                continue
+            if status and row.get("status") != status:
+                continue
+            if chapter_id and row.get("chapter_id") != chapter_id:
+                continue
+            rows.append(row)
+        return sorted(rows, key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
 
     def _resolve_profile(self, project_id: str, payload: dict[str, Any], module: str = "writer") -> tuple[str, dict[str, Any], dict[str, Any]]:
         project = self.store.read_yaml(project_id, "project.yaml")
@@ -394,6 +490,7 @@ class JobManager:
         except Exception as exc:
             await self.emit(project_id, job_id, "ERROR", {"stage": "pipeline", "message": str(exc)})
         finally:
+            self.finish_job(project_id, job_id)
             await self.queues[job_id].put({"event": "DONE", "data": {"job_id": job_id}})
 
     def _update_rolling_summary(self, project_id: str, sid: str) -> None:

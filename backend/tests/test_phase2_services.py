@@ -606,14 +606,18 @@ def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):
         events = []
         async for e in jm.stream(jid):
             events.append(e)
-        return events
+        return jid, events
 
-    events = asyncio.run(_run())
+    jid, events = asyncio.run(_run())
     manifest = [e for e in events if e['event'] == 'CONTEXT_MANIFEST'][0]['data']
     assert manifest['llm']['requested_profile_id'] == 'bad_profile'
     assert any(e['event'] == 'ERROR' and e['data'].get('stage') == 'writer' for e in events)
     wd = [e for e in events if e['event'] == 'WRITER_DRAFT'][0]['data']
     assert wd['provider'] == 'mock' and wd['fallback'] is True
+    job = jm.get_job('p1', jid)
+    assert job['status'] == 'completed'
+    assert job['fallback'] is True
+    assert job['last_error']
 
 
 def test_memory_pack_generated_and_readable(tmp_path: Path):
@@ -729,6 +733,59 @@ def test_write_job_emits_three_agent_trust_events_and_marks(tmp_path: Path):
     assert s.read_json('p1', 'meta/trust_reports/chapter_001.json')['chapter_id'] == 'chapter_001'
     pack = s.read_json('p1', f'meta/memory_packs/chapter_001/{job_id}.json')
     assert 'source_mark_ids' in pack and 'compression_reason' in pack
+    job = jm.get_job('p1', job_id)
+    assert job['status'] == 'completed'
+    assert job['chapter_id'] == 'chapter_001'
+    assert job['stage'] == 'DONE'
+    assert job['event_counts']['WRITER_DRAFT'] == 1
+    assert jm.list_jobs('p1', chapter_id='chapter_001')[0]['job_id'] == job_id
+
+
+def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
+    store = make_store(tmp_path)
+    kb = KBService(store)
+    ctx = ContextEngine(store, kb)
+    jm = JobManager(store, ctx, LLMGateway())
+
+    import main as app_main
+    import asyncio
+
+    old_store = app_main.store
+    old_kb = app_main.kb_service
+    old_ctx = app_main.context_engine
+    old_jm = app_main.job_manager
+    app_main.store = store
+    app_main.kb_service = kb
+    app_main.context_engine = ctx
+    app_main.job_manager = jm
+    try:
+        async def _run():
+            jid = await jm.run_write_job('p1', {
+                'chapter_id': 'chapter_001',
+                'blueprint_id': 'blueprint_001',
+                'scene_index': 0,
+                'auto_apply_patch': False,
+            })
+            async for _ in jm.stream(jid):
+                pass
+            return jid
+
+        jid = asyncio.run(_run())
+        client = TestClient(app_main.app)
+        listed = client.get('/api/projects/p1/jobs?chapter_id=chapter_001')
+        assert listed.status_code == 200
+        rows = listed.json()
+        assert rows[0]['job_id'] == jid
+        assert rows[0]['status'] == 'completed'
+        assert rows[0]['last_event'] == 'DONE'
+        detail = client.get(f'/api/projects/p1/jobs/{jid}')
+        assert detail.status_code == 200
+        assert detail.json()['event_counts']['TRUST_REPORT'] == 1
+    finally:
+        app_main.store = old_store
+        app_main.kb_service = old_kb
+        app_main.context_engine = old_ctx
+        app_main.job_manager = old_jm
 
 
 def test_kb_query_card_stars_importance_weighting_affects_rank(tmp_path: Path):

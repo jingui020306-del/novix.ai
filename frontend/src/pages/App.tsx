@@ -254,6 +254,7 @@ export default function App() {
   const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
   const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
+  const { data: jobRows, mutate: mutateJobs } = useSWR(project ? `/api/projects/${project}/jobs` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -294,6 +295,8 @@ export default function App() {
   const evidenceMarkRows = Array.isArray(evidenceMarks) ? evidenceMarks : []
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
+  const jobList = Array.isArray(jobRows) ? jobRows : []
+  const latestJob = jobList[0]
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
@@ -1104,6 +1107,7 @@ export default function App() {
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
       })
+      mutateJobs()
       const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const ws = new WebSocket(`${wsProto}://${window.location.host}/api/jobs/${j.job_id}/stream`)
       ws.onmessage = (e) => {
@@ -1120,6 +1124,7 @@ export default function App() {
           mutateEvidenceMarks()
           mutateTrustReport()
           mutateProposals()
+          mutateJobs()
           push('Job finished')
         }
       }
@@ -2267,8 +2272,8 @@ export default function App() {
             <div className='grid grid-cols-4 gap-3'>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>生成状态</div>
-                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (pendingPatchCount ? '待审稿' : '空闲')}</div>
-                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || 'no job event'}</div>
+                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
+                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || latestJob?.last_event || 'no job event'}</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>待审 Patch</div>
@@ -2401,6 +2406,32 @@ export default function App() {
               </div>
             </Card>
           </div>
+
+          <Card title='最近 AI 任务'>
+            <div className='grid grid-cols-2 gap-2'>
+              {jobList.slice(0, 6).map((job: any) => (
+                <button
+                  key={job.job_id}
+                  className='rounded-ui border border-border bg-surface px-3 py-2 text-left hover:bg-surface-2'
+                  onClick={() => {
+                    if (job.chapter_id) setSelectedChapter(job.chapter_id)
+                    setView('chapter')
+                    setActiveActivity('explorer')
+                  }}
+                >
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='truncate text-sm font-medium'>{job.chapter_id || job.job_id}</span>
+                    <Badge tone={job.status === 'completed' ? 'success' : job.status === 'failed' || job.status === 'awaiting_review' ? 'warn' : 'default'}>
+                      {job.status || 'unknown'}
+                    </Badge>
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>{job.last_event || job.stage || 'no event'} · {job.model || 'model pending'}</div>
+                  <div className='mt-1 text-xs text-muted'>{job.output_summary || job.input_summary || job.updated_at}</div>
+                </button>
+              ))}
+              {!jobList.length && <p className='text-sm text-muted'>还没有生成任务。生成本章后，这里会保留任务状态。</p>}
+            </div>
+          </Card>
 
           <div className='grid grid-cols-2 gap-3'>
             <Card title='待确认 Canon'>
