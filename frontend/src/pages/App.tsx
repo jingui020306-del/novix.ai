@@ -280,7 +280,8 @@ export default function App() {
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
 
-  const profiles = projectInfo?.llm_profiles || {}
+  const projectProfiles = projectInfo?.llm_profiles || {}
+  const profiles = { ...(globalProfiles?.profiles || {}), ...projectProfiles }
   const providerPresets = ((providersMeta?.providers || []) as ProviderMeta[])
   const selectedPreset = providerPresets.find((x) => x.provider_id === selectedPresetId)
   const { data: selectedMemoryPack } = useSWR(
@@ -312,6 +313,7 @@ export default function App() {
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const profileHealthRows = Array.isArray(llmStatus?.profiles) ? llmStatus.profiles : []
+  const selectedProfileHealth = profileHealthRows.find((row: any) => row.profile_id === llmProfileId)
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
   const buildDraftHistoryCounts = {
     all: processedBuildDrafts.length,
@@ -1191,6 +1193,13 @@ export default function App() {
 
   const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
     try {
+      if (selectedProfileHealth?.is_mock) {
+        push(`当前 profile ${llmProfileId} 是 mock 模式，会生成模拟结果`, 'error')
+      } else if (selectedProfileHealth?.missing_fields?.length) {
+        push(`当前 profile ${llmProfileId} 缺少: ${selectedProfileHealth.missing_fields.join(', ')}，生成时可能 fallback`, 'error')
+      } else if (!profiles[llmProfileId]) {
+        push(`当前 profile ${llmProfileId} 未找到，生成时可能 fallback`, 'error')
+      }
       setSelectedOpIds([])
       setEvents([])
       const j = await api.post(`/api/projects/${project}/jobs/write`, {
@@ -3150,6 +3159,28 @@ export default function App() {
                     <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
                   ))}
                 </Select>
+                <div className='mt-1 flex flex-wrap items-center gap-2 text-xs'>
+                  {selectedProfileHealth ? (
+                    <>
+                      <Badge tone={selectedProfileHealth.is_mock ? 'warn' : selectedProfileHealth.missing_fields?.length ? 'warn' : 'success'}>
+                        {selectedProfileHealth.is_mock ? 'mock mode' : selectedProfileHealth.missing_fields?.length ? 'incomplete' : 'ready'}
+                      </Badge>
+                      <span className='text-muted'>{selectedProfileHealth.provider} · {selectedProfileHealth.model || 'no model'}</span>
+                      <span className='text-muted'>API key {selectedProfileHealth.requires_api_key ? (selectedProfileHealth.api_key_configured ? 'configured' : 'missing') : 'not required'}</span>
+                      {selectedProfileHealth.missing_fields?.length ? <span className='text-amber-700 dark:text-amber-300'>Missing: {selectedProfileHealth.missing_fields.join(', ')}</span> : null}
+                    </>
+                  ) : profiles[llmProfileId] ? (
+                    <>
+                      <Badge>project profile</Badge>
+                      <span className='text-muted'>This profile is project-local; global health status is not available.</span>
+                    </>
+                  ) : (
+                    <>
+                      <Badge tone='warn'>missing</Badge>
+                      <span className='text-amber-700 dark:text-amber-300'>Profile not found; generation may fallback.</span>
+                    </>
+                  )}
+                </div>
               </div>
               <div className='col-span-3 flex items-end'>
                 <label className='flex items-center gap-2 text-sm'>
@@ -3821,6 +3852,7 @@ export default function App() {
     currentManifest,
     llmProfileId,
     profiles,
+    selectedProfileHealth,
     selectedChapter,
     currentChapterMeta,
     currentVolume,
