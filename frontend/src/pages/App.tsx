@@ -256,6 +256,7 @@ export default function App() {
   const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
   const { data: jobRows, mutate: mutateJobs } = useSWR(project ? `/api/projects/${project}/jobs` : null, api.get)
   const { data: chapterReviewRows, mutate: mutateChapterReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/reviews` : null, api.get)
+  const { data: patchReviewRows, mutate: mutatePatchReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/patch-reviews` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -300,6 +301,10 @@ export default function App() {
   const latestJob = jobList[0]
   const chapterReviewList = Array.isArray(chapterReviewRows) ? chapterReviewRows : []
   const pendingChapterReviews = chapterReviewList.filter((x: any) => x.status === 'pending_author_review')
+  const patchReviewList = Array.isArray(patchReviewRows) ? patchReviewRows : []
+  const pendingPatchReviews = patchReviewList.filter((x: any) => x.status === 'pending_author_review')
+  const activePatchReview = pendingPatchReviews[0] || patchReviewList[0]
+  const reviewPatch = latestPatch?.ops?.length ? latestPatch : activePatchReview ? { ...activePatchReview, patch_review_id: activePatchReview.review_id } : null
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
@@ -1129,6 +1134,7 @@ export default function App() {
           mutateProposals()
           mutateJobs()
           mutateChapterReviews()
+          mutatePatchReviews()
           push('Job finished')
         }
       }
@@ -1243,16 +1249,29 @@ export default function App() {
   }
 
   const applySelectedPatch = async () => {
-    if (!latestPatch?.ops?.length) return
+    if (!reviewPatch?.ops?.length) return
     try {
-      const accept = selectedOpIds.length ? selectedOpIds : latestPatch.ops.map((o: any) => o.op_id)
-      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: latestPatch.patch_id, patch_ops: latestPatch.ops, accept_op_ids: accept, selection_range: latestPatch.selection_range || undefined })
+      const accept = selectedOpIds.length ? selectedOpIds : reviewPatch.ops.map((o: any) => o.op_id)
+      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: reviewPatch.patch_id, patch_review_id: reviewPatch.patch_review_id || reviewPatch.review_id, patch_ops: reviewPatch.ops, accept_op_ids: accept, selection_range: reviewPatch.selection_range || undefined })
       mutateDraft()
       mutateVersions()
       mutateSessionMeta()
+      mutatePatchReviews()
       push('Patch applied')
     } catch {
       push('Patch apply failed', 'error')
+    }
+  }
+
+  const rejectPatchReview = async () => {
+    const reviewId = reviewPatch?.patch_review_id || reviewPatch?.review_id
+    if (!reviewId) return
+    try {
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/patch-reviews/${reviewId}`, { status: 'rejected', accepted_op_ids: [] })
+      await mutatePatchReviews()
+      push('Patch rejected')
+    } catch {
+      push('Patch reject failed', 'error')
     }
   }
 
@@ -2280,7 +2299,7 @@ export default function App() {
       const recentChapters = [...chapterRows].sort((a: any, b: any) => Number(b.order_index || 0) - Number(a.order_index || 0)).slice(0, 6)
       const unsupportedMarks = evidenceMarkRows.filter((m: any) => m?.detection?.support_level === 'unsupported' || m?.detection?.support_level === 'contradicted')
       const runningEvent = events.length > 0 && events.slice(-1)[0]?.event !== 'DONE'
-      const pendingPatchCount = latestPatch?.ops?.length || 0
+      const pendingPatchCount = pendingPatchReviews.length || latestPatch?.ops?.length || 0
       return (
         <div className='space-y-3 density-space'>
           <Card
@@ -2420,12 +2439,12 @@ export default function App() {
             </Card>
             <Card title='待审 AI Patch'>
               <div className='space-y-1'>
-                {(latestPatch?.ops || []).slice(0, 5).map((op: any) => (
+                {(reviewPatch?.ops || []).slice(0, 5).map((op: any) => (
                   <button key={op.op_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => setView('chapter')}>
                     {op.op_id} · {op.rationale || op.type}
                   </button>
                 ))}
-                {!latestPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+                {!reviewPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
               </div>
             </Card>
           </div>
@@ -3566,6 +3585,9 @@ export default function App() {
     selectedMarkId,
     highlighted,
     latestPatch,
+    reviewPatch,
+    patchReviewList,
+    pendingPatchReviews,
     selectedOpIds,
     versions,
     autoApplyPatch,
@@ -3811,9 +3833,18 @@ export default function App() {
       </Card>
 
       <details open className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({latestPatch?.ops?.length || 0})</span></summary>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({reviewPatch?.ops?.length || 0})</span></summary>
         <div className='space-y-2 border-t border-border p-2'>
-          {(latestPatch?.ops || []).map((op: any) => (
+          {reviewPatch ? (
+            <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+              <div className='flex items-center justify-between gap-2'>
+                <span>{reviewPatch.patch_review_id || reviewPatch.review_id || reviewPatch.patch_id}</span>
+                <Badge tone={reviewPatch.status === 'pending_author_review' ? 'warn' : reviewPatch.status === 'accepted' ? 'success' : 'default'}>{reviewPatch.status || 'event_patch'}</Badge>
+              </div>
+              <div className='mt-1 text-muted'>{reviewPatch.source || 'proofread_agent'} · {reviewPatch.provider || '-'} / {reviewPatch.model || '-'}</div>
+            </div>
+          ) : null}
+          {(reviewPatch?.ops || []).map((op: any) => (
             <div key={op.op_id} className='rounded-ui border border-border bg-surface-2 p-2'>
               <label className='flex items-center gap-2 text-xs'>
                 <input type='checkbox' checked={selectedOpIds.includes(op.op_id)} onChange={(e) => setSelectedOpIds((x) => (e.target.checked ? [...x, op.op_id] : x.filter((id) => id !== op.op_id)))} />
@@ -3824,10 +3855,11 @@ export default function App() {
               <pre className='mono mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-emerald-50 p-2 text-[11px] dark:bg-emerald-950/20'>+ {op.after || ''}</pre>
             </div>
           ))}
-          {!latestPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
+          {!reviewPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
           <div className='flex gap-2'>
-            <Button className='text-xs' onClick={() => setSelectedOpIds((latestPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
+            <Button className='text-xs' onClick={() => setSelectedOpIds((reviewPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
             <Button className='text-xs' onClick={applySelectedPatch}>应用</Button>
+            <Button className='text-xs' onClick={rejectPatchReview}>拒绝</Button>
           </div>
         </div>
       </details>

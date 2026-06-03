@@ -13,7 +13,7 @@ from agents.technique_director import TechniqueDirector, derive_technique_adhere
 from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
 from services.evidence_service import EvidenceService
-from services.editing_service import create_chapter_review, save_snapshot
+from services.editing_service import create_chapter_review, create_patch_review, save_snapshot
 from services.llm_config_service import LLMConfigService
 from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
@@ -440,7 +440,18 @@ class JobManager:
                 })
 
             ops = self._clip_ops_to_selection(ops, selection_range)
-            patch_payload = {"patch_id": f"patch_{job_id}", "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range, "input_summary": "基础校对 Agent 只做语言层 patch，不新增事实", "output_summary": f"生成 {len(ops)} 条待审 patch"}
+            patch_review = create_patch_review(
+                self.store,
+                project_id,
+                chapter_id,
+                f"patch_{job_id}",
+                ops,
+                job_id=job_id,
+                selection_range=selection_range,
+                provider=editor_used.get("provider", ""),
+                model=editor_used.get("model", ""),
+            )
+            patch_payload = {"patch_id": f"patch_{job_id}", "patch_review_id": patch_review.get("review_id"), "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range, "input_summary": "基础校对 Agent 只做语言层 patch，不新增事实", "output_summary": f"生成 {len(ops)} 条待审 patch"}
             await self.emit(project_id, job_id, "PROOFREAD_PATCH", patch_payload)
             await self.emit(project_id, job_id, "EDITOR_PATCH", patch_payload)
 

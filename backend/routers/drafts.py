@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from services.kb_service import KBService
-from services.editing_service import list_chapter_reviews, update_chapter_review
+from services.editing_service import list_chapter_reviews, list_patch_reviews, update_chapter_review, update_patch_review
 from storage.fs_store import FSStore, apply_patch_ops
 
 
@@ -191,6 +191,21 @@ def put_chapter_review(project_id: str, chapter_id: str, review_id: str, body: d
     return rec
 
 
+@router.get('/{chapter_id}/patch-reviews')
+def get_patch_reviews(project_id: str, chapter_id: str, status: str | None = None, s: FSStore = Depends(get_store)):
+    return list_patch_reviews(s, project_id, chapter_id, status=status)
+
+
+@router.put('/{chapter_id}/patch-reviews/{review_id}')
+def put_patch_review(project_id: str, chapter_id: str, review_id: str, body: dict, s: FSStore = Depends(get_store)):
+    try:
+        return update_patch_review(s, project_id, chapter_id, review_id, body or {})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='patch review not found') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post('/{chapter_id}/rollback')
 def rollback(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store), kb: KBService = Depends(get_kb)):
     version_id = body.get('version_id')
@@ -230,6 +245,9 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
     accept_ids = set(body.get('accept_op_ids', [o['op_id'] for o in norm]))
     accepted = [o for o in norm if o['op_id'] in accept_ids]
     rejected = [o for o in norm if o['op_id'] not in accept_ids]
+    patch_review_id = body.get('patch_review_id')
+    if patch_review_id and not any(row.get('review_id') == patch_review_id for row in list_patch_reviews(s, project_id, chapter_id)):
+        raise HTTPException(status_code=404, detail='patch review not found')
 
     _validate_selection_bounds(accepted, body.get('selection_range'))
 
@@ -247,6 +265,14 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
         'diff': diff,
     }
     s.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', rec)
+    if patch_review_id:
+        status = 'accepted' if accepted else 'rejected'
+        update_patch_review(s, project_id, chapter_id, patch_review_id, {
+            'status': status,
+            'accepted_op_ids': rec['accepted_op_ids'],
+            'rejected_op_ids': rec['rejected_op_ids'],
+            'diff': diff,
+        })
     s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "PATCH_APPLY_RESULT", "data": {"chapter_id": chapter_id, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}})
     kb.reindex_manuscript_chapter(project_id, chapter_id)
     return {"content": updated, "diff": diff, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}

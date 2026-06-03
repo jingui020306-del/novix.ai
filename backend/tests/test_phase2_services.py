@@ -743,6 +743,12 @@ def test_write_job_emits_three_agent_trust_events_and_marks(tmp_path: Path):
     assert reviews[0]['status'] == 'pending_author_review'
     assert reviews[0]['job_id'] == job_id
     assert reviews[0]['content_hash']
+    patch_reviews = s.read_json('p1', 'meta/patch_reviews/chapter_001.json')
+    assert patch_reviews[0]['status'] == 'pending_author_review'
+    assert patch_reviews[0]['patch_id'] == f'patch_{job_id}'
+    assert patch_reviews[0]['op_count'] >= 1
+    proofread = [e for e in events if e['event'] == 'PROOFREAD_PATCH'][0]['data']
+    assert proofread['patch_review_id'] == patch_reviews[0]['review_id']
     meta = s.read_json('p1', 'drafts/chapter_001.meta.json')
     assert any(v.get('reason') == 'before_ai_draft' for v in meta.get('versions', []))
 
@@ -799,6 +805,33 @@ def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
         assert meta['last_confirmed_review_id'] == review['review_id']
         bad_status = client.put(f"/api/projects/p1/drafts/chapter_001/reviews/{review['review_id']}", json={'status': 'done'})
         assert bad_status.status_code == 400
+        patch_reviews = client.get('/api/projects/p1/drafts/chapter_001/patch-reviews')
+        assert patch_reviews.status_code == 200
+        patch_review = patch_reviews.json()[0]
+        assert patch_review['status'] == 'pending_author_review'
+        first_op = patch_review['ops'][0]['op_id']
+        before_bad_apply = store.read_md('p1', 'drafts/chapter_001.md')
+        bad_review_apply = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+            'patch_id': patch_review['patch_id'],
+            'patch_review_id': 'patch_review_missing',
+            'patch_ops': patch_review['ops'],
+            'accept_op_ids': [first_op],
+        })
+        assert bad_review_apply.status_code == 404
+        assert store.read_md('p1', 'drafts/chapter_001.md') == before_bad_apply
+        applied = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+            'patch_id': patch_review['patch_id'],
+            'patch_review_id': patch_review['review_id'],
+            'patch_ops': patch_review['ops'],
+            'accept_op_ids': [first_op],
+            'selection_range': patch_review.get('selection_range'),
+        })
+        assert applied.status_code == 200
+        updated_patch_review = client.get('/api/projects/p1/drafts/chapter_001/patch-reviews').json()[0]
+        assert updated_patch_review['status'] == 'accepted'
+        assert updated_patch_review['accepted_op_ids'] == [first_op]
+        bad_scope = client.put(f"/api/projects/p1/drafts/chapter_001/patch-reviews/{patch_review['review_id']}", json={'accepted_op_ids': 'all'})
+        assert bad_scope.status_code == 400
     finally:
         app_main.store = old_store
         app_main.kb_service = old_kb

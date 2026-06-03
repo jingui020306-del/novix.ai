@@ -24,6 +24,7 @@ EXT_SUBDIRS = [
     "meta/trust_reports",
     "meta/build_drafts",
     "meta/chapter_reviews",
+    "meta/patch_reviews",
     "meta/jobs",
 ]
 
