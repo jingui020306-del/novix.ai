@@ -289,6 +289,12 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert legacy_pending.status_code == 200
     assert any(x["draft_id"] == "build_legacy_no_status" and x["status"] == "pending" for x in legacy_pending.json())
 
+    bad_status = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={"status": "done-ish"})
+    assert bad_status.status_code == 400
+    still_pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert still_pending.status_code == 200
+    assert any(x["draft_id"] == body["draft_id"] for x in still_pending.json())
+
     updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
         "body": '{"accepted": true}',
         "status": "accepted",

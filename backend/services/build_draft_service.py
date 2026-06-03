@@ -9,6 +9,7 @@ from storage.fs_store import FSStore
 
 
 BUILD_DRAFT_KINDS = {"story_overview", "character_seed", "lines", "foreshadowing"}
+BUILD_DRAFT_STATUSES = {"pending", "accepted", "partially_accepted", "rejected"}
 
 
 def now_iso() -> str:
@@ -83,6 +84,8 @@ class BuildDraftService:
         rec = self.get_draft(project_id, draft_id)
         if not rec:
             raise FileNotFoundError(draft_id)
+        if "status" in patch and patch["status"] not in BUILD_DRAFT_STATUSES:
+            raise ValueError(f"Unsupported build draft status: {patch['status']}")
         for key in ["body", "status", "accepted_target", "accepted_scope", "rejection_reason"]:
             if key in patch:
                 rec[key] = patch[key]
