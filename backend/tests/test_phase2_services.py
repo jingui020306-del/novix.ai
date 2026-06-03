@@ -805,6 +805,33 @@ def test_evidence_marks_and_trust_report_verify_quotes(tmp_path: Path):
     assert bad['detection']['support_level'] == 'unsupported'
 
 
+def test_evidence_mark_author_feedback_updates_report(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.store.write_md('p1', 'drafts/chapter_001.md', '# c1\n\n蓝色车票在桌面上。')
+    svc = EvidenceService(app_main.store)
+    marks = svc.build_marks('p1', 'chapter_001', technique_checklist=[
+        {'technique_id': 'technique_001', 'must_have_signals': ['蓝色车票']},
+        {'technique_id': 'technique_missing', 'must_have_signals': ['不存在的信号']},
+    ])
+    svc.save_marks('p1', 'chapter_001', marks)
+
+    client = TestClient(app_main.app)
+    supported = [m for m in marks if m['detection']['support_level'] == 'supported'][0]
+    res = client.post(f"/api/projects/p1/chapters/chapter_001/evidence-marks/{supported['mark_id']}/feedback", json={'action': 'confirm_hit', 'note': '作者确认'})
+    assert res.status_code == 200
+    assert res.json()['mark']['author_feedback']['action'] == 'confirm_hit'
+    assert res.json()['mark']['detection']['support_level'] == 'supported'
+
+    missing = [m for m in marks if m['target_id'] == 'technique_missing'][0]
+    res2 = client.post(f"/api/projects/p1/chapters/chapter_001/evidence-marks/{missing['mark_id']}/feedback", json={'action': 'ignore_chapter'})
+    assert res2.status_code == 200
+    assert res2.json()['trust_report']['ignored_count'] == 1
+    stored = app_main.store.read_jsonl('p1', 'meta/evidence_marks/chapter_001.jsonl')
+    assert [m for m in stored if m['mark_id'] == missing['mark_id']][0]['detection']['ignored_by_author'] is True
+
+
 def test_canon_append_fact_marks_unverified_quote(tmp_path: Path):
     import main as app_main
 

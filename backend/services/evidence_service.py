@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from typing import Any
 
@@ -8,6 +9,7 @@ from storage.fs_store import FSStore, now_iso
 
 
 SUPPORT_LEVELS = {"supported", "partial", "unsupported", "contradicted"}
+AUTHOR_FEEDBACK_ACTIONS = {"confirm_hit", "false_positive", "ignore_chapter"}
 
 
 def _hash_short(value: str) -> str:
@@ -203,20 +205,73 @@ class EvidenceService:
     def list_marks(self, project_id: str, chapter_id: str) -> list[dict[str, Any]]:
         return self.store.read_jsonl(project_id, f"meta/evidence_marks/{chapter_id}.jsonl")
 
+    def update_mark_feedback(self, project_id: str, chapter_id: str, mark_id: str, action: str, note: str = "") -> dict[str, Any]:
+        if action not in AUTHOR_FEEDBACK_ACTIONS:
+            raise ValueError("invalid feedback action")
+        rel = f"meta/evidence_marks/{chapter_id}.jsonl"
+        marks = self.list_marks(project_id, chapter_id)
+        updated: dict[str, Any] | None = None
+        for mark in marks:
+            if mark.get("mark_id") != mark_id:
+                continue
+            detection = mark.setdefault("detection", {})
+            previous = detection.get("support_level", "unsupported")
+            feedback = {
+                "action": action,
+                "note": note,
+                "previous_support_level": previous,
+                "ts": now_iso(),
+            }
+            mark["author_feedback"] = feedback
+            quote = str(((mark.get("span") or {}) if isinstance(mark.get("span"), dict) else {}).get("quote") or "")
+            if action == "confirm_hit":
+                if quote:
+                    detection["support_level"] = "supported"
+                    detection["confidence"] = max(float(detection.get("confidence", 0.0) or 0.0), 0.95)
+                    detection["note"] = note or "作者确认命中"
+                else:
+                    detection["support_level"] = "unsupported"
+                    detection["confidence"] = min(float(detection.get("confidence", 0.0) or 0.0), 0.2)
+                    detection["note"] = note or "作者确认，但缺少可回查 quote，不能作为已命中证据"
+            elif action == "false_positive":
+                detection["support_level"] = "unsupported"
+                detection["confidence"] = min(float(detection.get("confidence", 0.0) or 0.0), 0.1)
+                detection["note"] = note or "作者标记为误判"
+            elif action == "ignore_chapter":
+                detection["ignored_by_author"] = True
+                detection["note"] = note or "作者选择本章忽略"
+            updated = mark
+            break
+        if updated is None:
+            raise KeyError("mark not found")
+        path = self.store._safe_path(project_id, rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(mark, ensure_ascii=False) for mark in marks) + ("\n" if marks else ""), encoding="utf-8")
+        return updated
+
     def build_trust_report(self, project_id: str, chapter_id: str, marks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         marks = marks if marks is not None else self.list_marks(project_id, chapter_id)
         counts = {level: 0 for level in SUPPORT_LEVELS}
+        ignored_count = 0
         for mark in marks:
+            if (mark.get("detection", {}) or {}).get("ignored_by_author"):
+                ignored_count += 1
+                continue
             level = (mark.get("detection", {}) or {}).get("support_level", "unsupported")
             counts[level if level in counts else "unsupported"] += 1
-        total = max(1, len(marks))
+        total = max(1, len(marks) - ignored_count)
         supported = counts["supported"] + counts["partial"] * 0.5
-        risks = [m for m in marks if (m.get("detection", {}) or {}).get("support_level") in {"unsupported", "contradicted"}]
+        risks = [
+            m for m in marks
+            if not (m.get("detection", {}) or {}).get("ignored_by_author")
+            and (m.get("detection", {}) or {}).get("support_level") in {"unsupported", "contradicted"}
+        ]
         report = {
             "chapter_id": chapter_id,
             "support_counts": counts,
             "support_rate": round(supported / total, 3),
             "required_count": len(marks),
+            "ignored_count": ignored_count,
             "unsupported_count": counts["unsupported"],
             "contradicted_count": counts["contradicted"],
             "risks": risks[:20],

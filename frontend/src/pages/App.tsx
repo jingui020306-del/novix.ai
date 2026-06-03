@@ -1274,6 +1274,19 @@ export default function App() {
     }
   }
 
+  const updateEvidenceFeedback = async (mark: any, action: string) => {
+    if (!mark?.mark_id) return
+    try {
+      await api.post(`/api/projects/${project}/chapters/${selectedChapter}/evidence-marks/${mark.mark_id}/feedback`, { action })
+      await mutateEvidenceMarks()
+      await mutateTrustReport()
+      const labels: Record<string, string> = { confirm_hit: '已确认命中', false_positive: '已标为误判', ignore_chapter: '本章已忽略' }
+      push(labels[action] || '反馈已保存')
+    } catch {
+      push('反馈保存失败', 'error')
+    }
+  }
+
   const createVolume = async () => {
     const idx = volumeRows.length + 1
     const volume = {
@@ -4103,6 +4116,11 @@ export default function App() {
           <div className='space-y-2 text-xs'>
             <div className='font-medium'>{selectedMark.target_type} · {selectedMark.label || selectedMark.target_id}</div>
             <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
+            {selectedMark.author_feedback ? (
+              <div className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-muted'>
+                作者反馈: {selectedMark.author_feedback.action} · {selectedMark.author_feedback.ts || ''}
+              </div>
+            ) : null}
             <button
               className='w-full rounded-ui border border-border bg-surface-2 p-2 text-left hover:bg-surface'
               onClick={() => {
@@ -4115,10 +4133,20 @@ export default function App() {
               <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '无真实 quote，不能视为已命中'}</div>
             </button>
             <div className='grid grid-cols-2 gap-1'>
-              <Button className='text-xs'>确认命中</Button>
-              <Button className='text-xs'>标为误判</Button>
-              <Button className='text-xs'>让 AI 改段</Button>
-              <Button className='text-xs'>忽略本章</Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'confirm_hit')}>确认命中</Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'false_positive')}>标为误判</Button>
+              <Button
+                className='text-xs'
+                onClick={() => {
+                  const start = Number(selectedMark?.span?.start_line || 0)
+                  const end = Number(selectedMark?.span?.end_line || start)
+                  if (start > 0) requestRunJob(1200, { start, end }, '让 AI 改段')
+                  else push('这个标记没有可编辑行号', 'error')
+                }}
+              >
+                让 AI 改段
+              </Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'ignore_chapter')}>忽略本章</Button>
             </div>
           </div>
         ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
