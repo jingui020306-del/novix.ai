@@ -34,12 +34,13 @@ class BuildDraftService:
             row = self.store.read_json(project_id, f"meta/build_drafts/{path.name}")
             if not row:
                 continue
+            row.setdefault("status", "pending")
             if kind and row.get("kind") != kind:
                 continue
             if status and row.get("status") != status:
                 continue
             rows.append(row)
-        return sorted(rows, key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return sorted(rows, key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
 
     def get_draft(self, project_id: str, draft_id: str) -> dict[str, Any]:
         return self.store.read_json(project_id, self._draft_path(draft_id))

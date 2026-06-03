@@ -276,6 +276,19 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert pending.status_code == 200
     assert any(x["draft_id"] == body["draft_id"] for x in pending.json())
 
+    app_main.store.write_json("p1", "meta/build_drafts/build_legacy_no_status.json", {
+        "draft_id": "build_legacy_no_status",
+        "kind": "story_overview",
+        "title": "旧草案",
+        "revision": 1,
+        "source": "legacy",
+        "body": "{}",
+        "created_at": "2000-01-01T00:00:00+00:00",
+    })
+    legacy_pending = client.get("/api/projects/p1/build-drafts?status=pending")
+    assert legacy_pending.status_code == 200
+    assert any(x["draft_id"] == "build_legacy_no_status" and x["status"] == "pending" for x in legacy_pending.json())
+
     updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
         "body": '{"accepted": true}',
         "status": "accepted",
@@ -288,6 +301,7 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     accepted = client.get("/api/projects/p1/build-drafts?status=accepted")
     assert accepted.status_code == 200
     assert any(x["draft_id"] == body["draft_id"] for x in accepted.json())
+    assert accepted.json()[0]["draft_id"] == body["draft_id"]
 
     pending_after_accept = client.get("/api/projects/p1/build-drafts?status=pending")
     assert pending_after_accept.status_code == 200

@@ -2345,6 +2345,7 @@ export default function App() {
                       <span className='font-medium'>{rec.title || rec.kind}</span>
                       <span className='ml-2 text-muted'>rev {rec.revision || 1} · {rec.source || 'unknown'}</span>
                     </button>
+                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                     <div className='mt-1 flex gap-2'>
                       <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
                       <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
@@ -2374,6 +2375,7 @@ export default function App() {
                       <span className='font-medium'>{rec.title || rec.kind}</span>
                       <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
                     </button>
+                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                     <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
                       {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
                       {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
@@ -2488,6 +2490,7 @@ export default function App() {
                           <span className='font-medium'>{rec.title || rec.kind}</span>
                           <span className='ml-2 text-muted'>rev {rec.revision || 1}</span>
                         </button>
+                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                         <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
                           <span>{rec.source || 'unknown'} · {rec.selected_chapter || 'no chapter'}</span>
                           <div className='flex gap-1'>
@@ -2524,6 +2527,7 @@ export default function App() {
                           <span className='font-medium'>{rec.title || rec.kind}</span>
                           <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
                         </button>
+                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                         <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
                           {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
                           {rec.accepted_target ? <span>target: {rec.accepted_target}</span> : null}
