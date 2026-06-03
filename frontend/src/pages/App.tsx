@@ -251,6 +251,7 @@ export default function App() {
   const { data: globalProfiles, mutate: mutateGlobalProfiles } = useSWR('/api/config/llm/profiles', api.get)
   const { data: globalAssignments, mutate: mutateGlobalAssignments } = useSWR('/api/config/llm/assignments', api.get)
   const { data: providersMeta } = useSWR('/api/config/llm/providers_meta', api.get)
+  const { data: llmStatus, mutate: mutateLlmStatus } = useSWR('/api/config/llm/status', api.get)
   const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
   const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
@@ -3410,6 +3411,28 @@ export default function App() {
     if (view === 'settings') {
       return (
         <div className='space-y-3 density-space'>
+          <Card title='LLM Runtime Safety' extra={<Badge tone={llmStatus?.all_mock ? 'warn' : (llmStatus?.missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.all_mock ? 'mock mode' : `${llmStatus?.missing_count || 0} missing`}</Badge>}>
+            <div className='grid grid-cols-1 gap-2 text-xs md:grid-cols-4'>
+              {(llmStatus?.modules || []).map((row: any) => (
+                <div key={row.module} className='rounded-ui border border-border bg-surface-2 p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-medium'>{row.module}</span>
+                    <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.provider}</Badge>
+                  </div>
+                  <div className='mt-1 text-muted'>{row.profile_id}</div>
+                  <div className='mt-1 text-muted'>{row.model || 'no model'}</div>
+                  <div className='mt-1'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                  {row.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                  {row.profile_missing ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Profile not found</div> : null}
+                </div>
+              ))}
+            </div>
+            <div className='mt-3 space-y-1 text-xs text-muted'>
+              <div>API key 不会在状态卡里显示原文；当前全局配置文件：{llmStatus?.storage?.profiles_path || '-'}</div>
+              <div>{llmStatus?.fallback_policy || 'Fallback policy loading...'}</div>
+            </div>
+          </Card>
+
           <Card title='Settings'>
             <div className='grid grid-cols-2 gap-3'>
               <div>
@@ -3478,6 +3501,7 @@ export default function App() {
                 try {
                   await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
                   mutateGlobalProfiles()
+                  mutateLlmStatus()
                   push('Global LLM profiles saved')
                 } catch {
                   push('Invalid profiles JSON', 'error')
@@ -3495,6 +3519,7 @@ export default function App() {
                 try {
                   await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: JSON.parse(assignmentsEditor || '{}') })
                   mutateGlobalAssignments()
+                  mutateLlmStatus()
                   push('Global assignments saved')
                 } catch {
                   push('Invalid assignments JSON', 'error')
@@ -3638,6 +3663,7 @@ export default function App() {
     worldRows,
     sideSearch,
     settings,
+    llmStatus,
     selectedProposalId,
     selectedBlueprintId,
     techniqueCards,

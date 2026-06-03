@@ -675,6 +675,29 @@ def test_llm_config_profiles_assignments_crud(tmp_path: Path):
     assert 'api_key' in deepseek['optional_fields']
     assert deepseek['supports_stream'] is True
 
+    status = client.get('/api/config/llm/status')
+    assert status.status_code == 200
+    status_body = status.json()
+    assert status_body['all_mock'] is True
+    assert status_body['storage']['api_keys_returned_in_status'] is False
+    assert 'profiles_path' in status_body['storage']
+    critic = [row for row in status_body['modules'] if row['module'] == 'critic'][0]
+    assert critic['profile_id'] == 'test_profile'
+    assert 'api_key' not in critic
+
+    client.post('/api/config/llm/profiles', json={
+        'mode': 'upsert',
+        'id': 'needs_key',
+        'profile': {'provider': 'openai_compat', 'model': 'real-model', 'base_url': 'https://example.invalid', 'api_key': ''},
+    })
+    client.post('/api/config/llm/assignments', json={'mode': 'upsert', 'module': 'writer', 'profile_id': 'needs_key'})
+    status2 = client.get('/api/config/llm/status').json()
+    assert status2['all_mock'] is False
+    writer = [row for row in status2['modules'] if row['module'] == 'writer'][0]
+    assert writer['requires_api_key'] is True
+    assert writer['api_key_configured'] is False
+    assert 'api_key' in writer['missing_fields']
+
 
 def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):
     s = make_store(tmp_path)
