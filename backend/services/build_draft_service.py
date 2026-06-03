@@ -86,6 +86,10 @@ class BuildDraftService:
             raise FileNotFoundError(draft_id)
         if "status" in patch and patch["status"] not in BUILD_DRAFT_STATUSES:
             raise ValueError(f"Unsupported build draft status: {patch['status']}")
+        if "accepted_scope" in patch and not (
+            isinstance(patch["accepted_scope"], list) and all(isinstance(x, str) for x in patch["accepted_scope"])
+        ):
+            raise ValueError("accepted_scope must be a list of strings")
         for key in ["body", "status", "accepted_target", "accepted_scope", "rejection_reason"]:
             if key in patch:
                 rec[key] = patch[key]

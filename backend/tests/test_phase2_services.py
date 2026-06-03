@@ -295,6 +295,9 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert still_pending.status_code == 200
     assert any(x["draft_id"] == body["draft_id"] for x in still_pending.json())
 
+    bad_scope = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={"accepted_scope": "all"})
+    assert bad_scope.status_code == 400
+
     updated = client.put(f"/api/projects/p1/build-drafts/{body['draft_id']}", json={
         "body": '{"accepted": true}',
         "status": "accepted",

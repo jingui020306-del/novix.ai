@@ -303,6 +303,7 @@ export default function App() {
     partially_accepted: processedBuildDrafts.filter((x: any) => x.status === 'partially_accepted').length,
     rejected: processedBuildDrafts.filter((x: any) => x.status === 'rejected').length,
   }
+  const acceptedScopeLabels = (rec: any) => (Array.isArray(rec?.accepted_scope) ? rec.accepted_scope.filter((x: any) => typeof x === 'string' && x.trim()) : [])
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -2377,7 +2378,7 @@ export default function App() {
                     </button>
                     <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                     <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
-                      {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
+                      {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
                       {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
                     </div>
                     <div className='mt-1 flex gap-1'>
@@ -2529,7 +2530,7 @@ export default function App() {
                         </button>
                         <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
                         <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
-                          {(rec.accepted_scope || []).length ? <Badge tone='success'>{(rec.accepted_scope || []).join(', ')}</Badge> : null}
+                          {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
                           {rec.accepted_target ? <span>target: {rec.accepted_target}</span> : null}
                           {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
                         </div>
@@ -2556,7 +2557,7 @@ export default function App() {
                     <div className='flex flex-wrap gap-2 text-xs text-muted'>
                       <Badge>{buildDraft.status || 'pending'}</Badge>
                       <Badge>{buildDraft.source || 'local'}</Badge>
-                      {(buildDraft.accepted_scope || []).length ? <Badge tone='success'>已接受: {(buildDraft.accepted_scope || []).join(', ')}</Badge> : null}
+                      {acceptedScopeLabels(buildDraft).length ? <Badge tone='success'>已接受: {acceptedScopeLabels(buildDraft).join(', ')}</Badge> : null}
                       {buildDraft.accepted_target ? <Badge>写入: {buildDraft.accepted_target}</Badge> : null}
                       {buildDraft.rejection_reason ? <Badge tone='warn'>拒绝: {buildDraft.rejection_reason}</Badge> : null}
                       {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
@@ -3518,6 +3519,7 @@ export default function App() {
     buildDraftHistoryRows,
     buildDraftHistoryCounts,
     buildDraftHistoryFilter,
+    acceptedScopeLabels,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
