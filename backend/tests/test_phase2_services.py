@@ -830,6 +830,14 @@ def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
         updated_patch_review = client.get('/api/projects/p1/drafts/chapter_001/patch-reviews').json()[0]
         assert updated_patch_review['status'] == 'accepted'
         assert updated_patch_review['accepted_op_ids'] == [first_op]
+        version_rows = client.get('/api/projects/p1/drafts/chapter_001/versions').json()['versions']
+        assert any(row['label'] == 'AI 生成前' and row['tone'] == 'warn' for row in version_rows)
+        assert any(row['label'] == '应用 Patch 前' and row['tone'] == 'warn' for row in version_rows)
+        rollback_version_id = version_rows[0]['version_id']
+        rollback = client.post('/api/projects/p1/drafts/chapter_001/rollback', json={'version_id': rollback_version_id})
+        assert rollback.status_code == 200
+        after_rollback_rows = client.get('/api/projects/p1/drafts/chapter_001/versions').json()['versions']
+        assert any(row['label'] == '回滚前备份' for row in after_rollback_rows)
         bad_scope = client.put(f"/api/projects/p1/drafts/chapter_001/patch-reviews/{patch_review['review_id']}", json={'accepted_op_ids': 'all'})
         assert bad_scope.status_code == 400
     finally:

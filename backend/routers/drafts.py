@@ -60,6 +60,32 @@ def _save_snapshot(s: FSStore, project_id: str, chapter_id: str, content: str, r
     return node
 
 
+def _version_label(reason: str) -> tuple[str, str]:
+    if reason == 'manual_save':
+        return '手动保存前', 'default'
+    if reason == 'before_ai_draft':
+        return 'AI 生成前', 'warn'
+    if reason == 'before_apply_patch':
+        return '应用 Patch 前', 'warn'
+    if reason.startswith('rollback_backup:'):
+        return '回滚前备份', 'default'
+    return reason or '版本快照', 'default'
+
+
+def _version_rows(meta: dict) -> list[dict]:
+    rows = []
+    for idx, row in enumerate(meta.get('versions', []) or [], start=1):
+        label, tone = _version_label(str(row.get('reason') or ''))
+        rows.append({
+            **row,
+            'label': label,
+            'tone': tone,
+            'ordinal': idx,
+            'is_current': row.get('version_id') == meta.get('current_version'),
+        })
+    return sorted(rows, key=lambda x: str(x.get('ts') or ''), reverse=True)
+
+
 
 
 def _validate_selection_bounds(ops: list[dict], selection_range: dict | None) -> None:
@@ -166,7 +192,7 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
 @router.get('/{chapter_id}/versions')
 def get_versions(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
     meta = _chapter_meta(s, project_id, chapter_id)
-    return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": meta.get('versions', [])}
+    return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": _version_rows(meta)}
 
 
 @router.get('/{chapter_id}/reviews')

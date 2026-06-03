@@ -1291,8 +1291,9 @@ export default function App() {
   const rollbackVersion = async (versionId: string) => {
     try {
       await api.post(`/api/projects/${project}/drafts/${selectedChapter}/rollback`, { version_id: versionId })
-      mutateDraft()
-      mutateVersions()
+      await mutateDraft()
+      await mutateVersions()
+      await mutateDraftDetails()
       push(`Rolled back to ${versionId}`)
     } catch {
       push('Rollback failed', 'error')
@@ -3865,12 +3866,28 @@ export default function App() {
       </details>
 
       <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Version Tree <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
-        <div className='space-y-1 border-t border-border p-2'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>版本时间线 <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
+        <div className='space-y-2 border-t border-border p-2'>
+          <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='font-medium'>当前版本</span>
+              <Badge>{versions?.current_version || '未记录'}</Badge>
+            </div>
+            <div className='mt-1 text-muted'>回滚会先保存“回滚前备份”，不会直接丢掉当前正文。</div>
+          </div>
           {(versions?.versions || []).map((v: any) => (
-            <div key={v.version_id} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-surface-2 px-2 py-1'>
-              <span className='truncate text-xs'>{v.version_id}</span>
-              <Button className='text-xs' onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
+            <div key={v.version_id} className='rounded-ui border border-border bg-surface-2 px-2 py-2 text-xs'>
+              <div className='flex items-start justify-between gap-2'>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-1'>
+                    <span className='font-medium'>{v.label || v.reason || '版本快照'}</span>
+                    <Badge tone={v.tone === 'warn' ? 'warn' : v.is_current ? 'success' : 'default'}>{v.is_current ? '当前' : v.version_id}</Badge>
+                  </div>
+                  <div className='mt-1 text-muted'>{v.ts || 'no timestamp'}</div>
+                  {v.patch_id ? <div className='mt-1 truncate text-muted'>关联: {v.patch_id}</div> : null}
+                </div>
+                <Button className='shrink-0 text-xs' disabled={v.is_current} onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
+              </div>
             </div>
           ))}
           {(!versions?.versions || versions.versions.length === 0) && <p className='text-xs text-muted'>No versions yet.</p>}
