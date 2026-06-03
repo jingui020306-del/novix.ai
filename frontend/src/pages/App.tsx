@@ -311,6 +311,7 @@ export default function App() {
   const reviewPatch = latestPatch?.ops?.length ? latestPatch : activePatchReview ? { ...activePatchReview, patch_review_id: activePatchReview.review_id } : null
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
+  const profileHealthRows = Array.isArray(llmStatus?.profiles) ? llmStatus.profiles : []
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
   const buildDraftHistoryCounts = {
     all: processedBuildDrafts.length,
@@ -418,6 +419,37 @@ export default function App() {
       push(`Profile saved: ${profileId}`)
     } catch {
       push('Profile save failed', 'error')
+    }
+  }
+
+  const loadProfileDraft = (profileId: string) => {
+    const profile = globalProfiles?.profiles?.[profileId] || {}
+    const matchedPreset = providerPresets.find((preset) => {
+      const defaults = preset.defaults || {}
+      return defaults.provider === profile.provider && (!defaults.base_url || defaults.base_url === profile.base_url)
+    }) || providerPresets.find((preset) => preset.defaults?.provider === profile.provider)
+    if (matchedPreset) setSelectedPresetId(matchedPreset.provider_id)
+    setPresetProfileId(profileId)
+    setProfileDraft({ ...profile, api_key: '' })
+    push(`Loaded profile: ${profileId}`)
+  }
+
+  const deleteProfileDraft = async (profileId: string) => {
+    if (profileId === 'mock_default') {
+      push('mock_default cannot be deleted', 'error')
+      return
+    }
+    try {
+      await api.post('/api/config/llm/profiles', { mode: 'delete', id: profileId })
+      if (presetProfileId === profileId) {
+        setPresetProfileId('')
+        setProfileDraft({ ...(selectedPreset?.defaults || {}) })
+      }
+      await mutateGlobalProfiles()
+      await mutateLlmStatus()
+      push(`Profile deleted: ${profileId}`)
+    } catch {
+      push('Profile delete failed', 'error')
     }
   }
 
@@ -3586,6 +3618,34 @@ export default function App() {
                 <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
                 <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
                 <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
+                <div>Editing an existing profile with an empty API Key field keeps the stored key.</div>
+              </div>
+            </div>
+            <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <div>
+                  <h4 className='text-sm font-semibold'>Profile Health</h4>
+                  <p className='text-xs text-muted'>Local validation only. No provider call is made and API keys are not displayed.</p>
+                </div>
+                <Badge tone={(llmStatus?.profile_missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.profile_missing_count || 0} incomplete</Badge>
+              </div>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+                {profileHealthRows.map((row: any) => (
+                  <div key={row.profile_id} className='rounded-ui border border-border bg-surface p-2'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='font-medium'>{row.profile_id}</span>
+                      <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.missing_fields?.length ? 'incomplete' : 'ready'}</Badge>
+                    </div>
+                    <div className='mt-1 text-xs text-muted'>{row.provider} · {row.model || 'no model'}</div>
+                    <div className='mt-1 text-xs'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                    {row.missing_fields?.length ? <div className='mt-1 text-xs text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                    <div className='mt-2 flex flex-wrap gap-2'>
+                      <Button className='text-xs' onClick={() => loadProfileDraft(row.profile_id)}>Edit</Button>
+                      <Button className='text-xs' onClick={() => deleteProfileDraft(row.profile_id)} disabled={row.profile_id === 'mock_default'}>Delete</Button>
+                    </div>
+                  </div>
+                ))}
+                {!profileHealthRows.length && <p className='text-sm text-muted'>No profiles found.</p>}
               </div>
             </div>
             <div className='mb-1 flex items-center justify-between gap-2'>

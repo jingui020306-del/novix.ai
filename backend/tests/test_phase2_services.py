@@ -681,6 +681,9 @@ def test_llm_config_profiles_assignments_crud(tmp_path: Path):
     assert status_body['all_mock'] is True
     assert status_body['storage']['api_keys_returned_in_status'] is False
     assert 'profiles_path' in status_body['storage']
+    profile_rows = status_body['profiles']
+    assert [row for row in profile_rows if row['profile_id'] == 'test_profile']
+    assert all('api_key' not in row for row in profile_rows)
     critic = [row for row in status_body['modules'] if row['module'] == 'critic'][0]
     assert critic['profile_id'] == 'test_profile'
     assert 'api_key' not in critic
@@ -697,6 +700,10 @@ def test_llm_config_profiles_assignments_crud(tmp_path: Path):
     assert writer['requires_api_key'] is True
     assert writer['api_key_configured'] is False
     assert 'api_key' in writer['missing_fields']
+    needs_key_status = [row for row in status2['profiles'] if row['profile_id'] == 'needs_key'][0]
+    assert needs_key_status['api_key_configured'] is False
+    assert 'api_key' in needs_key_status['missing_fields']
+    assert status2['profile_missing_count'] >= 1
 
 
 def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):

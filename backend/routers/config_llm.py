@@ -102,6 +102,10 @@ def get_providers_meta():
 def get_status(cfg: LLMConfigService = Depends(get_cfg)):
     profiles = cfg.read_profiles()
     assignments = cfg.read_assignments()
+    profile_rows = [
+        _profile_status(profile_id, profile)
+        for profile_id, profile in sorted(profiles.items(), key=lambda item: str(item[0]))
+    ]
     modules = []
     for module in AGENT_MODULES:
         profile_id = assignments.get(module, "mock_default")
@@ -122,7 +126,9 @@ def get_status(cfg: LLMConfigService = Depends(get_cfg)):
             "api_keys_returned_in_status": False,
         },
         "fallback_policy": "request.llm_profile_id > assignment[module] > project.default_llm_profile_id > mock_default; failed provider calls fall back to mock_default and are recorded on the job.",
+        "profiles": profile_rows,
         "modules": modules,
         "all_mock": all(row["is_mock"] for row in modules),
         "missing_count": sum(1 for row in modules if row["missing_fields"] or row["profile_missing"]),
+        "profile_missing_count": sum(1 for row in profile_rows if row["missing_fields"]),
     }
