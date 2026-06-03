@@ -267,6 +267,7 @@ export default function App() {
   const [toolSkillForm, setToolSkillForm] = useState<any>(null)
   const [profilesEditor, setProfilesEditor] = useState('')
   const [assignmentsEditor, setAssignmentsEditor] = useState('')
+  const [assignmentDraft, setAssignmentDraft] = useState<Record<string, string>>({})
   const [presetProfileId, setPresetProfileId] = useState('')
   const [selectedPresetId, setSelectedPresetId] = useState('openai_compat:deepseek')
   const [selectedMemoryPackId, setSelectedMemoryPackId] = useState('')
@@ -386,12 +387,28 @@ export default function App() {
     }
   }
 
+  const saveAgentAssignment = async (module: string, profileId: string) => {
+    try {
+      await api.post('/api/config/llm/assignments', { mode: 'upsert', module, profile_id: profileId })
+      const next = { ...assignmentDraft, [module]: profileId }
+      setAssignmentDraft(next)
+      setAssignmentsEditor(JSON.stringify(next, null, 2))
+      await mutateGlobalAssignments()
+      await mutateLlmStatus()
+      push(`${module} assigned to ${profileId}`)
+    } catch {
+      push('Agent assignment save failed', 'error')
+    }
+  }
+
   useEffect(() => {
     setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))
   }, [globalProfiles])
 
   useEffect(() => {
-    setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))
+    const next = globalAssignments?.assignments || {}
+    setAssignmentsEditor(JSON.stringify(next, null, 2))
+    setAssignmentDraft(next)
   }, [globalAssignments])
 
   useEffect(() => {
@@ -3513,11 +3530,40 @@ export default function App() {
 
           <Card title='LLM Assignments (Global)'>
             <p className='text-xs text-muted mb-2'>Module {'->'} profile_id mapping. Priority: request.llm_profile_id {'>'} assignment[module] {'>'} project default.</p>
+            <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-2'>
+              {['writer', 'critic', 'editor', 'canon_extractor'].map((module) => {
+                const row = (llmStatus?.modules || []).find((x: any) => x.module === module)
+                const current = assignmentDraft[module] || row?.profile_id || 'mock_default'
+                return (
+                  <div key={module} className='rounded-ui border border-border bg-surface-2 p-2'>
+                    <div className='mb-1 flex items-center justify-between gap-2'>
+                      <label className='text-sm font-medium'>{module}</label>
+                      <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? 'mock' : row?.provider || 'missing'}</Badge>
+                    </div>
+                    <Select
+                      value={current}
+                      onChange={(e) => {
+                        const profileId = e.target.value
+                        setAssignmentDraft((x) => ({ ...x, [module]: profileId }))
+                        saveAgentAssignment(module, profileId)
+                      }}
+                    >
+                      {Object.keys(globalProfiles?.profiles || {}).map((profileId) => (
+                        <option key={profileId} value={profileId}>{profileId}</option>
+                      ))}
+                    </Select>
+                    <div className='mt-1 text-xs text-muted'>{row?.model || 'no model'} · API key {row?.requires_api_key ? (row?.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                  </div>
+                )
+              })}
+            </div>
             <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
               <Button variant='primary' onClick={async () => {
                 try {
-                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: JSON.parse(assignmentsEditor || '{}') })
+                  const next = JSON.parse(assignmentsEditor || '{}')
+                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: next })
+                  setAssignmentDraft(next)
                   mutateGlobalAssignments()
                   mutateLlmStatus()
                   push('Global assignments saved')
@@ -3664,6 +3710,7 @@ export default function App() {
     sideSearch,
     settings,
     llmStatus,
+    assignmentDraft,
     selectedProposalId,
     selectedBlueprintId,
     techniqueCards,
