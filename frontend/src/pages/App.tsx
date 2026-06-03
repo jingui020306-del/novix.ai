@@ -255,6 +255,7 @@ export default function App() {
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
   const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
   const { data: jobRows, mutate: mutateJobs } = useSWR(project ? `/api/projects/${project}/jobs` : null, api.get)
+  const { data: chapterReviewRows, mutate: mutateChapterReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/reviews` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -297,6 +298,8 @@ export default function App() {
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
   const jobList = Array.isArray(jobRows) ? jobRows : []
   const latestJob = jobList[0]
+  const chapterReviewList = Array.isArray(chapterReviewRows) ? chapterReviewRows : []
+  const pendingChapterReviews = chapterReviewList.filter((x: any) => x.status === 'pending_author_review')
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
@@ -1125,6 +1128,7 @@ export default function App() {
           mutateTrustReport()
           mutateProposals()
           mutateJobs()
+          mutateChapterReviews()
           push('Job finished')
         }
       }
@@ -1216,11 +1220,25 @@ export default function App() {
       await mutateDraft()
       await mutateDraftDetails()
       await mutateVolumes()
+      await mutateChapterReviews()
       push('Chapter saved')
     } catch {
       push('Chapter save failed', 'error')
     } finally {
       setChapterSaving(false)
+    }
+  }
+
+  const updateChapterReview = async (review: any, status: string) => {
+    if (!review?.review_id) return
+    try {
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/reviews/${review.review_id}`, { status })
+      await mutateChapterReviews()
+      await mutateDraft()
+      await mutateDraftDetails()
+      push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已拒绝')
+    } catch {
+      push('Review update failed', 'error')
     }
   }
 
@@ -2269,7 +2287,7 @@ export default function App() {
             title='写作工作台'
             extra={<Button variant='primary' onClick={() => { setView('chapter'); setActiveActivity('explorer') }}>打开当前章节</Button>}
           >
-            <div className='grid grid-cols-4 gap-3'>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-5'>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>生成状态</div>
                 <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
@@ -2279,6 +2297,11 @@ export default function App() {
                 <div className='text-xs text-muted'>待审 Patch</div>
                 <div className='mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>待审 AI 草稿</div>
+                <div className='mt-1 text-lg font-semibold'>{pendingChapterReviews.length}</div>
+                <div className='text-xs text-muted'>确认后才视为作者稿</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>待确认草案</div>
@@ -2896,6 +2919,30 @@ export default function App() {
       }, {})
       return (
         <div className='space-y-3 density-space'>
+          <Card title='AI 草稿审阅' extra={<Badge tone={pendingChapterReviews.length ? 'warn' : 'success'}>{pendingChapterReviews.length ? '待确认' : '无待审'}</Badge>}>
+            <div className='space-y-2'>
+              {chapterReviewList.slice(0, 4).map((review: any) => (
+                <div key={review.review_id} className='rounded-ui border border-border bg-surface p-2 text-xs'>
+                  <div className='flex flex-wrap items-center justify-between gap-2'>
+                    <div>
+                      <div className='font-medium'>{review.review_id}</div>
+                      <div className='text-muted'>{review.source || 'writer_agent'} · {review.job_id || 'no job'} · {review.word_count || 0} 字</div>
+                    </div>
+                    <Badge tone={review.status === 'accepted' ? 'success' : review.status === 'pending_author_review' ? 'warn' : 'default'}>{review.status || 'unknown'}</Badge>
+                  </div>
+                  <div className='mt-2 text-muted'>{review.preview || '无预览'}</div>
+                  {review.status === 'pending_author_review' ? (
+                    <div className='mt-2 flex gap-2'>
+                      <Button className='text-xs' onClick={() => updateChapterReview(review, 'accepted')}>确认草稿</Button>
+                      <Button className='text-xs' onClick={() => updateChapterReview(review, 'rejected')}>拒绝草稿</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {!chapterReviewList.length && <p className='text-sm text-muted'>生成本章后，AI 草稿会先进入这里等待作者确认。</p>}
+            </div>
+          </Card>
+
           <Card
             title='Chapter Manuscript'
             extra={
@@ -3551,6 +3598,10 @@ export default function App() {
     buildDraftHistoryCounts,
     buildDraftHistoryFilter,
     acceptedScopeLabels,
+    jobList,
+    latestJob,
+    chapterReviewList,
+    pendingChapterReviews,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,

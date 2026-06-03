@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 
 from storage.fs_store import FSStore, apply_patch_ops
@@ -8,6 +9,82 @@ from storage.fs_store import FSStore, apply_patch_ops
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+CHAPTER_REVIEW_STATUSES = {"pending_author_review", "accepted", "rejected", "superseded"}
+
+
+def _chapter_review_path(chapter_id: str) -> str:
+    return f"meta/chapter_reviews/{chapter_id}.json"
+
+
+def _hash_content(content: str) -> str:
+    return hashlib.sha1(content.encode("utf-8")).hexdigest()[:12]
+
+
+def list_chapter_reviews(store: FSStore, project_id: str, chapter_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    rows = store.read_json(project_id, _chapter_review_path(chapter_id)) or []
+    if not isinstance(rows, list):
+        rows = []
+    if status:
+        rows = [row for row in rows if row.get("status") == status]
+    return sorted(rows, key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
+
+
+def create_chapter_review(
+    store: FSStore,
+    project_id: str,
+    chapter_id: str,
+    content: str,
+    *,
+    job_id: str = "",
+    source: str = "writer_agent",
+    status: str = "pending_author_review",
+) -> dict[str, Any]:
+    if status not in CHAPTER_REVIEW_STATUSES:
+        raise ValueError(f"Unsupported chapter review status: {status}")
+    rows = list_chapter_reviews(store, project_id, chapter_id)
+    for row in rows:
+        if row.get("status") == "pending_author_review":
+            row["status"] = "superseded"
+            row["updated_at"] = now_iso()
+            row["superseded_by_job_id"] = job_id
+    review_id = f"review_{chapter_id}_{len(rows) + 1:04d}"
+    rec = {
+        "review_id": review_id,
+        "chapter_id": chapter_id,
+        "job_id": job_id,
+        "source": source,
+        "status": status,
+        "content_hash": _hash_content(content),
+        "preview": content[:320],
+        "word_count": len(content),
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "review_policy": "AI 草稿进入待审；作者确认、修改或拒绝后才视为作者确认稿。",
+    }
+    rows.append(rec)
+    store.write_json(project_id, _chapter_review_path(chapter_id), rows)
+    return rec
+
+
+def update_chapter_review(store: FSStore, project_id: str, chapter_id: str, review_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    rows = list_chapter_reviews(store, project_id, chapter_id)
+    if "status" in patch and patch["status"] not in CHAPTER_REVIEW_STATUSES:
+        raise ValueError(f"Unsupported chapter review status: {patch['status']}")
+    for row in rows:
+        if row.get("review_id") != review_id:
+            continue
+        for key in ["status", "author_note"]:
+            if key in patch:
+                row[key] = patch[key]
+        if row.get("status") in {"accepted", "rejected"}:
+            row["confirmed_by"] = "author"
+            row["confirmed_at"] = now_iso()
+        row["updated_at"] = now_iso()
+        store.write_json(project_id, _chapter_review_path(chapter_id), rows)
+        return row
+    raise FileNotFoundError(review_id)
 
 
 def chapter_meta(store: FSStore, project_id: str, chapter_id: str) -> dict[str, Any]:

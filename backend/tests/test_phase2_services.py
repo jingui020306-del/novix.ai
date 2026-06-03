@@ -739,6 +739,12 @@ def test_write_job_emits_three_agent_trust_events_and_marks(tmp_path: Path):
     assert job['stage'] == 'DONE'
     assert job['event_counts']['WRITER_DRAFT'] == 1
     assert jm.list_jobs('p1', chapter_id='chapter_001')[0]['job_id'] == job_id
+    reviews = s.read_json('p1', 'meta/chapter_reviews/chapter_001.json')
+    assert reviews[0]['status'] == 'pending_author_review'
+    assert reviews[0]['job_id'] == job_id
+    assert reviews[0]['content_hash']
+    meta = s.read_json('p1', 'drafts/chapter_001.meta.json')
+    assert any(v.get('reason') == 'before_ai_draft' for v in meta.get('versions', []))
 
 
 def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
@@ -781,6 +787,18 @@ def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
         detail = client.get(f'/api/projects/p1/jobs/{jid}')
         assert detail.status_code == 200
         assert detail.json()['event_counts']['TRUST_REPORT'] == 1
+        reviews = client.get('/api/projects/p1/drafts/chapter_001/reviews')
+        assert reviews.status_code == 200
+        review = reviews.json()[0]
+        assert review['status'] == 'pending_author_review'
+        accepted = client.put(f"/api/projects/p1/drafts/chapter_001/reviews/{review['review_id']}", json={'status': 'accepted', 'author_note': '确认这一版'})
+        assert accepted.status_code == 200
+        assert accepted.json()['confirmed_by'] == 'author'
+        meta = store.read_json('p1', 'drafts/chapter_001.meta.json')
+        assert meta['chapter_status'] == '已保存'
+        assert meta['last_confirmed_review_id'] == review['review_id']
+        bad_status = client.put(f"/api/projects/p1/drafts/chapter_001/reviews/{review['review_id']}", json={'status': 'done'})
+        assert bad_status.status_code == 400
     finally:
         app_main.store = old_store
         app_main.kb_service = old_kb

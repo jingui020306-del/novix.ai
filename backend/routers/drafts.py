@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from services.kb_service import KBService
+from services.editing_service import list_chapter_reviews, update_chapter_review
 from storage.fs_store import FSStore, apply_patch_ops
 
 
@@ -166,6 +167,28 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
 def get_versions(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
     meta = _chapter_meta(s, project_id, chapter_id)
     return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": meta.get('versions', [])}
+
+
+@router.get('/{chapter_id}/reviews')
+def get_chapter_reviews(project_id: str, chapter_id: str, status: str | None = None, s: FSStore = Depends(get_store)):
+    return list_chapter_reviews(s, project_id, chapter_id, status=status)
+
+
+@router.put('/{chapter_id}/reviews/{review_id}')
+def put_chapter_review(project_id: str, chapter_id: str, review_id: str, body: dict, s: FSStore = Depends(get_store)):
+    try:
+        rec = update_chapter_review(s, project_id, chapter_id, review_id, body or {})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='chapter review not found') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if rec.get('status') == 'accepted':
+        meta = _chapter_meta(s, project_id, chapter_id)
+        meta['chapter_status'] = '已保存'
+        meta['last_confirmed_review_id'] = review_id
+        meta['last_confirmed_at'] = rec.get('confirmed_at')
+        s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
+    return rec
 
 
 @router.post('/{chapter_id}/rollback')

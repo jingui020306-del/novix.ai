@@ -13,6 +13,7 @@ from agents.technique_director import TechniqueDirector, derive_technique_adhere
 from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
 from services.evidence_service import EvidenceService
+from services.editing_service import create_chapter_review, save_snapshot
 from services.llm_config_service import LLMConfigService
 from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
@@ -373,7 +374,11 @@ class JobManager:
             ]
             writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
             draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
+            previous_draft = self.store.read_md(project_id, f"drafts/{chapter_id}.md")
+            if previous_draft:
+                save_snapshot(self.store, project_id, chapter_id, previous_draft, reason="before_ai_draft", patch_id=job_id)
             self.store.write_md(project_id, f"drafts/{chapter_id}.md", draft)
+            review = create_chapter_review(self.store, project_id, chapter_id, draft, job_id=job_id, source="writer_agent")
             self._write_chapter_status(project_id, chapter_id, "待审稿")
             manifest["usage_estimate"] = {
                 "prompt_tokens": max(1, len(str(writer_messages)) // 4),
@@ -383,7 +388,7 @@ class JobManager:
             manifest["writer_checkpoints"] = checkpoints
             if checkpoints:
                 await self.emit(project_id, job_id, "WRITER_CHECKPOINT", {"chapter_id": chapter_id, "checkpoints": checkpoints, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": f"按 {word_checkpoint_chars} 字阈值压缩", "output_summary": f"生成 {len(checkpoints)} 个阶段摘要"})
-            await self.emit(project_id, job_id, "WRITER_DRAFT", {"chapter_id": chapter_id, "text": draft, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": "撰写 Agent 使用 manifest 和审查清单生成正文", "output_summary": f"生成正文 {len(draft)} 字"})
+            await self.emit(project_id, job_id, "WRITER_DRAFT", {"chapter_id": chapter_id, "review_id": review.get("review_id"), "text": draft, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": "撰写 Agent 使用 manifest 和审查清单生成正文", "output_summary": f"生成正文 {len(draft)} 字，进入作者待审"})
 
             tech_issues = derive_technique_adherence_issues(chapter_id, draft, manifest.get("fixed_blocks", {}).get("technique_checklist", []))
             marks = self.evidence_service.build_marks(project_id, chapter_id, job_id=job_id, model=writer_used.get("model", ""), technique_checklist=manifest.get("fixed_blocks", {}).get("technique_checklist", []), issues=tech_issues)
