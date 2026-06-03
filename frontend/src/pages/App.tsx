@@ -270,6 +270,7 @@ export default function App() {
   const [assignmentDraft, setAssignmentDraft] = useState<Record<string, string>>({})
   const [presetProfileId, setPresetProfileId] = useState('')
   const [selectedPresetId, setSelectedPresetId] = useState('openai_compat:deepseek')
+  const [profileDraft, setProfileDraft] = useState<any>({})
   const [selectedMemoryPackId, setSelectedMemoryPackId] = useState('')
   const [storyPlanningTab, setStoryPlanningTab] = useState('Overview')
   const [chapterEditorText, setChapterEditorText] = useState('')
@@ -387,6 +388,39 @@ export default function App() {
     }
   }
 
+  const saveProfileDraft = async () => {
+    const profileId = (presetProfileId || '').trim()
+    if (!profileId) {
+      push('Please input profile id before saving', 'error')
+      return
+    }
+    const required = selectedPreset?.required_fields || ['provider', 'model']
+    const existing = globalProfiles?.profiles?.[profileId] || {}
+    const normalized = {
+      provider: String(profileDraft.provider || selectedPreset?.defaults?.provider || '').trim(),
+      model: String(profileDraft.model || '').trim(),
+      base_url: String(profileDraft.base_url || '').trim(),
+      api_key: String(profileDraft.api_key || existing.api_key || ''),
+      timeout_s: Number(profileDraft.timeout_s || 60),
+      stream: Boolean(profileDraft.stream ?? selectedPreset?.supports_stream ?? true),
+    }
+    const missing = required.filter((field) => !String((normalized as any)[field] || '').trim())
+    if (missing.length) {
+      push(`Missing required fields: ${missing.join(', ')}`, 'error')
+      return
+    }
+    try {
+      await api.post('/api/config/llm/profiles', { mode: 'upsert', id: profileId, profile: normalized })
+      const next = { ...(globalProfiles?.profiles || {}), [profileId]: normalized }
+      setProfilesEditor(JSON.stringify(next, null, 2))
+      await mutateGlobalProfiles()
+      await mutateLlmStatus()
+      push(`Profile saved: ${profileId}`)
+    } catch {
+      push('Profile save failed', 'error')
+    }
+  }
+
   const saveAgentAssignment = async (module: string, profileId: string) => {
     try {
       await api.post('/api/config/llm/assignments', { mode: 'upsert', module, profile_id: profileId })
@@ -410,6 +444,11 @@ export default function App() {
     setAssignmentsEditor(JSON.stringify(next, null, 2))
     setAssignmentDraft(next)
   }, [globalAssignments])
+
+  useEffect(() => {
+    const preset = providerPresets.find((x) => x.provider_id === selectedPresetId)
+    if (preset) setProfileDraft({ ...(preset.defaults || {}) })
+  }, [providersMeta, selectedPresetId])
 
   useEffect(() => {
     const rows = Array.isArray(memoryPacks) ? memoryPacks : []
@@ -3489,12 +3528,20 @@ export default function App() {
           </Card>
 
           <Card title='LLM Profiles (Global)'>
-            <p className='text-xs text-muted mb-2'>Edit global profiles at `data/_global/llm_profiles.json` via config API.</p>
+            <p className='text-xs text-muted mb-2'>Create a profile from a provider preset, then assign writer / critic / editor agents below. Advanced JSON editing remains available.</p>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
-              <div className='grid grid-cols-3 gap-2'>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
                 <div>
                   <label className='text-xs text-muted'>Preset</label>
-                  <Select value={selectedPresetId} onChange={(e) => setSelectedPresetId(e.target.value)}>
+                  <Select
+                    value={selectedPresetId}
+                    onChange={(e) => {
+                      const nextId = e.target.value
+                      const preset = providerPresets.find((p) => p.provider_id === nextId)
+                      setSelectedPresetId(nextId)
+                      setProfileDraft({ ...(preset?.defaults || {}) })
+                    }}
+                  >
                     {providerPresets.map((p) => <option key={p.provider_id} value={p.provider_id}>{p.display_name}</option>)}
                   </Select>
                 </div>
@@ -3502,15 +3549,48 @@ export default function App() {
                   <label className='text-xs text-muted'>Profile ID</label>
                   <Input value={presetProfileId} onChange={(e) => setPresetProfileId(e.target.value)} placeholder='e.g. deepseek_writer' />
                 </div>
-                <div className='flex items-end'>
-                  <Button onClick={applyPresetToEditor}>Apply Preset</Button>
+                <div>
+                  <label className='text-xs text-muted'>Provider</label>
+                  <Input value={profileDraft.provider || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, provider: e.target.value }))} placeholder='openai_compat' />
                 </div>
               </div>
-              <div className='mt-2 text-xs text-muted'>
+              <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2'>
+                <div>
+                  <label className='text-xs text-muted'>Model</label>
+                  <Input value={profileDraft.model || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, model: e.target.value }))} placeholder='deepseek-chat' />
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>Base URL</label>
+                  <Input value={profileDraft.base_url || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, base_url: e.target.value }))} placeholder='https://api.example.com' />
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>API Key</label>
+                  <Input type='password' value={profileDraft.api_key || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, api_key: e.target.value }))} placeholder='Stored locally in data/_global' />
+                </div>
+                <div className='grid grid-cols-[1fr_auto] gap-2'>
+                  <div>
+                    <label className='text-xs text-muted'>Timeout (seconds)</label>
+                    <Input type='number' min='1' value={profileDraft.timeout_s || 60} onChange={(e) => setProfileDraft((x: any) => ({ ...x, timeout_s: e.target.value }))} />
+                  </div>
+                  <label className='mt-6 flex items-center gap-2 text-sm'>
+                    <input type='checkbox' checked={Boolean(profileDraft.stream ?? true)} onChange={(e) => setProfileDraft((x: any) => ({ ...x, stream: e.target.checked }))} />
+                    Stream
+                  </label>
+                </div>
+              </div>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                <Button variant='primary' onClick={saveProfileDraft}>Save Profile</Button>
+                <Button onClick={applyPresetToEditor}>Fill JSON Only</Button>
+              </div>
+              <div className='mt-3 text-xs text-muted'>
                 <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
                 <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
                 <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
               </div>
+            </div>
+            <div className='mb-1 flex items-center justify-between gap-2'>
+              <label className='text-xs text-muted'>Advanced JSON</label>
+              <Badge>{Object.keys(globalProfiles?.profiles || {}).length} profiles</Badge>
             </div>
             <Textarea className='h-48 mono' value={profilesEditor} onChange={(e) => setProfilesEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
@@ -3710,6 +3790,15 @@ export default function App() {
     sideSearch,
     settings,
     llmStatus,
+    globalProfiles,
+    globalAssignments,
+    providerPresets,
+    selectedPreset,
+    selectedPresetId,
+    presetProfileId,
+    profileDraft,
+    profilesEditor,
+    assignmentsEditor,
     assignmentDraft,
     selectedProposalId,
     selectedBlueprintId,
