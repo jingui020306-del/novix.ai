@@ -3399,6 +3399,46 @@ export default function App() {
         if (level === 'contradicted') return 'border-red-300 bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-200'
         return 'border-border bg-surface-2 text-muted'
       }
+      const acceptedChapterReviews = chapterReviewList.filter((review: any) => review.status === 'accepted' || review.status === 'rejected')
+      const savedManuscript = chapterEditorText === (draft?.content || '') && (chapterTitleDraft || selectedChapter) === (draft?.meta?.chapter_title || draft?.meta?.title || selectedChapter)
+      const hasManuscriptBody = chapterEditorText.replace(/^# .+?\n+/, '').trim().length > 0
+      const marksVerified = evidenceMarkRows.length > 0 || Boolean(trustReport?.updated_at)
+      const chapterWorkflowSteps = [
+        {
+          id: 'review',
+          label: '7. Review AI draft',
+          done: acceptedChapterReviews.length > 0 || (chapterReviewList.length > 0 && pendingChapterReviews.length === 0),
+          detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 草稿待确认` : chapterReviewList.length ? 'AI 草稿已处理' : '生成后这里会出现待审草稿',
+          action: pendingChapterReviews.length ? '确认第一条' : '查看草稿',
+          run: () => {
+            if (pendingChapterReviews[0]) void updateChapterReview(pendingChapterReviews[0], 'accepted')
+          },
+        },
+        {
+          id: 'edit',
+          label: '8. Author edit',
+          done: hasManuscriptBody,
+          detail: hasManuscriptBody ? `${chapterEditorText.trim().length} 字` : '正文还为空',
+          action: '编辑正文',
+          run: () => document.getElementById('chapter-manuscript-editor')?.focus(),
+        },
+        {
+          id: 'save',
+          label: '9. Save',
+          done: savedManuscript && hasManuscriptBody,
+          detail: savedManuscript ? '本地编辑已保存' : '有未保存改动',
+          action: '保存',
+          run: saveChapterDraft,
+        },
+        {
+          id: 'analyze_marks',
+          label: '10. Analyze Marks',
+          done: marksVerified,
+          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个 evidence mark` : '还没有证据标记',
+          action: '分析标记',
+          run: analyzeMarks,
+        },
+      ]
       const marksByLine = evidenceMarkRows.reduce((acc: Record<string, any[]>, mark: any) => {
         const line = Number(mark?.span?.start_line || 0)
         const key = line > 0 ? String(line) : '未证实'
@@ -3429,6 +3469,26 @@ export default function App() {
               ))}
               {!chapterReviewList.length && <p className='text-sm text-muted'>生成本章后，AI 草稿会先进入这里等待作者确认。</p>}
             </div>
+          </Card>
+
+          <Card title='章节生成后流程 7-10' extra={<Badge tone={chapterWorkflowSteps.every((step) => step.done) ? 'success' : 'warn'}>{chapterWorkflowSteps.filter((step) => step.done).length}/{chapterWorkflowSteps.length}</Badge>}>
+            <div className='grid grid-cols-1 gap-2 md:grid-cols-4'>
+              {chapterWorkflowSteps.map((step) => (
+                <div key={step.id} className={`rounded-ui border p-3 ${step.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
+                  <div className='flex items-start justify-between gap-2'>
+                    <div>
+                      <div className='text-sm font-semibold'>{step.label}</div>
+                      <div className='mt-1 text-xs text-muted'>{step.detail}</div>
+                    </div>
+                    <Badge tone={step.done ? 'success' : 'warn'}>{step.done ? '已完成' : '待做'}</Badge>
+                  </div>
+                  <Button className='mt-3 w-full text-xs' onClick={step.run} disabled={step.id === 'review' && !pendingChapterReviews.length}>
+                    {step.action}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className='mt-2 text-xs text-muted'>这组步骤对应 README 的 7-10：先审 AI 草稿，再由作者改正文，保存，最后用 Analyze Marks 验证人物、技法、明线、暗线、伏笔是否真的在正文里出现。</p>
           </Card>
 
           <Card
@@ -3597,6 +3657,7 @@ export default function App() {
                 </div>
               </div>
               <Textarea
+                id='chapter-manuscript-editor'
                 className='editor-text col-span-9 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7'
                 value={chapterEditorText}
                 onChange={(e) => setChapterEditorText(e.target.value)}
