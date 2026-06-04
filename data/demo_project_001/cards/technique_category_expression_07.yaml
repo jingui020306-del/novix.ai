@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_07",
+  "type": "technique_category",
+  "title": "表达技法/动作替代",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "动作替代",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·动作替代",
+    "sort_order": 7,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

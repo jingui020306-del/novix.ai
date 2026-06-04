@@ -11,26 +11,26 @@
   "payload": {
     "name": "描写艺术",
     "description": "描写艺术一级分类",
-    "sort_order": 4,
+    "sort_order": 5,
     "tags": [
       "一级"
     ],
     "core_techniques": [
-      "technique_061",
-      "technique_062",
-      "technique_063",
-      "technique_064",
-      "technique_065",
-      "technique_066",
-      "technique_067",
-      "technique_068",
-      "technique_069",
-      "technique_070",
-      "technique_071",
-      "technique_072",
-      "technique_073",
-      "technique_074",
-      "technique_075"
+      "technique_081",
+      "technique_082",
+      "technique_083",
+      "technique_084",
+      "technique_085",
+      "technique_086",
+      "technique_087",
+      "technique_088",
+      "technique_089",
+      "technique_090",
+      "technique_091",
+      "technique_092",
+      "technique_093",
+      "technique_094",
+      "technique_095"
     ]
   }
 }

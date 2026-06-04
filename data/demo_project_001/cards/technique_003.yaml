@@ -1,33 +1,50 @@
 {
   "id": "technique_003",
   "type": "technique",
-  "title": "反转",
+  "title": "长句铺陈",
   "tags": [
     "technique",
-    "narrative"
+    "expression"
   ],
   "links": [
-    "technique_category_structure"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "反转",
-    "category_id": "technique_category_structure",
-    "aliases": [],
-    "description": "改变读者对事件性质、人物动机或局势胜负的判断。",
+    "name": "长句铺陈",
+    "category_id": "technique_category_expression",
+    "aliases": [
+      "长句铺陈"
+    ],
+    "description": "长句铺陈：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
-      "建立读者默认判断",
-      "保留能支撑反向解释的证据",
-      "在动作或决定中揭示反向意义"
+      "明确段落目标",
+      "在关键句实施长句铺陈",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "同一事实出现新解释",
-      "优势关系突然倒置",
-      "人物选择暴露隐藏动机"
+      "出现长句铺陈可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿",
-      "high": "主导"
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -39,14 +56,24 @@
     },
     "do_dont": {
       "do": [
-        "反转后让前文更合理",
-        "让反转带来新的冲突"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "为了惊讶牺牲人设",
-        "用随机新设定完成反转"
+        "堆砌",
+        "跑偏"
       ]
     },
-    "examples": []
+    "examples": [
+      "示例：用长句铺陈改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，长句铺陈只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于长句铺陈。",
+        "high": "他走进雨里，整段由长句铺陈主导节奏和信息释放。"
+      }
+    ]
   }
 }

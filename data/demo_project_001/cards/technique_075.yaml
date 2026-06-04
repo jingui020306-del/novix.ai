@@ -1,29 +1,45 @@
 {
   "id": "technique_075",
   "type": "technique",
-  "title": "气味锚点",
+  "title": "节拍锚点",
   "tags": [
     "technique",
-    "description"
+    "structure"
   ],
   "links": [
-    "technique_category_description"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "气味锚点",
-    "category_id": "technique_category_description",
+    "name": "节拍锚点",
+    "category_id": "technique_category_structure",
     "aliases": [
-      "气味锚点"
+      "节拍锚点"
     ],
-    "description": "气味锚点：用于提升段落表达与可检验性。",
+    "description": "节拍锚点：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施气味锚点",
+      "在关键句实施节拍锚点",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现气味锚点可观察信号",
+      "出现节拍锚点可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用气味锚点改写一句场景句。"
+      "示例：用节拍锚点改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，节拍锚点只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于节拍锚点。",
+        "high": "他走进雨里，整段由节拍锚点主导节奏和信息释放。"
+      }
     ]
   }
 }

@@ -1,29 +1,45 @@
 {
   "id": "technique_018",
   "type": "technique",
-  "title": "层递",
+  "title": "冷幽默",
   "tags": [
     "technique",
-    "rhetoric"
+    "expression"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "层递",
-    "category_id": "technique_category_rhetoric",
+    "name": "冷幽默",
+    "category_id": "technique_category_expression",
     "aliases": [
-      "层递"
+      "冷幽默"
     ],
-    "description": "层递：用于提升段落表达与可检验性。",
+    "description": "冷幽默：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施层递",
+      "在关键句实施冷幽默",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现层递可观察信号",
+      "出现冷幽默可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用层递改写一句场景句。"
+      "示例：用冷幽默改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，冷幽默只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于冷幽默。",
+        "high": "他走进雨里，整段由冷幽默主导节奏和信息释放。"
+      }
     ]
   }
 }

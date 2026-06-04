@@ -1,0 +1,26 @@
+{
+  "id": "technique_category_recipe",
+  "type": "technique_category",
+  "title": "场景配方",
+  "tags": [
+    "technique",
+    "category",
+    "recipe"
+  ],
+  "links": [],
+  "payload": {
+    "name": "场景配方",
+    "description": "把多个技法组合成作者可直接试用的章节动作。",
+    "sort_order": 99,
+    "tags": [
+      "配方"
+    ],
+    "core_techniques": [
+      "technique_recipe_opening_hook",
+      "technique_recipe_blast_point",
+      "technique_recipe_reversal",
+      "technique_recipe_emotional_tension",
+      "technique_recipe_mystery_payoff"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_02",
+  "type": "technique_category",
+  "title": "表达技法/语气",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "语气",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·语气",
+    "sort_order": 2,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

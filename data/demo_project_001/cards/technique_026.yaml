@@ -1,29 +1,45 @@
 {
   "id": "technique_026",
   "type": "technique",
-  "title": "情绪对位",
+  "title": "反复",
   "tags": [
     "technique",
-    "performance"
+    "rhetoric"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_rhetoric"
   ],
   "payload": {
-    "name": "情绪对位",
-    "category_id": "technique_category_performance",
+    "name": "反复",
+    "category_id": "technique_category_rhetoric",
     "aliases": [
-      "情绪对位"
+      "反复"
     ],
-    "description": "情绪对位：用于提升段落表达与可检验性。",
+    "description": "反复：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施情绪对位",
+      "在关键句实施反复",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现情绪对位可观察信号",
+      "出现反复可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用情绪对位改写一句场景句。"
+      "示例：用反复改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，反复只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于反复。",
+        "high": "他走进雨里，整段由反复主导节奏和信息释放。"
+      }
     ]
   }
 }

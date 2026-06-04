@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_08",
+  "type": "technique_category",
+  "title": "表达技法/克制",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "克制",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·克制",
+    "sort_order": 8,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

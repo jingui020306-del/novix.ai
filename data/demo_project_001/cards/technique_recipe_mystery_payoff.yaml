@@ -1,0 +1,89 @@
+{
+  "id": "technique_recipe_mystery_payoff",
+  "type": "technique",
+  "title": "悬疑回收配方",
+  "tags": [
+    "technique",
+    "recipe",
+    "scene_recipe"
+  ],
+  "links": [
+    "technique_category_recipe"
+  ],
+  "payload": {
+    "name": "悬疑回收配方",
+    "category_id": "technique_category_recipe",
+    "aliases": [
+      "悬疑回收配方"
+    ],
+    "description": "让线索回收既解释旧疑问，又打开新的问题。",
+    "usage_layer": "recipe",
+    "apply_steps": [
+      "回收一个可回查线索",
+      "解释其中一层真相",
+      "留下更高层问题或新风险"
+    ],
+    "signals": [
+      "正文出现旧线索 quote",
+      "至少一个疑问被解决",
+      "新的风险替代旧问题"
+    ],
+    "suitable_scenes": [
+      "章节关键节点",
+      "作者需要明确写法目标的段落",
+      "AI 扩写前的共识阶段"
+    ],
+    "unsuitable_scenes": [
+      "过场摘要",
+      "无需增强戏剧性的说明段"
+    ],
+    "overuse_risks": [
+      "每章都套同一配方会显得机械",
+      "配方压过人物自然反应"
+    ],
+    "intensity_levels": {
+      "low": "只取一个步骤",
+      "med": "使用完整三步",
+      "high": "作为本场主设计"
+    },
+    "metrics": {
+      "dialogue_ratio_range": [
+        0.15,
+        0.65
+      ],
+      "punctuation_caps": 6,
+      "metaphor_density": 0.05
+    },
+    "do_dont": {
+      "do": [
+        "先明确本场目标",
+        "让配方服务人物选择"
+      ],
+      "dont": [
+        "只堆事件",
+        "让 AI 自动决定主线"
+      ]
+    },
+    "examples": [
+      "示例：用悬疑回收配方处理一个章节关键段。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他收到一条短信。",
+        "low": "他收到一条短信，屏幕上的发件人被雨水模糊。",
+        "med": "他收到一条短信，先藏住发件人，只写他突然停下来的反应。",
+        "high": "他收到一条短信，异常细节、人物反应和段末问题一起推动下一场。"
+      }
+    ],
+    "recipe_steps": [
+      "回收一个可回查线索",
+      "解释其中一层真相",
+      "留下更高层问题或新风险"
+    ],
+    "recipe_techniques": [
+      "伏笔回收",
+      "假线索",
+      "悬念链"
+    ]
+  }
+}

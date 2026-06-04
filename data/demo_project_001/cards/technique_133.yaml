@@ -1,29 +1,45 @@
 {
   "id": "technique_133",
   "type": "technique",
-  "title": "rhetoric_扩展技法_133",
+  "title": "余韵式收束",
   "tags": [
     "technique",
-    "rhetoric"
+    "lyric"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_lyric"
   ],
   "payload": {
-    "name": "rhetoric_扩展技法_133",
-    "category_id": "technique_category_rhetoric",
+    "name": "余韵式收束",
+    "category_id": "technique_category_lyric",
     "aliases": [
-      "rhetoric_扩展技法_133"
+      "余韵式收束"
     ],
-    "description": "rhetoric_扩展技法_133：用于提升段落表达与可检验性。",
+    "description": "余韵式收束：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施rhetoric_扩展技法_133",
+      "在关键句实施余韵式收束",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现rhetoric_扩展技法_133可观察信号",
+      "出现余韵式收束可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用rhetoric_扩展技法_133改写一句场景句。"
+      "示例：用余韵式收束改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，余韵式收束只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于余韵式收束。",
+        "high": "他走进雨里，整段由余韵式收束主导节奏和信息释放。"
+      }
     ]
   }
 }

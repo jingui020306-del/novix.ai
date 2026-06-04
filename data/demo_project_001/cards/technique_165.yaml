@@ -16,6 +16,7 @@
       "structure_扩展技法_165"
     ],
     "description": "structure_扩展技法_165：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
       "在关键句实施structure_扩展技法_165",
@@ -24,6 +25,21 @@
     "signals": [
       "出现structure_扩展技法_165可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -50,6 +66,14 @@
     },
     "examples": [
       "示例：用structure_扩展技法_165改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，structure_扩展技法_165只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于structure_扩展技法_165。",
+        "high": "他走进雨里，整段由structure_扩展技法_165主导节奏和信息释放。"
+      }
     ]
   }
 }

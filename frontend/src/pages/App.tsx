@@ -161,6 +161,15 @@ const GENERATION_CHECK_OPTIONS = [
   { id: 'manual', label: '只等待作者确认' },
 ]
 
+const TECHNIQUE_LAYER_OPTIONS = [
+  { id: 'all', label: 'All' },
+  { id: 'structure', label: '结构' },
+  { id: 'scene', label: '场景' },
+  { id: 'character', label: '人物' },
+  { id: 'language', label: '语言' },
+  { id: 'recipe', label: '配方' },
+]
+
 const cloneJson = (value: any) => JSON.parse(JSON.stringify(value))
 
 const normalizeStoryCard = (card: any) => {
@@ -210,7 +219,7 @@ export default function App() {
   const [selectionMode, setSelectionMode] = useState<'line' | 'paragraph'>('line')
   const [selectionStart, setSelectionStart] = useState('')
   const [selectionEnd, setSelectionEnd] = useState('')
-  const [pendingWriteJob, setPendingWriteJob] = useState<{ maxTokens: number; range: { start: number; end: number } | null; label: string } | null>(null)
+  const [pendingWriteJob, setPendingWriteJob] = useState<{ maxTokens: number; range: { start: number; end: number } | null; label: string; techniqueAction?: any } | null>(null)
   const [generationScope, setGenerationScope] = useState('chapter')
   const [generationStopPoint, setGenerationStopPoint] = useState('chapter')
   const [generationCheckMode, setGenerationCheckMode] = useState('marks')
@@ -227,6 +236,7 @@ export default function App() {
   const [wikiHtml, setWikiHtml] = useState('<html><head><title>示例</title></head><body><table class="infobox"><tr><th>阵营</th><td>黑潮同盟</td></tr></table><h2>设定</h2><p>临港城由七港区组成。</p></body></html>')
   const [techniqueQuery, setTechniqueQuery] = useState('')
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
+  const [techniqueLayerFilter, setTechniqueLayerFilter] = useState('all')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
   const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[]; accepted_target?: string; rejection_reason?: string } | null>(null)
@@ -1297,7 +1307,7 @@ export default function App() {
     }
   }
 
-  const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
+  const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null, techniqueAction: any = null) => {
     try {
       const routeRisks = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length)
       if (useAgentAssignments && !writeRouteRows.length) {
@@ -1329,7 +1339,7 @@ export default function App() {
           include_cards: generationUseCards,
           include_techniques: generationUseTechniques,
           include_lines: generationUseLines,
-          writing_alignment: buildWritingAlignmentPayload({ confirmed: alignmentConfirmed }),
+          writing_alignment: buildWritingAlignmentPayload({ confirmed: alignmentConfirmed, technique_action: techniqueAction || undefined }),
         },
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
@@ -1362,8 +1372,8 @@ export default function App() {
     }
   }
 
-  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章') => {
-    setPendingWriteJob({ maxTokens, range, label })
+  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章', techniqueAction: any = null) => {
+    setPendingWriteJob({ maxTokens, range, label, techniqueAction })
   }
 
   const analyzeChapter = async () => {
@@ -1476,6 +1486,49 @@ export default function App() {
     return tech?.title || tech?.payload?.name || techniqueId
   }
 
+  const techniqueLayerLabel = (layer?: string) => TECHNIQUE_LAYER_OPTIONS.find((x) => x.id === layer)?.label || '场景'
+
+  const techniquePromptHints = (tech: any) => {
+    const payload = tech?.payload || {}
+    return {
+      suitable: (payload.suitable_scenes || []).slice(0, 3).join('；'),
+      unsuitable: (payload.unsuitable_scenes || []).slice(0, 3).join('；'),
+      risks: (payload.overuse_risks || []).slice(0, 3).join('；'),
+      steps: (payload.recipe_steps?.length ? payload.recipe_steps : payload.apply_steps || []).slice(0, 4).join('；'),
+      signals: (payload.signals || []).slice(0, 4).join('；'),
+      example: payload.rewrite_examples?.[0] || null,
+    }
+  }
+
+  const requestTechniqueAction = (tech: any, mode: '试写一句' | '改写选区' | '强度变体', intensity = 'med', range: { start: number; end: number } | null = null) => {
+    if (!tech) return
+    const hints = techniquePromptHints(tech)
+    const actualRange = mode === '改写选区' ? (range || selectionRange) : range
+    if (mode === '改写选区' && !actualRange) {
+      push('先在“只修改正文中的一小段”里填行号，再用技法改写。', 'error')
+      return
+    }
+    const action = {
+      mode,
+      technique_id: tech.id,
+      technique_title: tech.title || tech.payload?.name || tech.id,
+      usage_layer: tech.payload?.usage_layer || 'scene',
+      intensity,
+      instruction: mode === '强度变体'
+        ? '生成 low / med / high 三种版本，供作者比较，不自动覆盖正文。'
+        : mode === '改写选区'
+          ? '只改写所选行，让技法可观察但不要新增设定。'
+          : '试写一句或一个很短段落，展示这个技法的实际效果。',
+      suitable_scenes: hints.suitable,
+      unsuitable_scenes: hints.unsuitable,
+      overuse_risks: hints.risks,
+      apply_steps: hints.steps,
+      signals: hints.signals,
+      rewrite_example: hints.example,
+    }
+    requestRunJob(mode === '强度变体' ? 1200 : 900, actualRange || null, `${mode}: ${action.technique_title}`, action)
+  }
+
   const buildWritingAlignmentPayload = (overrides: Record<string, any> = {}) => ({
     idea: overrides.idea ?? alignmentIdea,
     understanding: overrides.understanding ?? alignmentUnderstanding,
@@ -1483,6 +1536,7 @@ export default function App() {
     agreed_draft: overrides.agreed_draft ?? alignmentAgreedDraft,
     confirmed: overrides.confirmed ?? alignmentConfirmed,
     messages: overrides.messages ?? alignmentMessages,
+    technique_action: overrides.technique_action ?? undefined,
     updated_at: new Date().toISOString(),
   })
 
@@ -4442,6 +4496,8 @@ export default function App() {
       const cats = Array.isArray(techniqueCategories) ? techniqueCategories : []
       const rows = (Array.isArray(techniqueCards) ? techniqueCards : []).filter((t: any) => {
         const q = techniqueQuery.trim().toLowerCase()
+        const layer = t.payload?.usage_layer || 'scene'
+        if (techniqueLayerFilter !== 'all' && layer !== techniqueLayerFilter) return false
         if (!q) return true
         return String(t.title || '').toLowerCase().includes(q) || String(t.id || '').toLowerCase().includes(q) || JSON.stringify(t.payload || {}).toLowerCase().includes(q)
       })
@@ -4478,20 +4534,48 @@ export default function App() {
                   <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search technique/category keywords...' />
                   <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
                 </div>
-                <div className='max-h-72 overflow-auto space-y-1'>
+                <div className='mb-2 grid grid-cols-3 gap-1 text-xs md:grid-cols-6'>
+                  {TECHNIQUE_LAYER_OPTIONS.map((layer) => (
+                    <button
+                      key={layer.id}
+                      className={`rounded-ui border px-2 py-1 ${techniqueLayerFilter === layer.id ? 'border-brand-500 bg-surface-2 font-medium' : 'border-border bg-surface hover:bg-surface-2'}`}
+                      onClick={() => setTechniqueLayerFilter(layer.id)}
+                    >
+                      {layer.label}
+                    </button>
+                  ))}
+                </div>
+                <div className='max-h-[30rem] overflow-auto space-y-2'>
                   {rows.map((r: any) => {
                     const traces = traceRowsFor('technique', [r.id, r.title, r.payload?.name, ...(r.payload?.signals || [])])
+                    const payload = r.payload || {}
+                    const firstExample = payload.rewrite_examples?.[0]
                     return (
-                      <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>
+                      <div key={r.id} className='rounded-ui border border-border bg-surface px-2 py-2 text-xs'>
                         <div className='flex items-center justify-between gap-2'>
-                          <span>{r.title} <span className='text-muted'>({r.id})</span></span>
+                          <button className='text-left font-medium hover:underline' onClick={() => setTechniqueForm(r)}>
+                            {r.title} <span className='text-muted'>({r.id})</span>
+                          </button>
                           <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
                         </div>
-                        <div className='mt-1 text-muted'>{(r.payload?.signals || []).slice(0, 2).join(' / ')}</div>
+                        <div className='mt-1 flex flex-wrap gap-1'>
+                          <Badge>{techniqueLayerLabel(payload.usage_layer)}</Badge>
+                          {payload.recipe_steps?.length ? <Badge>Recipe</Badge> : null}
+                          {(payload.suitable_scenes || []).slice(0, 2).map((x: string) => <Badge key={x} tone='success'>{x}</Badge>)}
+                        </div>
+                        <div className='mt-1 text-muted'>{(payload.signals || []).slice(0, 2).join(' / ')}</div>
+                        {(payload.overuse_risks || []).length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>风险：{payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
+                        {firstExample ? <div className='mt-1 truncate text-muted'>Example: {firstExample.source} → {firstExample.med || firstExample.low}</div> : null}
                         <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div>
-                      </button>
+                        <div className='mt-2 grid grid-cols-3 gap-1'>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '试写一句', 'med')}>试写</Button>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '改写选区', 'med')}>改写选区</Button>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '强度变体', 'high')}>强度</Button>
+                        </div>
+                      </div>
                     )
                   })}
+                  {!rows.length && <p className='text-sm text-muted'>没有匹配的技法。</p>}
                 </div>
               </Card>
               {techniqueForm && (
@@ -5022,6 +5106,7 @@ export default function App() {
     techniqueCategories,
     techniqueQuery,
     techniqueLibraryTab,
+    techniqueLayerFilter,
     toolSkillCards,
     toolSkillSchema,
     toolSkillForm,
@@ -5181,16 +5266,44 @@ export default function App() {
         <div className='space-y-2 text-xs'>
           {rightPinnedTechniqueRows.map((row: any) => {
             const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+            const mark = tech ? findRequirementMark('technique', [row.technique_id, tech.title, tech.payload?.name, ...(tech.payload?.signals || [])]) : null
+            const level = mark?.detection?.support_level || 'unsupported'
             return (
               <div key={row.technique_id} className='rounded-ui border border-border bg-surface px-2 py-1.5'>
                 <div className='flex items-start justify-between gap-2'>
                   <div>
                     <div className='font-medium'>{tech?.title || tech?.payload?.name || row.technique_id}</div>
-                    <div className='mt-1 text-muted'>{row.notes || tech?.payload?.purpose || '用于本章写法'}</div>
+                    <div className='mt-1 text-muted'>{row.notes || tech?.payload?.description || '用于本章写法'}</div>
                   </div>
                   <Badge>{row.intensity || 'med'}</Badge>
                 </div>
-                <Button className='mt-2 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: tech?.title || row.technique_id })}>移除</Button>
+                <div className='mt-2 flex flex-wrap gap-1'>
+                  <Badge>{techniqueLayerLabel(tech?.payload?.usage_layer)}</Badge>
+                  <Badge tone={mark?.span?.quote ? markTone(level) as any : 'default'}>{mark?.span?.quote ? supportLabel(level) : '未点亮'}</Badge>
+                </div>
+                {mark?.span?.quote ? (
+                  <button
+                    className='mt-2 w-full rounded-ui border border-border bg-surface-2 px-2 py-1 text-left text-muted hover:bg-surface'
+                    onClick={() => {
+                      setChapterWorkMode('draft')
+                      setSelectedMarkId(mark.mark_id)
+                      const start = Number(mark?.span?.start_line || 0)
+                      const end = Number(mark?.span?.end_line || start)
+                      if (start > 0) setHighlightRange({ start, end })
+                    }}
+                  >
+                    第 {mark.span.start_line} 行：{mark.span.quote}
+                  </button>
+                ) : null}
+                {tech?.payload?.overuse_risks?.length ? <div className='mt-2 text-amber-700 dark:text-amber-300'>风险：{tech.payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
+                {tech ? (
+                  <div className='mt-2 grid grid-cols-3 gap-1'>
+                    <Button className='text-xs' onClick={() => requestTechniqueAction(tech, '试写一句', row.intensity || 'med')}>试写</Button>
+                    <Button className='text-xs' onClick={() => requestTechniqueAction(tech, '改写选区', row.intensity || 'med')}>改写</Button>
+                    <Button className='text-xs' onClick={() => requestTechniqueAction(tech, '强度变体', 'high')}>强度</Button>
+                  </div>
+                ) : null}
+                <Button className='mt-1 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: tech?.title || row.technique_id })}>移除</Button>
               </div>
             )
           })}
@@ -5423,6 +5536,12 @@ export default function App() {
               <div>章节：{chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
               <div>所属卷：{currentVolume?.title || currentVolume?.id || '默认卷'}</div>
               <div>范围：{pendingWriteJob.range ? `正文 L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : '整章初稿'}</div>
+              {pendingWriteJob.techniqueAction ? (
+                <div className='mt-2 rounded-ui border border-border bg-surface-2 p-2'>
+                  <div className='font-medium'>技法动作：{pendingWriteJob.techniqueAction.mode}</div>
+                  <div className='text-muted'>{pendingWriteJob.techniqueAction.technique_title} · {pendingWriteJob.techniqueAction.intensity || 'med'}</div>
+                </div>
+              ) : null}
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'>
@@ -5528,7 +5647,7 @@ export default function App() {
             onClick={() => {
               const job = pendingWriteJob
               setPendingWriteJob(null)
-              if (job) runJob(job.maxTokens, job.range)
+              if (job) runJob(job.maxTokens, job.range, job.techniqueAction || null)
             }}
           >
             确认生成

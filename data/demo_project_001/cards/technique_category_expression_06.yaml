@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_06",
+  "type": "technique_category",
+  "title": "表达技法/停顿",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "停顿",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·停顿",
+    "sort_order": 6,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

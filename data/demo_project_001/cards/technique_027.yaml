@@ -1,29 +1,45 @@
 {
   "id": "technique_027",
   "type": "technique",
-  "title": "镜头远近切换",
+  "title": "反讽",
   "tags": [
     "technique",
-    "performance"
+    "rhetoric"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_rhetoric"
   ],
   "payload": {
-    "name": "镜头远近切换",
-    "category_id": "technique_category_performance",
+    "name": "反讽",
+    "category_id": "technique_category_rhetoric",
     "aliases": [
-      "镜头远近切换"
+      "反讽"
     ],
-    "description": "镜头远近切换：用于提升段落表达与可检验性。",
+    "description": "反讽：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施镜头远近切换",
+      "在关键句实施反讽",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现镜头远近切换可观察信号",
+      "出现反讽可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用镜头远近切换改写一句场景句。"
+      "示例：用反讽改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，反讽只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于反讽。",
+        "high": "他走进雨里，整段由反讽主导节奏和信息释放。"
+      }
     ]
   }
 }

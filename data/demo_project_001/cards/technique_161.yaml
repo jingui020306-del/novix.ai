@@ -1,29 +1,45 @@
 {
   "id": "technique_161",
   "type": "technique",
-  "title": "narrative_扩展技法_161",
+  "title": "lyric_扩展技法_161",
   "tags": [
     "technique",
-    "narrative"
+    "lyric"
   ],
   "links": [
-    "technique_category_narrative"
+    "technique_category_lyric"
   ],
   "payload": {
-    "name": "narrative_扩展技法_161",
-    "category_id": "technique_category_narrative",
+    "name": "lyric_扩展技法_161",
+    "category_id": "technique_category_lyric",
     "aliases": [
-      "narrative_扩展技法_161"
+      "lyric_扩展技法_161"
     ],
-    "description": "narrative_扩展技法_161：用于提升段落表达与可检验性。",
+    "description": "lyric_扩展技法_161：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施narrative_扩展技法_161",
+      "在关键句实施lyric_扩展技法_161",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现narrative_扩展技法_161可观察信号",
+      "出现lyric_扩展技法_161可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用narrative_扩展技法_161改写一句场景句。"
+      "示例：用lyric_扩展技法_161改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，lyric_扩展技法_161只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于lyric_扩展技法_161。",
+        "high": "他走进雨里，整段由lyric_扩展技法_161主导节奏和信息释放。"
+      }
     ]
   }
 }

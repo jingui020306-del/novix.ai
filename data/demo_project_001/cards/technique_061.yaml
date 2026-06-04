@@ -1,29 +1,45 @@
 {
   "id": "technique_061",
   "type": "technique",
-  "title": "环境五感",
+  "title": "蒙太奇",
   "tags": [
     "technique",
-    "description"
+    "structure"
   ],
   "links": [
-    "technique_category_description"
+    "technique_category_structure"
   ],
   "payload": {
-    "name": "环境五感",
-    "category_id": "technique_category_description",
+    "name": "蒙太奇",
+    "category_id": "technique_category_structure",
     "aliases": [
-      "环境五感"
+      "蒙太奇"
     ],
-    "description": "环境五感：用于提升段落表达与可检验性。",
+    "description": "蒙太奇：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施环境五感",
+      "在关键句实施蒙太奇",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现环境五感可观察信号",
+      "出现蒙太奇可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用环境五感改写一句场景句。"
+      "示例：用蒙太奇改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，蒙太奇只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于蒙太奇。",
+        "high": "他走进雨里，整段由蒙太奇主导节奏和信息释放。"
+      }
     ]
   }
 }

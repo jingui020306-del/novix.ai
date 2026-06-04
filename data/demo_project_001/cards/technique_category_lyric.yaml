@@ -11,26 +11,26 @@
   "payload": {
     "name": "抒情艺术",
     "description": "抒情艺术一级分类",
-    "sort_order": 6,
+    "sort_order": 7,
     "tags": [
       "一级"
     ],
     "core_techniques": [
-      "technique_101",
-      "technique_102",
-      "technique_103",
-      "technique_104",
-      "technique_105",
-      "technique_106",
-      "technique_107",
-      "technique_108",
-      "technique_109",
-      "technique_110",
-      "technique_111",
-      "technique_112",
-      "technique_113",
-      "technique_114",
-      "technique_115"
+      "technique_121",
+      "technique_122",
+      "technique_123",
+      "technique_124",
+      "technique_125",
+      "technique_126",
+      "technique_127",
+      "technique_128",
+      "technique_129",
+      "technique_130",
+      "technique_131",
+      "technique_132",
+      "technique_133",
+      "technique_134",
+      "technique_135"
     ]
   }
 }

@@ -1,33 +1,50 @@
 {
   "id": "technique_006",
   "type": "technique",
-  "title": "冲突升级",
+  "title": "语气错位",
   "tags": [
     "technique",
-    "narrative"
+    "expression"
   ],
   "links": [
-    "technique_category_structure"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "冲突升级",
-    "category_id": "technique_category_structure",
-    "aliases": [],
-    "description": "让阻碍从小到大、从外部到内部推进，迫使人物付出更高代价。",
+    "name": "语气错位",
+    "category_id": "technique_category_expression",
+    "aliases": [
+      "语气错位"
+    ],
+    "description": "语气错位：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
-      "列出当前目标",
-      "增加更高代价或更短时限",
-      "让角色必须做选择"
+      "明确段落目标",
+      "在关键句实施语气错位",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "新阻碍比前一个更难",
-      "人物选择代价上升",
-      "外部冲突压到人物底线"
+      "出现语气错位可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿",
-      "high": "主导"
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -35,18 +52,28 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.06
+      "metaphor_density": 0.09
     },
     "do_dont": {
       "do": [
-        "每次升级改变局面",
-        "把升级压到人物弱点"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "只增加噪音或敌人数量",
-        "升级后结果不影响后文"
+        "堆砌",
+        "跑偏"
       ]
     },
-    "examples": []
+    "examples": [
+      "示例：用语气错位改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，语气错位只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于语气错位。",
+        "high": "他走进雨里，整段由语气错位主导节奏和信息释放。"
+      }
+    ]
   }
 }

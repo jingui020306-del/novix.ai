@@ -11,26 +11,26 @@
   "payload": {
     "name": "结构艺术",
     "description": "结构艺术一级分类",
-    "sort_order": 3,
+    "sort_order": 4,
     "tags": [
       "一级"
     ],
     "core_techniques": [
-      "technique_041",
-      "technique_042",
-      "technique_043",
-      "technique_044",
-      "technique_045",
-      "technique_046",
-      "technique_047",
-      "technique_048",
-      "technique_049",
-      "technique_050",
-      "technique_051",
-      "technique_052",
-      "technique_053",
-      "technique_054",
-      "technique_055"
+      "technique_061",
+      "technique_062",
+      "technique_063",
+      "technique_064",
+      "technique_065",
+      "technique_066",
+      "technique_067",
+      "technique_068",
+      "technique_069",
+      "technique_070",
+      "technique_071",
+      "technique_072",
+      "technique_073",
+      "technique_074",
+      "technique_075"
     ]
   }
 }

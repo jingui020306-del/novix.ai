@@ -16,6 +16,7 @@
       "performance_扩展技法_206"
     ],
     "description": "performance_扩展技法_206：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
       "在关键句实施performance_扩展技法_206",
@@ -24,6 +25,21 @@
     "signals": [
       "出现performance_扩展技法_206可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -50,6 +66,14 @@
     },
     "examples": [
       "示例：用performance_扩展技法_206改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，performance_扩展技法_206只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于performance_扩展技法_206。",
+        "high": "他走进雨里，整段由performance_扩展技法_206主导节奏和信息释放。"
+      }
     ]
   }
 }

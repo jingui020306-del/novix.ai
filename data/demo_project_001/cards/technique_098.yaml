@@ -1,29 +1,45 @@
 {
   "id": "technique_098",
   "type": "technique",
-  "title": "慢镜头叙述",
+  "title": "色彩母题",
   "tags": [
     "technique",
-    "narrative"
+    "description"
   ],
   "links": [
-    "technique_category_narrative"
+    "technique_category_description"
   ],
   "payload": {
-    "name": "慢镜头叙述",
-    "category_id": "technique_category_narrative",
+    "name": "色彩母题",
+    "category_id": "technique_category_description",
     "aliases": [
-      "慢镜头叙述"
+      "色彩母题"
     ],
-    "description": "慢镜头叙述：用于提升段落表达与可检验性。",
+    "description": "色彩母题：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施慢镜头叙述",
+      "在关键句实施色彩母题",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现慢镜头叙述可观察信号",
+      "出现色彩母题可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用慢镜头叙述改写一句场景句。"
+      "示例：用色彩母题改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，色彩母题只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于色彩母题。",
+        "high": "他走进雨里，整段由色彩母题主导节奏和信息释放。"
+      }
     ]
   }
 }

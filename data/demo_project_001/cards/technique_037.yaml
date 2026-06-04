@@ -1,29 +1,45 @@
 {
   "id": "technique_037",
   "type": "technique",
-  "title": "悬置结尾",
+  "title": "回环",
   "tags": [
     "technique",
-    "performance"
+    "rhetoric"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_rhetoric"
   ],
   "payload": {
-    "name": "悬置结尾",
-    "category_id": "technique_category_performance",
+    "name": "回环",
+    "category_id": "technique_category_rhetoric",
     "aliases": [
-      "悬置结尾"
+      "回环"
     ],
-    "description": "悬置结尾：用于提升段落表达与可检验性。",
+    "description": "回环：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施悬置结尾",
+      "在关键句实施回环",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现悬置结尾可观察信号",
+      "出现回环可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用悬置结尾改写一句场景句。"
+      "示例：用回环改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，回环只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于回环。",
+        "high": "他走进雨里，整段由回环主导节奏和信息释放。"
+      }
     ]
   }
 }

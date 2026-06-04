@@ -1,29 +1,45 @@
 {
   "id": "technique_045",
   "type": "technique",
-  "title": "倒叙",
+  "title": "误导叙事",
   "tags": [
     "technique",
-    "structure"
+    "performance"
   ],
   "links": [
-    "technique_category_structure"
+    "technique_category_performance"
   ],
   "payload": {
-    "name": "倒叙",
-    "category_id": "technique_category_structure",
+    "name": "误导叙事",
+    "category_id": "technique_category_performance",
     "aliases": [
-      "倒叙"
+      "误导叙事"
     ],
-    "description": "倒叙：用于提升段落表达与可检验性。",
+    "description": "误导叙事：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施倒叙",
+      "在关键句实施误导叙事",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现倒叙可观察信号",
+      "出现误导叙事可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用倒叙改写一句场景句。"
+      "示例：用误导叙事改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，误导叙事只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于误导叙事。",
+        "high": "他走进雨里，整段由误导叙事主导节奏和信息释放。"
+      }
     ]
   }
 }

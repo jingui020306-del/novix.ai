@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_05",
+  "type": "technique_category",
+  "title": "表达技法/口吻",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "口吻",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·口吻",
+    "sort_order": 5,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

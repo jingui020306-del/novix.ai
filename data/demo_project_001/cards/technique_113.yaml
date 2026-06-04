@@ -1,29 +1,45 @@
 {
   "id": "technique_113",
   "type": "technique",
-  "title": "余韵式收束",
+  "title": "多声部叙述",
   "tags": [
     "technique",
-    "lyric"
+    "narrative"
   ],
   "links": [
-    "technique_category_lyric"
+    "technique_category_narrative"
   ],
   "payload": {
-    "name": "余韵式收束",
-    "category_id": "technique_category_lyric",
+    "name": "多声部叙述",
+    "category_id": "technique_category_narrative",
     "aliases": [
-      "余韵式收束"
+      "多声部叙述"
     ],
-    "description": "余韵式收束：用于提升段落表达与可检验性。",
+    "description": "多声部叙述：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施余韵式收束",
+      "在关键句实施多声部叙述",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现余韵式收束可观察信号",
+      "出现多声部叙述可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用余韵式收束改写一句场景句。"
+      "示例：用多声部叙述改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，多声部叙述只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于多声部叙述。",
+        "high": "他走进雨里，整段由多声部叙述主导节奏和信息释放。"
+      }
     ]
   }
 }

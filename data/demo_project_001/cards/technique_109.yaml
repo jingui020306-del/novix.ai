@@ -1,29 +1,45 @@
 {
   "id": "technique_109",
   "type": "technique",
-  "title": "反讽抒情",
+  "title": "自由间接引语",
   "tags": [
     "technique",
-    "lyric"
+    "narrative"
   ],
   "links": [
-    "technique_category_lyric"
+    "technique_category_narrative"
   ],
   "payload": {
-    "name": "反讽抒情",
-    "category_id": "technique_category_lyric",
+    "name": "自由间接引语",
+    "category_id": "technique_category_narrative",
     "aliases": [
-      "反讽抒情"
+      "自由间接引语"
     ],
-    "description": "反讽抒情：用于提升段落表达与可检验性。",
+    "description": "自由间接引语：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施反讽抒情",
+      "在关键句实施自由间接引语",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现反讽抒情可观察信号",
+      "出现自由间接引语可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用反讽抒情改写一句场景句。"
+      "示例：用自由间接引语改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，自由间接引语只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于自由间接引语。",
+        "high": "他走进雨里，整段由自由间接引语主导节奏和信息释放。"
+      }
     ]
   }
 }

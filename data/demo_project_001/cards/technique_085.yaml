@@ -1,29 +1,45 @@
 {
   "id": "technique_085",
   "type": "technique",
-  "title": "陌生化",
+  "title": "侧面描写",
   "tags": [
     "technique",
-    "narrative"
+    "description"
   ],
   "links": [
-    "technique_category_narrative"
+    "technique_category_description"
   ],
   "payload": {
-    "name": "陌生化",
-    "category_id": "technique_category_narrative",
+    "name": "侧面描写",
+    "category_id": "technique_category_description",
     "aliases": [
-      "陌生化"
+      "侧面描写"
     ],
-    "description": "陌生化：用于提升段落表达与可检验性。",
+    "description": "侧面描写：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施陌生化",
+      "在关键句实施侧面描写",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现陌生化可观察信号",
+      "出现侧面描写可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用陌生化改写一句场景句。"
+      "示例：用侧面描写改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，侧面描写只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于侧面描写。",
+        "high": "他走进雨里，整段由侧面描写主导节奏和信息释放。"
+      }
     ]
   }
 }

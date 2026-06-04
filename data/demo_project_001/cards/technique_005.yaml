@@ -1,33 +1,50 @@
 {
   "id": "technique_005",
   "type": "technique",
-  "title": "对话潜台词",
+  "title": "沉默反应",
   "tags": [
     "technique",
-    "narrative"
+    "expression"
   ],
   "links": [
     "technique_category_expression"
   ],
   "payload": {
-    "name": "对话潜台词",
+    "name": "沉默反应",
     "category_id": "technique_category_expression",
-    "aliases": [],
-    "description": "让角色嘴上谈一件事，真正争夺的是关系、秘密或立场。",
+    "aliases": [
+      "沉默反应"
+    ],
+    "description": "沉默反应：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
-      "写出角色不能直说的真实目的",
-      "设计表层话题",
-      "用动作和反应露出潜台词"
+      "明确段落目标",
+      "在关键句实施沉默反应",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "台词回避核心问题",
-      "停顿/动作承担真实情绪",
-      "对话双方理解不同层含义"
+      "出现沉默反应可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿",
-      "high": "主导"
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -35,18 +52,28 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.06
+      "metaphor_density": 0.08
     },
     "do_dont": {
       "do": [
-        "让潜台词来自人物关系",
-        "保留读者可读懂的信号"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "让角色替作者解释",
-        "每句台词都过度隐喻"
+        "堆砌",
+        "跑偏"
       ]
     },
-    "examples": []
+    "examples": [
+      "示例：用沉默反应改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，沉默反应只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于沉默反应。",
+        "high": "他走进雨里，整段由沉默反应主导节奏和信息释放。"
+      }
+    ]
   }
 }

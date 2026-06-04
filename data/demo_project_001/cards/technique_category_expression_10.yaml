@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_10",
+  "type": "technique_category",
+  "title": "表达技法/留白",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "留白",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·留白",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

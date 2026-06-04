@@ -1,29 +1,45 @@
 {
   "id": "technique_013",
   "type": "technique",
-  "title": "设问",
+  "title": "话里藏话",
   "tags": [
     "technique",
-    "rhetoric"
+    "expression"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "设问",
-    "category_id": "technique_category_rhetoric",
+    "name": "话里藏话",
+    "category_id": "technique_category_expression",
     "aliases": [
-      "设问"
+      "话里藏话"
     ],
-    "description": "设问：用于提升段落表达与可检验性。",
+    "description": "话里藏话：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施设问",
+      "在关键句实施话里藏话",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现设问可观察信号",
+      "出现话里藏话可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用设问改写一句场景句。"
+      "示例：用话里藏话改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，话里藏话只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于话里藏话。",
+        "high": "他走进雨里，整段由话里藏话主导节奏和信息释放。"
+      }
     ]
   }
 }

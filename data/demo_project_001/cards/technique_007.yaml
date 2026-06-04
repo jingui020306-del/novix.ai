@@ -1,33 +1,50 @@
 {
   "id": "technique_007",
   "type": "technique",
-  "title": "延迟满足",
+  "title": "句尾留白",
   "tags": [
     "technique",
-    "narrative"
+    "expression"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "延迟满足",
-    "category_id": "technique_category_performance",
-    "aliases": [],
-    "description": "推迟读者期待的胜利、揭秘或情感释放，让回收更有重量。",
+    "name": "句尾留白",
+    "category_id": "technique_category_expression",
+    "aliases": [
+      "句尾留白"
+    ],
+    "description": "句尾留白：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
-      "确认读者期待点",
-      "安排合理阻断",
-      "在回收时补偿更大情绪价值"
+      "明确段落目标",
+      "在关键句实施句尾留白",
+      "回读并收束过度使用"
     ],
     "signals": [
-      "目标接近但暂时失手",
-      "回收前出现额外代价",
-      "满足发生时解决多个积累问题"
+      "出现句尾留白可观察信号",
+      "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
-      "med": "贯穿",
-      "high": "主导"
+      "med": "贯穿关键段",
+      "high": "成为主导"
     },
     "metrics": {
       "dialogue_ratio_range": [
@@ -35,18 +52,28 @@
         0.6
       ],
       "punctuation_caps": 6,
-      "metaphor_density": 0.06
+      "metaphor_density": 0.1
     },
     "do_dont": {
       "do": [
-        "延迟期间持续给小进展",
-        "回收要兑现承诺"
+        "服务目标",
+        "保持可观察"
       ],
       "dont": [
-        "无限拖延",
-        "回收弱于铺垫"
+        "堆砌",
+        "跑偏"
       ]
     },
-    "examples": []
+    "examples": [
+      "示例：用句尾留白改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，句尾留白只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于句尾留白。",
+        "high": "他走进雨里，整段由句尾留白主导节奏和信息释放。"
+      }
+    ]
   }
 }

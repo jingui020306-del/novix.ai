@@ -1,29 +1,45 @@
 {
   "id": "technique_035",
   "type": "technique",
-  "title": "假线索",
+  "title": "对偶",
   "tags": [
     "technique",
-    "performance"
+    "rhetoric"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_rhetoric"
   ],
   "payload": {
-    "name": "假线索",
-    "category_id": "technique_category_performance",
+    "name": "对偶",
+    "category_id": "technique_category_rhetoric",
     "aliases": [
-      "假线索"
+      "对偶"
     ],
-    "description": "假线索：用于提升段落表达与可检验性。",
+    "description": "对偶：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施假线索",
+      "在关键句实施对偶",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现假线索可观察信号",
+      "出现对偶可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用假线索改写一句场景句。"
+      "示例：用对偶改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，对偶只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于对偶。",
+        "high": "他走进雨里，整段由对偶主导节奏和信息释放。"
+      }
     ]
   }
 }

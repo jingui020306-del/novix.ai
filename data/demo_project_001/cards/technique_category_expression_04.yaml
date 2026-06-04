@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_04",
+  "type": "technique_category",
+  "title": "表达技法/节奏",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "节奏",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·节奏",
+    "sort_order": 4,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

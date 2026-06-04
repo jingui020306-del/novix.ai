@@ -1,29 +1,45 @@
 {
   "id": "technique_194",
   "type": "technique",
-  "title": "performance_扩展技法_194",
+  "title": "description_扩展技法_194",
   "tags": [
     "technique",
-    "performance"
+    "description"
   ],
   "links": [
-    "technique_category_performance"
+    "technique_category_description"
   ],
   "payload": {
-    "name": "performance_扩展技法_194",
-    "category_id": "technique_category_performance",
+    "name": "description_扩展技法_194",
+    "category_id": "technique_category_description",
     "aliases": [
-      "performance_扩展技法_194"
+      "description_扩展技法_194"
     ],
-    "description": "performance_扩展技法_194：用于提升段落表达与可检验性。",
+    "description": "description_扩展技法_194：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施performance_扩展技法_194",
+      "在关键句实施description_扩展技法_194",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现performance_扩展技法_194可观察信号",
+      "出现description_扩展技法_194可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用performance_扩展技法_194改写一句场景句。"
+      "示例：用description_扩展技法_194改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，description_扩展技法_194只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于description_扩展技法_194。",
+        "high": "他走进雨里，整段由description_扩展技法_194主导节奏和信息释放。"
+      }
     ]
   }
 }

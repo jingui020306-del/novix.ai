@@ -1,29 +1,45 @@
 {
   "id": "technique_044",
   "type": "technique",
-  "title": "跳切",
+  "title": "信息延迟揭示",
   "tags": [
     "technique",
-    "structure"
+    "performance"
   ],
   "links": [
-    "technique_category_structure"
+    "technique_category_performance"
   ],
   "payload": {
-    "name": "跳切",
-    "category_id": "technique_category_structure",
+    "name": "信息延迟揭示",
+    "category_id": "technique_category_performance",
     "aliases": [
-      "跳切"
+      "信息延迟揭示"
     ],
-    "description": "跳切：用于提升段落表达与可检验性。",
+    "description": "信息延迟揭示：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施跳切",
+      "在关键句实施信息延迟揭示",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现跳切可观察信号",
+      "出现信息延迟揭示可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用跳切改写一句场景句。"
+      "示例：用信息延迟揭示改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，信息延迟揭示只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于信息延迟揭示。",
+        "high": "他走进雨里，整段由信息延迟揭示主导节奏和信息释放。"
+      }
     ]
   }
 }

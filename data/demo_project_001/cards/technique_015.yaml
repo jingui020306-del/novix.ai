@@ -1,29 +1,45 @@
 {
   "id": "technique_015",
   "type": "technique",
-  "title": "对偶",
+  "title": "重话轻说",
   "tags": [
     "technique",
-    "rhetoric"
+    "expression"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "对偶",
-    "category_id": "technique_category_rhetoric",
+    "name": "重话轻说",
+    "category_id": "technique_category_expression",
     "aliases": [
-      "对偶"
+      "重话轻说"
     ],
-    "description": "对偶：用于提升段落表达与可检验性。",
+    "description": "重话轻说：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施对偶",
+      "在关键句实施重话轻说",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现对偶可观察信号",
+      "出现重话轻说可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用对偶改写一句场景句。"
+      "示例：用重话轻说改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，重话轻说只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于重话轻说。",
+        "high": "他走进雨里，整段由重话轻说主导节奏和信息释放。"
+      }
     ]
   }
 }

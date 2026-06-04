@@ -1,29 +1,45 @@
 {
   "id": "technique_016",
   "type": "technique",
-  "title": "顶真",
+  "title": "重复句式",
   "tags": [
     "technique",
-    "rhetoric"
+    "expression"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "顶真",
-    "category_id": "technique_category_rhetoric",
+    "name": "重复句式",
+    "category_id": "technique_category_expression",
     "aliases": [
-      "顶真"
+      "重复句式"
     ],
-    "description": "顶真：用于提升段落表达与可检验性。",
+    "description": "重复句式：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施顶真",
+      "在关键句实施重复句式",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现顶真可观察信号",
+      "出现重复句式可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用顶真改写一句场景句。"
+      "示例：用重复句式改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，重复句式只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于重复句式。",
+        "high": "他走进雨里，整段由重复句式主导节奏和信息释放。"
+      }
     ]
   }
 }

@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_expression_01",
+  "type": "technique_category",
+  "title": "表达技法/潜台词",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_expression"
+  ],
+  "payload": {
+    "name": "潜台词",
+    "parent_id": "technique_category_expression",
+    "description": "表达技法·潜台词",
+    "sort_order": 1,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

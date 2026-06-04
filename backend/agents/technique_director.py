@@ -198,13 +198,18 @@ class TechniqueDirector:
             p = card.get("payload", {})
             name = p.get("name") or card.get("title") or tid
             signals = (p.get("signals") or [])[:3]
-            avoid = (p.get("do_dont", {}).get("dont") or [])[:2]
+            overuse_risks = (p.get("overuse_risks") or [])[:2]
+            unsuitable = (p.get("unsuitable_scenes") or [])[:2]
+            avoid = (p.get("do_dont", {}).get("dont") or [])[:2] + overuse_risks + unsuitable
             tag_bundle = _normalize_tags(card.get("tags", []), (p.get("tags") or []), category_tags)
             checklist.append(
                 {
                     "technique_id": tid,
                     "must_have_signals": signals,
                     "avoid": avoid,
+                    "usage_layer": p.get("usage_layer", "scene"),
+                    "suitable_scenes": (p.get("suitable_scenes") or [])[:3],
+                    "overuse_risks": overuse_risks,
                     "source": s.get("source", "outline:arc"),
                     "effective_intensity": s.get("effective_intensity", s.get("intensity", "med")),
                     "effective_weight": s.get("effective_weight", s.get("weight", 1.0)),
@@ -212,9 +217,13 @@ class TechniqueDirector:
                 }
             )
             steps = (p.get("apply_steps") or [])[:3]
+            suitable = "；".join((p.get("suitable_scenes") or [])[:2])
+            risks = "；".join(overuse_risks)
             lines.append(
                 f"- {name}({s.get('effective_intensity', s.get('intensity', 'med'))},w={s.get('effective_weight', s.get('weight', 1.0))},src={s.get('source','outline:arc')}): "
                 + "；".join(steps)
+                + (f"；适合: {suitable}" if suitable else "")
+                + (f"；过度风险: {risks}" if risks else "")
             )
 
         constraints = {}

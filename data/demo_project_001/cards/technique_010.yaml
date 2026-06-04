@@ -1,29 +1,45 @@
 {
   "id": "technique_010",
   "type": "technique",
-  "title": "夸张",
+  "title": "情绪断句",
   "tags": [
     "technique",
-    "rhetoric"
+    "expression"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_expression"
   ],
   "payload": {
-    "name": "夸张",
-    "category_id": "technique_category_rhetoric",
+    "name": "情绪断句",
+    "category_id": "technique_category_expression",
     "aliases": [
-      "夸张"
+      "情绪断句"
     ],
-    "description": "夸张：用于提升段落表达与可检验性。",
+    "description": "情绪断句：用于提升段落表达与可检验性。",
+    "usage_layer": "language",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施夸张",
+      "在关键句实施情绪断句",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现夸张可观察信号",
+      "出现情绪断句可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "关键句",
+      "情绪余韵",
+      "气氛铺垫",
+      "段落收束"
+    ],
+    "unsuitable_scenes": [
+      "动作高速段",
+      "信息必须清晰的规则说明"
+    ],
+    "overuse_risks": [
+      "辞藻堆砌",
+      "语义变虚",
+      "节奏被修辞拖慢"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用夸张改写一句场景句。"
+      "示例：用情绪断句改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，情绪断句只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于情绪断句。",
+        "high": "他走进雨里，整段由情绪断句主导节奏和信息释放。"
+      }
     ]
   }
 }

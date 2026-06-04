@@ -250,6 +250,7 @@ class FSStore:
             ("technique_category_structure", "结构手法"),
             ("technique_category_description", "描写方法"),
             ("technique_category_performance", "表现手法"),
+            ("technique_category_recipe", "场景配方"),
         ]
         for i, (cid, cname) in enumerate(categories, start=1):
             self.write_yaml(project_id, f"cards/{cid}.yaml", {
@@ -314,19 +315,70 @@ class FSStore:
                 "dont": ["无限拖延", "回收弱于铺垫"],
             },
         ]
+        layer_by_category = {
+            "technique_category_expression": "language",
+            "technique_category_structure": "structure",
+            "technique_category_description": "scene",
+            "technique_category_performance": "scene",
+            "technique_category_recipe": "recipe",
+        }
+        layer_hints = {
+            "structure": (["开章前", "爆点前", "卷末转折"], ["纯信息摘要", "情绪刚落地的静场"], ["结构痕迹太重", "为了反转牺牲人物动机"]),
+            "scene": (["冲突场", "重要场景进入/退出", "情绪转折段"], ["一句话带过的过场", "纯设定解释"], ["场景拖长", "动作变成流水账"]),
+            "language": (["关键句", "情绪余韵", "段落收束"], ["高速动作段", "必须清晰解释规则的段落"], ["辞藻堆砌", "语义变虚"]),
+            "recipe": (["章节关键节点", "AI 扩写前的共识阶段"], ["过场摘要"], ["每章都套同一配方会显得机械"]),
+        }
         for tech in seed_techniques:
+            layer = layer_by_category.get(tech["category_id"], "scene")
+            suitable, unsuitable, risks = layer_hints[layer]
             self.write_yaml(project_id, f"cards/{tech['id']}.yaml", {
                 "id": tech["id"], "type": "technique", "title": tech["title"], "tags": ["technique", "narrative"], "links": [tech["category_id"]],
                 "payload": {
                     "name": tech["title"], "category_id": tech["category_id"], "aliases": [], "description": tech["description"],
+                    "usage_layer": layer,
                     "apply_steps": tech["apply_steps"],
                     "signals": tech["signals"],
+                    "suitable_scenes": suitable,
+                    "unsuitable_scenes": unsuitable,
+                    "overuse_risks": risks,
                     "intensity_levels": {"low": "点缀", "med": "贯穿", "high": "主导"},
                     "metrics": {"dialogue_ratio_range": [0.2, 0.6], "punctuation_caps": 6, "metaphor_density": 0.06},
                     "do_dont": {"do": tech["do"], "dont": tech["dont"]},
-                    "examples": [],
+                    "examples": [f"示例：用{tech['title']}改写一个章节关键段。"],
+                    "rewrite_examples": [{
+                        "source": "他走进雨里。",
+                        "low": f"他走进雨里，轻轻带出{tech['title']}。",
+                        "med": f"他走进雨里，动作和停顿都服务于{tech['title']}。",
+                        "high": f"他走进雨里，整段由{tech['title']}主导信息释放。",
+                    }],
                 },
             })
+        self.write_yaml(project_id, "cards/technique_recipe_opening_hook.yaml", {
+            "id": "technique_recipe_opening_hook",
+            "type": "technique",
+            "title": "开章钩子配方",
+            "tags": ["technique", "recipe", "scene_recipe"],
+            "links": ["technique_category_recipe"],
+            "payload": {
+                "name": "开章钩子配方",
+                "category_id": "technique_category_recipe",
+                "aliases": ["开章钩子配方"],
+                "description": "用异常细节、信息缺口和延迟解释，让读者愿意进入本章。",
+                "usage_layer": "recipe",
+                "apply_steps": ["给出一个异常动作或物件", "让人物反应先于解释", "在段末留下未回答的问题"],
+                "signals": ["开头三段内出现异常信号", "解释被合理推迟", "段末出现继续阅读的问题"],
+                "suitable_scenes": ["章节开头", "新卷开头", "爆点前铺垫"],
+                "unsuitable_scenes": ["过场摘要", "需要立刻解释清楚的规则段"],
+                "overuse_risks": ["每章开头都用同一种钩子会显得机械", "信息缺口过多会让读者疲劳"],
+                "intensity_levels": {"low": "只取异常细节", "med": "完整三步", "high": "作为本场主设计"},
+                "metrics": {"dialogue_ratio_range": [0.15, 0.65], "punctuation_caps": 6, "metaphor_density": 0.05},
+                "do_dont": {"do": ["让钩子服务人物目标"], "dont": ["靠作者旁白宣布神秘"]},
+                "examples": ["示例：把普通短信改成开章钩子。"],
+                "rewrite_examples": [{"source": "他收到一条短信。", "low": "他收到一条短信，发件人被雨水模糊。", "med": "他收到一条短信，先写他停住的反应，再藏住发件人。", "high": "他收到一条短信，异常细节、人物反应和段末问题一起推动下一场。"}],
+                "recipe_steps": ["异常细节", "延迟解释", "段末问题"],
+                "recipe_techniques": ["信息延迟揭示", "静物特写", "悬置结尾"],
+            },
+        })
         tool_skills = [
             ("tool_skill_problem_checker", "小说问题检查工具", "checker", "reviewer", ["chapter", "story", "character", "canon"], "risk_report", ["人设一致性", "场景描述一致性", "时间线顺序", "伏笔埋设与回收"]),
             ("tool_skill_character_bio", "人物小传工具", "generator", "writer", ["character", "story"], "character_proposal", ["补全欲望/恐惧/伤口", "生成说话方式", "生成行为边界"]),

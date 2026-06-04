@@ -11,26 +11,26 @@
   "payload": {
     "name": "叙事艺术",
     "description": "叙事艺术一级分类",
-    "sort_order": 5,
+    "sort_order": 6,
     "tags": [
       "一级"
     ],
     "core_techniques": [
-      "technique_081",
-      "technique_082",
-      "technique_083",
-      "technique_084",
-      "technique_085",
-      "technique_086",
-      "technique_087",
-      "technique_088",
-      "technique_089",
-      "technique_090",
-      "technique_091",
-      "technique_092",
-      "technique_093",
-      "technique_094",
-      "technique_095"
+      "technique_101",
+      "technique_102",
+      "technique_103",
+      "technique_104",
+      "technique_105",
+      "technique_106",
+      "technique_107",
+      "technique_108",
+      "technique_109",
+      "technique_110",
+      "technique_111",
+      "technique_112",
+      "technique_113",
+      "technique_114",
+      "technique_115"
     ]
   }
 }

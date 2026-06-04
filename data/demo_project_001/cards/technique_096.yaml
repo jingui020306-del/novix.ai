@@ -1,29 +1,45 @@
 {
   "id": "technique_096",
   "type": "technique",
-  "title": "压缩叙述",
+  "title": "音响描写",
   "tags": [
     "technique",
-    "narrative"
+    "description"
   ],
   "links": [
-    "technique_category_narrative"
+    "technique_category_description"
   ],
   "payload": {
-    "name": "压缩叙述",
-    "category_id": "technique_category_narrative",
+    "name": "音响描写",
+    "category_id": "technique_category_description",
     "aliases": [
-      "压缩叙述"
+      "音响描写"
     ],
-    "description": "压缩叙述：用于提升段落表达与可检验性。",
+    "description": "音响描写：用于提升段落表达与可检验性。",
+    "usage_layer": "scene",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施压缩叙述",
+      "在关键句实施音响描写",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现压缩叙述可观察信号",
+      "出现音响描写可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "冲突场",
+      "追逐/对峙",
+      "重要场景进入和退出",
+      "情绪转折段"
+    ],
+    "unsuitable_scenes": [
+      "纯信息摘要",
+      "需要一句话带过的过场"
+    ],
+    "overuse_risks": [
+      "场景拖长",
+      "动作变成流水账",
+      "环境描写压过人物选择"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用压缩叙述改写一句场景句。"
+      "示例：用音响描写改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，音响描写只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于音响描写。",
+        "high": "他走进雨里，整段由音响描写主导节奏和信息释放。"
+      }
     ]
   }
 }

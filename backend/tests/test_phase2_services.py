@@ -244,6 +244,8 @@ def test_schema_contains_technique_and_category_payloads(tmp_path: Path):
     tool_props = CARD_TYPE_SCHEMAS["tool_skill"]["properties"]["payload"]["properties"]
     assert "keywords" in story_props and "target_reader" in story_props and "banned_items" in story_props
     assert "apply_steps" in t_props and "signals" in t_props and "intensity_levels" in t_props
+    assert "usage_layer" in t_props and "suitable_scenes" in t_props and "overuse_risks" in t_props
+    assert "rewrite_examples" in t_props and "recipe_steps" in t_props and "recipe_techniques" in t_props
     assert "name" in c_props and "sort_order" in c_props and "core_techniques" in c_props
     assert tool_props["auto_apply_allowed"]["default"] is False
     assert tool_props["evidence_required"]["default"] is True
@@ -255,6 +257,7 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     story = s.read_yaml("p1", "cards/story_001.yaml")
     tool_skill = s.read_yaml("p1", "cards/tool_skill_problem_checker.yaml")
     technique = s.read_yaml("p1", "cards/technique_001.yaml")
+    recipe = s.read_yaml("p1", "cards/technique_recipe_opening_hook.yaml")
 
     assert story["payload"]["keywords"]
     assert story["payload"]["target_reader"]
@@ -262,6 +265,11 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     assert tool_skill["type"] == "tool_skill"
     assert tool_skill["payload"]["auto_apply_allowed"] is False
     assert "悬念" in technique["title"]
+    assert technique["payload"]["usage_layer"] in {"structure", "scene", "character", "language", "recipe"}
+    assert technique["payload"]["suitable_scenes"]
+    assert technique["payload"]["overuse_risks"]
+    assert recipe["payload"]["usage_layer"] == "recipe"
+    assert recipe["payload"]["recipe_steps"]
 
 
 def test_project_export_zip_contains_author_assets(tmp_path: Path):
@@ -621,6 +629,9 @@ def test_job_emits_technique_brief_and_manifest_fixed_block(tmp_path: Path):
     brief = [e for e in events if e["event"] == "TECHNIQUE_BRIEF"][0]["data"]
     assert brief.get("technique_agent_tags")
     assert any(row.get("agent_tags") for row in brief.get("technique_checklist", []))
+    assert any(row.get("usage_layer") for row in brief.get("technique_checklist", []))
+    assert any(row.get("suitable_scenes") for row in brief.get("technique_checklist", []))
+    assert any("overuse_risks" in row for row in brief.get("technique_checklist", []))
 
     manifest = [e for e in events if e["event"] == "CONTEXT_MANIFEST"][0]["data"]
     assert "technique_brief" in manifest.get("fixed_blocks", {})

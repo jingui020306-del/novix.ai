@@ -1,29 +1,45 @@
 {
   "id": "technique_102",
   "type": "technique",
-  "title": "托物言志",
+  "title": "零度写作",
   "tags": [
     "technique",
-    "lyric"
+    "narrative"
   ],
   "links": [
-    "technique_category_lyric"
+    "technique_category_narrative"
   ],
   "payload": {
-    "name": "托物言志",
-    "category_id": "technique_category_lyric",
+    "name": "零度写作",
+    "category_id": "technique_category_narrative",
     "aliases": [
-      "托物言志"
+      "零度写作"
     ],
-    "description": "托物言志：用于提升段落表达与可检验性。",
+    "description": "零度写作：用于提升段落表达与可检验性。",
+    "usage_layer": "structure",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施托物言志",
+      "在关键句实施零度写作",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现托物言志可观察信号",
+      "出现零度写作可观察信号",
       "节奏/语义与目标一致"
+    ],
+    "suitable_scenes": [
+      "开章前",
+      "爆点前",
+      "卷末转折",
+      "多线并行段"
+    ],
+    "unsuitable_scenes": [
+      "需要快速交代事实的短段",
+      "人物情绪刚刚落地的静场"
+    ],
+    "overuse_risks": [
+      "结构痕迹太重",
+      "为了反转牺牲人物动机",
+      "读者看见设计感"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -49,7 +65,15 @@
       ]
     },
     "examples": [
-      "示例：用托物言志改写一句场景句。"
+      "示例：用零度写作改写一句场景句。"
+    ],
+    "rewrite_examples": [
+      {
+        "source": "他走进雨里。",
+        "low": "他走进雨里，零度写作只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于零度写作。",
+        "high": "他走进雨里，整段由零度写作主导节奏和信息释放。"
+      }
     ]
   }
 }
