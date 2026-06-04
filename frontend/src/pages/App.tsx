@@ -2471,6 +2471,130 @@ export default function App() {
       const realReadyProfiles = profileHealthRows.filter((row: any) => !row.is_mock && !row.missing_fields?.length)
       const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
       const agentAssignmentsReady = agentModuleRows.length > 0 && agentModuleRows.every((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
+      const hasText = (value: any) => String(value || '').trim().length > 0
+      const hasArrayItems = (value: any) => Array.isArray(value) && value.some((item: any) => {
+        if (typeof item === 'string') return hasText(item)
+        if (!item || typeof item !== 'object') return Boolean(item)
+        return Object.values(item).some((entry) => Array.isArray(entry) ? entry.length > 0 : hasText(entry))
+      })
+      const hasQuotedMarks = evidenceMarkRows.some((mark: any) => hasText(mark?.span?.quote) && Number(mark?.span?.start_line || 0) > 0)
+      const supportedMarks = evidenceMarkRows.filter((mark: any) => mark?.detection?.support_level === 'supported' && hasText(mark?.span?.quote))
+      const pinnedTechniqueCount = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques.length : 0
+      const pinnedCategoryCount = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories.length : 0
+      const goStoryStep = (step: string) => {
+        setView('story')
+        setBuildWizardStep(step)
+      }
+      const readinessGroups = [
+        {
+          id: 'foundation',
+          label: '大重要 · 建书底座',
+          detail: '决定这本书写什么、给谁看、不能写什么。',
+          items: [
+            { id: 'book_title', label: '书名', done: hasText(storyForm?.title), detail: storyForm?.title || '未填写', run: () => goStoryStep('basics') },
+            { id: 'genre', label: '题材', done: hasText(activeStoryPayload.genre), detail: activeStoryPayload.genre || '未填写', run: () => goStoryStep('basics') },
+            { id: 'keywords', label: '关键词', done: hasArrayItems(activeStoryPayload.keywords), detail: `${(activeStoryPayload.keywords || []).length || 0} 个`, run: () => goStoryStep('basics') },
+            { id: 'reader', label: '目标读者', done: hasText(activeStoryPayload.target_reader), detail: activeStoryPayload.target_reader || '未填写', run: () => goStoryStep('basics') },
+            { id: 'banned', label: '禁写事项', done: hasArrayItems(activeStoryPayload.banned_items), detail: `${(activeStoryPayload.banned_items || []).length || 0} 条`, run: () => goStoryStep('basics') },
+          ],
+        },
+        {
+          id: 'story_core',
+          label: '大重要 · 故事核心',
+          detail: '让 AI 和作者对主线、主题、冲突有同一份理解。',
+          items: [
+            { id: 'logline', label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事', run: () => goStoryStep('outline') },
+            { id: 'theme', label: '主题', done: hasText(activeStoryPayload.theme), detail: activeStoryPayload.theme || '未填写', run: () => goStoryStep('outline') },
+            { id: 'worldview', label: '世界观', done: hasText(activeStoryPayload.worldview), detail: activeStoryPayload.worldview ? '已填写' : '未填写', run: () => goStoryStep('outline') },
+            { id: 'main_conflict', label: '主冲突', done: hasText(activeStoryPayload.main_conflict), detail: activeStoryPayload.main_conflict ? '已填写' : '未填写', run: () => goStoryStep('outline') },
+            { id: 'platform_style', label: '平台风格', done: hasText(activeStoryPayload.platform_style), detail: activeStoryPayload.platform_style || '未填写', run: () => goStoryStep('outline') },
+          ],
+        },
+        {
+          id: 'structure',
+          label: '大重要 · 结构脉络',
+          detail: '阶段、章节、明线、暗线、伏笔都在这里对齐。',
+          items: [
+            { id: 'stages', label: '阶段目标', done: hasArrayItems(activeStoryPayload.stages), detail: `${(activeStoryPayload.stages || []).filter((x: any) => hasText(x?.stage) || hasText(x?.goal)).length || 0} 个`, run: () => goStoryStep('scenes') },
+            { id: 'scenes', label: '重要场景', done: importantSceneRows.length > 0, detail: `${importantSceneRows.length} 个`, run: () => goStoryStep('scenes') },
+            { id: 'open_line', label: '明线节点', done: openLineRows.length > 0, detail: `${openLineRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'hidden_line', label: '暗线节点', done: hiddenLineRows.length > 0, detail: `${hiddenLineRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'foreshadowing', label: '伏笔节点', done: foreshadowingRows.length > 0, detail: `${foreshadowingRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'chapter_plan', label: '章节矩阵', done: hasArrayItems(activeStoryPayload.chapter_plan), detail: `${(activeStoryPayload.chapter_plan || []).filter((x: any) => hasText(x?.chapter) || hasText(x?.title) || hasText(x?.focus)).length || 0} 行`, run: () => { setView('story'); setStoryPlanningTab('matrix') } },
+          ],
+        },
+        {
+          id: 'cards',
+          label: '大重要 · 卡片资产',
+          detail: '人物、风格、技法、工具 skill 会成为章节生成约束。',
+          items: [
+            { id: 'characters', label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('characters') } },
+            { id: 'style_cards', label: '文风卡', done: Array.isArray(styles) && styles.length > 0, detail: `${Array.isArray(styles) ? styles.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('style') } },
+            { id: 'technique_cards', label: '叙事技巧', done: Array.isArray(techniqueCards) && techniqueCards.length > 0, detail: `${Array.isArray(techniqueCards) ? techniqueCards.length : 0} 张`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+            { id: 'tool_skills', label: '工具 skill', done: Array.isArray(toolSkillCards) && toolSkillCards.length > 0, detail: `${Array.isArray(toolSkillCards) ? toolSkillCards.length : 0} 个`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+          ],
+        },
+        {
+          id: 'chapter',
+          label: '大重要 · 当前章节',
+          detail: '这一章是否能明确挂到卷、章节计划和要求节点。',
+          items: [
+            { id: 'volumes', label: '卷', done: volumeRows.length > 0, detail: `${volumeRows.length} 卷`, run: () => { if (volumeRows.length) setActiveActivity('explorer'); else void createVolume() } },
+            { id: 'chapters', label: '章', done: chapterRows.length > 0, detail: `${chapterRows.length} 章`, run: () => { if (chapterRows.length) { setView('chapter'); setActiveActivity('explorer') } else void createChapterInVolume(volumeRows[0]?.id || 'volume_default') } },
+            { id: 'chapter_title', label: '章节标题', done: hasText(chapterTitleDraft || currentChapterMeta?.chapter_title), detail: chapterTitleDraft || currentChapterMeta?.chapter_title || '未填写', run: () => { setView('chapter'); setActiveActivity('explorer') } },
+            { id: 'linked_plan', label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行`, run: () => { setView('story'); setStoryPlanningTab('matrix') } },
+            { id: 'linked_lines', label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}`, run: () => goStoryStep('lines') },
+            { id: 'pinned_techniques', label: '本章技法挂载', done: pinnedTechniqueCount + pinnedCategoryCount > 0, detail: `技法 ${pinnedTechniqueCount} · 分类 ${pinnedCategoryCount}`, run: () => { setView('chapter'); setActiveActivity('explorer') } },
+          ],
+        },
+        {
+          id: 'trust',
+          label: '大重要 · 可信点亮',
+          detail: 'AI 判断必须有正文 quote 和行号，不能只靠自述。',
+          items: [
+            { id: 'profile', label: '真实 API Profile', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个 ready`, run: () => setView('settings') },
+            { id: 'agents', label: 'Agent 分配', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} ready` : '未读取 runtime', run: () => setView('settings') },
+            { id: 'marks', label: '证据标记', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个 mark`, run: () => { setView('chapter'); void analyzeMarks() } },
+            { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
+            { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
+            { id: 'pending_reviews', label: '待审稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `稿 ${pendingChapterReviews.length} · patch ${pendingPatchCount}`, run: () => setView('chapter') },
+          ],
+        },
+      ]
+      const readinessItemCount = readinessGroups.reduce((sum, group) => sum + group.items.length, 0)
+      const readinessDoneCount = readinessGroups.reduce((sum, group) => sum + group.items.filter((item) => item.done).length, 0)
+      const readinessMajorDoneCount = readinessGroups.filter((group) => group.items.every((item) => item.done)).length
+      const renderReadinessGroup = (group: any) => {
+        const done = group.items.filter((item: any) => item.done).length
+        const allDone = done === group.items.length
+        return (
+          <div key={group.id} className={`rounded-ui border p-3 ${allDone ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
+            <div className='flex items-start justify-between gap-2'>
+              <div>
+                <div className='text-sm font-semibold'>{group.label}</div>
+                <div className='mt-1 text-xs text-muted'>{group.detail}</div>
+              </div>
+              <Badge tone={allDone ? 'success' : 'warn'}>{done}/{group.items.length}</Badge>
+            </div>
+            <div className='mt-3 flex flex-wrap gap-1.5'>
+              {group.items.map((item: any) => (
+                <button
+                  key={item.id}
+                  className={`rounded-full border px-2 py-1 text-left text-xs transition ${item.done ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'border-border bg-surface-2 text-muted hover:bg-surface'}`}
+                  onClick={item.run}
+                  title={`${item.label}: ${item.detail}`}
+                >
+                  <span className='font-medium'>{item.label}</span>
+                  <span className='ml-1 opacity-80'>{item.done ? '已亮' : '待补'}</span>
+                </button>
+              ))}
+            </div>
+            <div className='mt-2 text-[11px] text-muted'>
+              {group.items.filter((item: any) => !item.done).slice(0, 3).map((item: any) => `${item.label}: ${item.detail}`).join(' · ') || '这一块已经可以支撑开写。'}
+            </div>
+          </div>
+        )
+      }
       const setupChecklist = [
         {
           id: 'api',
@@ -2560,6 +2684,34 @@ export default function App() {
                 <div className='text-xs text-muted'>风险标记</div>
                 <div className='mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
                 <div className='text-xs text-muted'>unsupported / contradicted</div>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            title='写作准备地图'
+            extra={<Badge tone={readinessDoneCount === readinessItemCount ? 'success' : 'warn'}>大重要 {readinessMajorDoneCount}/{readinessGroups.length} · 小节点 {readinessDoneCount}/{readinessItemCount}</Badge>}
+          >
+            <div className='flex flex-col gap-3 lg:flex-row'>
+              <div className='lg:w-64'>
+                <div className='rounded-ui border border-border bg-surface p-3'>
+                  <div className='text-xs text-muted'>当前开写状态</div>
+                  <div className='mt-1 text-2xl font-semibold'>{readinessMajorDoneCount}/{readinessGroups.length}</div>
+                  <div className='text-xs text-muted'>大重要节点已亮起</div>
+                  <Button
+                    className='mt-3 w-full'
+                    variant={readinessMajorDoneCount >= 4 ? 'primary' : 'secondary'}
+                    onClick={() => { setView('chapter'); setActiveActivity('explorer') }}
+                  >
+                    开始写当前章
+                  </Button>
+                  <div className='mt-2 text-xs text-muted'>
+                    点击下面任意小节点，会跳到对应填写页；绿色表示已有材料，灰色表示缺失或还没被证据点亮。
+                  </div>
+                </div>
+              </div>
+              <div className='grid flex-1 grid-cols-1 gap-2 xl:grid-cols-2'>
+                {readinessGroups.map(renderReadinessGroup)}
               </div>
             </div>
           </Card>
