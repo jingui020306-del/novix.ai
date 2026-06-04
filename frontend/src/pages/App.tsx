@@ -160,6 +160,7 @@ export default function App() {
   const [styleUploadText, setStyleUploadText] = useState('')
   const [activeStyleAssets, setActiveStyleAssets] = useState<string[]>([])
   const [llmProfileId, setLlmProfileId] = useState('mock_default')
+  const [useAgentAssignments, setUseAgentAssignments] = useState(true)
   const [selectedChapter, setSelectedChapter] = useState('chapter_001')
   const [selectedProposalId, setSelectedProposalId] = useState('')
   const [selectedBlueprintId, setSelectedBlueprintId] = useState('')
@@ -315,6 +316,20 @@ export default function App() {
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
   const profileHealthRows = Array.isArray(llmStatus?.profiles) ? llmStatus.profiles : []
   const selectedProfileHealth = profileHealthRows.find((row: any) => row.profile_id === llmProfileId)
+  const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
+  const writeRouteRows = useAgentAssignments
+    ? agentModuleRows
+    : ['writer', 'critic', 'editor', 'canon_extractor'].map((module) => ({
+      module,
+      profile_id: llmProfileId,
+      provider: selectedProfileHealth?.provider || profiles[llmProfileId]?.provider || 'missing',
+      model: selectedProfileHealth?.model || profiles[llmProfileId]?.model || '',
+      is_mock: Boolean(selectedProfileHealth?.is_mock || profiles[llmProfileId]?.provider === 'mock'),
+      missing_fields: selectedProfileHealth?.missing_fields || (!profiles[llmProfileId] ? ['profile'] : []),
+      profile_missing: !profiles[llmProfileId],
+      requires_api_key: selectedProfileHealth?.requires_api_key,
+      api_key_configured: selectedProfileHealth?.api_key_configured,
+    }))
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
   const buildDraftHistoryCounts = {
     all: processedBuildDrafts.length,
@@ -1194,11 +1209,16 @@ export default function App() {
 
   const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
     try {
-      if (selectedProfileHealth?.is_mock) {
+      const routeRisks = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length)
+      if (useAgentAssignments && !writeRouteRows.length) {
+        push('Agent assignments 状态还未加载，生成时将按后端配置解析', 'error')
+      } else if (useAgentAssignments && routeRisks.length) {
+        push(`Agent assignments 有 ${routeRisks.length} 个模块未 ready，生成时可能 mock/fallback`, 'error')
+      } else if (!useAgentAssignments && selectedProfileHealth?.is_mock) {
         push(`当前 profile ${llmProfileId} 是 mock 模式，会生成模拟结果`, 'error')
-      } else if (selectedProfileHealth?.missing_fields?.length) {
+      } else if (!useAgentAssignments && selectedProfileHealth?.missing_fields?.length) {
         push(`当前 profile ${llmProfileId} 缺少: ${selectedProfileHealth.missing_fields.join(', ')}，生成时可能 fallback`, 'error')
-      } else if (!profiles[llmProfileId]) {
+      } else if (!useAgentAssignments && !profiles[llmProfileId]) {
         push(`当前 profile ${llmProfileId} 未找到，生成时可能 fallback`, 'error')
       }
       setSelectedOpIds([])
@@ -1209,7 +1229,7 @@ export default function App() {
         scene_index: 0,
         agent_mode: 'three_agent',
         agents: ['reviewer', 'writer', 'proofreader'],
-        llm_profile_id: llmProfileId,
+        llm_profile_id: useAgentAssignments ? undefined : llmProfileId,
         auto_apply_patch: Boolean(autoApplyPatch),
         word_checkpoint_chars: 1500,
         constraints: { max_tokens: maxTokens },
@@ -3251,14 +3271,25 @@ export default function App() {
                 </Select>
               </div>
               <div className='col-span-5'>
-                <label className='text-xs text-muted'>Model profile</label>
-                <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)}>
+                <label className='text-xs text-muted'>Model routing</label>
+                <label className='mb-1 flex items-center gap-2 text-xs'>
+                  <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
+                  use Settings agent assignments
+                </label>
+                <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)} disabled={useAgentAssignments}>
                   {Object.entries(profiles).map(([k, v]: any) => (
                     <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
                   ))}
                 </Select>
                 <div className='mt-1 flex flex-wrap items-center gap-2 text-xs'>
-                  {selectedProfileHealth ? (
+                  {useAgentAssignments ? (
+                    <>
+                      <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
+                        assignments
+                      </Badge>
+                      <span className='text-muted'>{writeRouteRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/{writeRouteRows.length || 4} modules ready</span>
+                    </>
+                  ) : selectedProfileHealth ? (
                     <>
                       <Badge tone={selectedProfileHealth.is_mock ? 'warn' : selectedProfileHealth.missing_fields?.length ? 'warn' : 'success'}>
                         {selectedProfileHealth.is_mock ? 'mock mode' : selectedProfileHealth.missing_fields?.length ? 'incomplete' : 'ready'}
@@ -3990,8 +4021,10 @@ export default function App() {
     activeStyleAssets,
     currentManifest,
     llmProfileId,
+    useAgentAssignments,
     profiles,
     selectedProfileHealth,
+    writeRouteRows,
     selectedChapter,
     currentChapterMeta,
     currentVolume,
@@ -4406,8 +4439,8 @@ export default function App() {
               <h3 className='text-base font-semibold'>生成前确认</h3>
               <p className='text-xs text-muted'>确认本次 job 的模型状态和当前 UI 已绑定材料，再启动三 Agent 流程。</p>
             </div>
-            <Badge tone={selectedProfileHealth?.is_mock || selectedProfileHealth?.missing_fields?.length || !profiles[llmProfileId] ? 'warn' : 'success'}>
-              {selectedProfileHealth?.is_mock ? 'mock mode' : selectedProfileHealth?.missing_fields?.length ? 'incomplete' : profiles[llmProfileId] ? 'ready' : 'missing'}
+            <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
+              {useAgentAssignments ? 'agent assignments' : 'manual override'}
             </Badge>
           </div>
         </div>
@@ -4421,16 +4454,29 @@ export default function App() {
               <div>Volume: {currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
               <div>Max tokens: {pendingWriteJob.maxTokens}</div>
               <div>Selection: {pendingWriteJob.range ? `L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : 'full chapter'}</div>
+              <div>Routing: {useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}</div>
               <div>Auto apply patch: {autoApplyPatch ? 'on' : 'off'}</div>
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
-              <div className='mb-2 font-medium'>LLM Profile</div>
-              <div>{llmProfileId}</div>
-              <div>{selectedProfileHealth?.provider || profiles[llmProfileId]?.provider || 'missing'} · {selectedProfileHealth?.model || profiles[llmProfileId]?.model || 'no model'}</div>
-              <div>API key: {selectedProfileHealth ? (selectedProfileHealth.requires_api_key ? (selectedProfileHealth.api_key_configured ? 'configured' : 'missing') : 'not required') : 'unknown'}</div>
-              {selectedProfileHealth?.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Missing: {selectedProfileHealth.missing_fields.join(', ')}</div> : null}
-              {selectedProfileHealth?.is_mock ? <div className='mt-1 text-amber-700 dark:text-amber-300'>当前是 mock 模式，会产生模拟结果。</div> : null}
-              {!profiles[llmProfileId] ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Profile not found; backend may fallback.</div> : null}
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <span className='font-medium'>Agent Routing</span>
+                <Badge>{useAgentAssignments ? 'Settings assignments' : `${llmProfileId} override`}</Badge>
+              </div>
+              <div className='space-y-1'>
+                {writeRouteRows.map((row: any) => (
+                  <div key={row.module} className='rounded-ui border border-border bg-surface-2 px-2 py-1'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='font-medium'>{row.module}</span>
+                      <Badge tone={row.is_mock || row.profile_missing || row.missing_fields?.length ? 'warn' : 'success'}>
+                        {row.is_mock ? 'mock' : row.profile_missing ? 'missing' : row.missing_fields?.length ? 'incomplete' : 'ready'}
+                      </Badge>
+                    </div>
+                    <div className='mt-0.5 text-muted'>{row.profile_id} · {row.provider || 'missing'} / {row.model || 'no model'}</div>
+                    {row.missing_fields?.length ? <div className='text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                  </div>
+                ))}
+                {!writeRouteRows.length ? <div className='text-muted'>Runtime status not loaded yet.</div> : null}
+              </div>
             </div>
           </div>
           <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-3'>
