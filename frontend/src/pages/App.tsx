@@ -324,6 +324,12 @@ export default function App() {
   const [chapterEditorText, setChapterEditorText] = useState('')
   const [chapterTitleDraft, setChapterTitleDraft] = useState('')
   const [chapterSaving, setChapterSaving] = useState(false)
+  const [alignmentIdea, setAlignmentIdea] = useState('')
+  const [alignmentUnderstanding, setAlignmentUnderstanding] = useState('')
+  const [alignmentAgreedDraft, setAlignmentAgreedDraft] = useState('')
+  const [alignmentConfirmed, setAlignmentConfirmed] = useState(false)
+  const [alignmentDiscussionInput, setAlignmentDiscussionInput] = useState('')
+  const [alignmentMessages, setAlignmentMessages] = useState<any[]>([])
   const [selectedMarkId, setSelectedMarkId] = useState('')
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
@@ -594,6 +600,16 @@ export default function App() {
   useEffect(() => {
     setChapterEditorText(draft?.content || '')
     setChapterTitleDraft(draft?.meta?.chapter_title || draft?.meta?.title || selectedChapter)
+  }, [draft, selectedChapter])
+
+  useEffect(() => {
+    const alignment = draft?.meta?.writing_alignment || {}
+    setAlignmentIdea(alignment.idea || '')
+    setAlignmentUnderstanding(alignment.understanding || '')
+    setAlignmentAgreedDraft(alignment.agreed_draft || '')
+    setAlignmentConfirmed(Boolean(alignment.confirmed))
+    setAlignmentMessages(Array.isArray(alignment.messages) ? alignment.messages : [])
+    setAlignmentDiscussionInput('')
   }, [draft, selectedChapter])
 
   const lazyLoadPaletteData = async (force = false) => {
@@ -1310,6 +1326,7 @@ export default function App() {
           include_cards: generationUseCards,
           include_techniques: generationUseTechniques,
           include_lines: generationUseLines,
+          writing_alignment: buildWritingAlignmentPayload({ confirmed: alignmentConfirmed }),
         },
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
@@ -1449,6 +1466,120 @@ export default function App() {
     } finally {
       setChapterSaving(false)
     }
+  }
+
+  const techniqueTitleById = (techniqueId: string) => {
+    const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === techniqueId)
+    return tech?.title || tech?.payload?.name || techniqueId
+  }
+
+  const buildWritingAlignmentPayload = (overrides: Record<string, any> = {}) => ({
+    idea: overrides.idea ?? alignmentIdea,
+    understanding: overrides.understanding ?? alignmentUnderstanding,
+    agreed_draft: overrides.agreed_draft ?? alignmentAgreedDraft,
+    confirmed: overrides.confirmed ?? alignmentConfirmed,
+    messages: overrides.messages ?? alignmentMessages,
+    updated_at: new Date().toISOString(),
+  })
+
+  const saveWritingAlignment = async (overrides: Record<string, any> = {}) => {
+    if (!selectedChapter) return
+    try {
+      const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, {
+        ...meta,
+        writing_alignment: buildWritingAlignmentPayload(overrides),
+      })
+      await mutateDraft()
+      await mutateDraftDetails()
+      push('写作共识已保存')
+    } catch {
+      push('写作共识保存失败', 'error')
+    }
+  }
+
+  const generateAlignmentUnderstanding = async () => {
+    const chapterPlan = currentStoryLinks.chapterPlan[0]
+    const pinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+    const techniqueLine = pinnedTechniques.length
+      ? pinnedTechniques.map((row: any) => `${techniqueTitleById(row.technique_id)}(${row.intensity || 'med'}${row.notes ? `: ${row.notes}` : ''})`).join('；')
+      : '本章还没有明确挂载技法，建议先从左侧选择 1-3 个。'
+    const openLine = currentStoryLinks.openLine.map((row: any) => row.event || row.result || row.goal).filter(Boolean).join('；')
+    const hiddenLine = currentStoryLinks.hiddenLine.map((row: any) => row.visible_hint || row.truth || row.hidden_meaning).filter(Boolean).join('；')
+    const foreshadowings = currentStoryLinks.foreshadowings.map((row: any) => row.content || row.surface_signal || row.payoff).filter(Boolean).join('；')
+    const bannedItems = (activeStoryPayload.banned_items || []).filter((x: any) => String(x || '').trim()).join('；')
+    const importantScenes = (activeStoryPayload.important_scenes || [])
+      .filter((row: any) => row?.chapter === selectedChapter || row?.chapter_id === selectedChapter || !row?.chapter)
+      .map((row: any) => row.scene || row.purpose)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join('；')
+    const understanding = [
+      `我理解你这一章想写：${alignmentIdea.trim() || '作者还没有输入粗略想法，请先补一句这一章想发生什么。'}`,
+      `本章位置：${currentVolume?.title || '未绑定卷'} / ${chapterTitleDraft || selectedChapter}。`,
+      chapterPlan ? `章节计划：${chapterPlan.title || chapterPlan.chapter || selectedChapter}，重点是 ${chapterPlan.focus || chapterPlan.key_events || '待作者补充'}；冲突/结果：${chapterPlan.conflict || '未写冲突'} -> ${chapterPlan.result || chapterPlan.stage_result || '未写结果'}。` : '章节计划：还没有绑定到 Story 的 chapter_plan，建议先补一个本章计划行。',
+      `这一章应当使用的技法：${techniqueLine}`,
+      openLine ? `明线推进：${openLine}` : '明线推进：本章还没有明确明线节点。',
+      hiddenLine ? `暗线提示：${hiddenLine}` : '暗线提示：本章还没有明确暗线节点。',
+      foreshadowings ? `伏笔处理：${foreshadowings}` : '伏笔处理：本章没有绑定首次出现或回收的伏笔。',
+      importantScenes ? `重要场景：${importantScenes}` : '',
+      bannedItems ? `不要写：${bannedItems}` : '',
+      '写作约定：先按这个理解扩展初稿；不新增作者未确认的人设、世界规则和主线决定；不确定的地方保留为待确认建议。',
+    ].filter(Boolean).join('\n')
+    const aiMessage = { role: 'ai', text: `我先把你的想法整理成中间这版理解稿。你可以继续在右侧讨论，也可以直接改中间文本后确认。`, created_at: new Date().toISOString() }
+    const nextMessages = [...alignmentMessages, aiMessage].slice(-12)
+    setAlignmentUnderstanding(understanding)
+    setAlignmentAgreedDraft(understanding)
+    setAlignmentConfirmed(false)
+    setAlignmentMessages(nextMessages)
+    await saveWritingAlignment({ understanding, agreed_draft: understanding, confirmed: false, messages: nextMessages })
+  }
+
+  const sendAlignmentMessage = async () => {
+    const text = alignmentDiscussionInput.trim()
+    if (!text) return
+    const authorMessage = { role: 'author', text, created_at: new Date().toISOString() }
+    const aiMessage = {
+      role: 'ai',
+      text: `我会把这个修正纳入共识：${text}。如果这会改变人物动机、脉络或技法重点，请在中间的“作者同意这样写”里确认最终说法。`,
+      created_at: new Date().toISOString(),
+    }
+    const nextMessages = [...alignmentMessages, authorMessage, aiMessage].slice(-12)
+    setAlignmentMessages(nextMessages)
+    setAlignmentDiscussionInput('')
+    setAlignmentConfirmed(false)
+    await saveWritingAlignment({ messages: nextMessages, confirmed: false })
+  }
+
+  const mergeDiscussionIntoAgreement = async () => {
+    const recent = alignmentMessages.slice(-6).map((msg: any) => `${msg.role === 'author' ? '作者' : 'AI'}：${msg.text}`).join('\n')
+    const next = [
+      alignmentAgreedDraft.trim() || alignmentUnderstanding.trim() || '共识稿待补充。',
+      recent ? `\n讨论补充：\n${recent}` : '',
+    ].filter(Boolean).join('\n')
+    setAlignmentAgreedDraft(next)
+    setAlignmentConfirmed(false)
+    await saveWritingAlignment({ agreed_draft: next, confirmed: false })
+  }
+
+  const confirmWritingAlignment = async () => {
+    const agreed = alignmentAgreedDraft.trim() || alignmentUnderstanding.trim()
+    if (!agreed) {
+      push('请先生成或填写中间的写作共识', 'error')
+      return
+    }
+    setAlignmentAgreedDraft(agreed)
+    setAlignmentConfirmed(true)
+    await saveWritingAlignment({ agreed_draft: agreed, confirmed: true })
+  }
+
+  const requestRunJobWithAgreement = async () => {
+    if (!alignmentConfirmed) {
+      push('请先确认“作者同意这样写”，再按共识生成初稿', 'error')
+      return
+    }
+    await saveWritingAlignment({ confirmed: true })
+    requestRunJob(2400, null, '按共识生成初稿')
   }
 
   const updateChapterReview = async (review: any, status: string) => {
@@ -3660,8 +3791,130 @@ export default function App() {
         acc[key] = [...(acc[key] || []), mark]
         return acc
       }, {})
+      const pinnedTechniqueRows = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+      const pinnedTechniqueIds = new Set(pinnedTechniqueRows.map((row: any) => row.technique_id))
+      const quickTechniqueRows = (Array.isArray(techniqueCards) ? techniqueCards : []).filter((tech: any) => !pinnedTechniqueIds.has(tech.id)).slice(0, 6)
+      const alignmentReady = Boolean(alignmentConfirmed && alignmentAgreedDraft.trim())
       return (
         <div className='space-y-3 density-space'>
+          <Card
+            title='写作共识'
+            extra={<Badge tone={alignmentReady ? 'success' : alignmentUnderstanding.trim() ? 'warn' : 'default'}>{alignmentReady ? '作者已确认' : alignmentUnderstanding.trim() ? '待确认' : '未开始'}</Badge>}
+          >
+            <div className='grid grid-cols-1 gap-3 xl:grid-cols-12'>
+              <div className='xl:col-span-3 space-y-3'>
+                <div className='rounded-ui border border-border bg-surface-2 p-3'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <span className='text-sm font-medium'>本章挂载技法</span>
+                    <Badge>{pinnedTechniqueRows.length}</Badge>
+                  </div>
+                  <div className='space-y-2'>
+                    {pinnedTechniqueRows.map((row: any) => {
+                      const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+                      return (
+                        <div key={row.technique_id} className='rounded-ui border border-border bg-surface p-2 text-xs'>
+                          <div className='flex items-start justify-between gap-2'>
+                            <div>
+                              <div className='font-medium'>{tech?.title || tech?.payload?.name || row.technique_id}</div>
+                              <div className='mt-1 text-muted'>{row.notes || tech?.payload?.purpose || '用于指导本章写法'}</div>
+                            </div>
+                            <Badge>{row.intensity || 'med'}</Badge>
+                          </div>
+                          <Button className='mt-2 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: tech?.title || row.technique_id })}>移除</Button>
+                        </div>
+                      )
+                    })}
+                    {!pinnedTechniqueRows.length && <p className='text-xs text-muted'>先挂载 1-3 个技法，AI 理解会更清楚。</p>}
+                  </div>
+                  <div className='mt-3 space-y-1'>
+                    <div className='text-xs font-medium'>快速挂载</div>
+                    {autoRecommendedTechniques.slice(0, 3).map((row: any) => (
+                      <button key={`${row.technique_id}:${row.source}`} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel' onClick={() => toPinnedFromAuto(row)}>
+                        {techniqueTitleById(row.technique_id)} <span className='text-muted'>({row.intensity || 'med'})</span>
+                      </button>
+                    ))}
+                    {!autoRecommendedTechniques.length ? quickTechniqueRows.slice(0, 4).map((tech: any) => (
+                      <button key={tech.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel' onClick={() => pinTechniqueToChapter(tech, 'med').then((out) => push(out.message || '已挂载技法'))}>
+                        {tech.title || tech.payload?.name || tech.id}
+                      </button>
+                    )) : null}
+                    {!autoRecommendedTechniques.length && !quickTechniqueRows.length && <p className='text-xs text-muted'>技法库暂无可挂载条目。</p>}
+                  </div>
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>作者输入</label>
+                  <Textarea
+                    className='mt-1 min-h-[210px] resize-y'
+                    value={alignmentIdea}
+                    onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
+                    placeholder='用很粗的语言写这一章想发生什么：谁想要什么、遇到什么阻力、最后变成什么状态。'
+                  />
+                  <Button className='mt-2 w-full' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存想法</Button>
+                </div>
+              </div>
+
+              <div className='xl:col-span-5 space-y-3'>
+                <div>
+                  <div className='mb-1 flex items-center justify-between gap-2'>
+                    <label className='text-xs text-muted'>AI 理解</label>
+                    <Button className='text-xs' onClick={generateAlignmentUnderstanding}>生成理解</Button>
+                  </div>
+                  <Textarea
+                    className='min-h-[210px] resize-y whitespace-pre-wrap'
+                    value={alignmentUnderstanding}
+                    onChange={(e) => { setAlignmentUnderstanding(e.target.value); setAlignmentConfirmed(false) }}
+                    placeholder='点击“生成理解”后，这里会把作者粗想法整理成本章目标、技法、明线暗线、禁写事项。'
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 flex items-center justify-between gap-2'>
+                    <label className='text-xs text-muted'>作者同意这样写</label>
+                    <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已锁定' : '可修改'}</Badge>
+                  </div>
+                  <Textarea
+                    className='min-h-[210px] resize-y whitespace-pre-wrap'
+                    value={alignmentAgreedDraft}
+                    onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
+                    placeholder='把最终同意的写法放在这里。作者可以直接改，改完点“同意这样写”。'
+                  />
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    <Button onClick={confirmWritingAlignment}>同意这样写</Button>
+                    <Button onClick={() => saveWritingAlignment({ agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed })}>保存共识</Button>
+                    <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按共识生成初稿</Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className='xl:col-span-4 space-y-3'>
+                <div className='rounded-ui border border-border bg-surface-2 p-3'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <span className='text-sm font-medium'>作者和 AI 讨论</span>
+                    <Badge>{alignmentMessages.length}</Badge>
+                  </div>
+                  <div className='max-h-[330px] space-y-2 overflow-auto'>
+                    {alignmentMessages.map((msg: any, idx: number) => (
+                      <div key={`${msg.created_at || idx}:${idx}`} className={`rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
+                        <div className='mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
+                        <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
+                      </div>
+                    ))}
+                    {!alignmentMessages.length && <p className='text-xs text-muted'>这里用于小作者和 AI 先聊两轮：AI 只整理理解，作者确认后才进入写作。</p>}
+                  </div>
+                </div>
+                <Textarea
+                  className='min-h-[130px] resize-y'
+                  value={alignmentDiscussionInput}
+                  onChange={(e) => setAlignmentDiscussionInput(e.target.value)}
+                  placeholder='例如：这一章不要急着暴露真相，让主角误以为朋友背叛了他。'
+                />
+                <div className='flex flex-wrap gap-2'>
+                  <Button onClick={sendAlignmentMessage}>发送</Button>
+                  <Button onClick={mergeDiscussionIntoAgreement} disabled={!alignmentMessages.length}>把讨论更新到中间</Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+
           <Card title='AI 草稿审阅' extra={<Badge tone={pendingChapterReviews.length ? 'warn' : 'success'}>{pendingChapterReviews.length ? '待确认' : '无待审'}</Badge>}>
             <div className='space-y-2'>
               {chapterReviewList.slice(0, 4).map((review: any) => (
@@ -3713,7 +3966,7 @@ export default function App() {
                 <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? 'Saving...' : 'Save'}</Button>
                 <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
                 <Button onClick={analyzeMarks} disabled={chapterSaving}>Analyze Marks</Button>
-                <Button variant='primary' onClick={() => requestRunJob(2400, null, '生成本章')}>生成本章</Button>
+                <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按共识生成</Button>
               </div>
             }
           >
@@ -3912,52 +4165,55 @@ export default function App() {
             </div>
           </Card>
 
-          <Card title='Chapter Techniques'>
-            <div className='space-y-2'>
-              <Textarea
-                className='h-24 mono'
-                value={JSON.stringify((draft?.meta || {}).pinned_techniques || [], null, 2)}
-                onChange={async (e) => {
-                  try {
-                    const meta = { ...(draft?.meta || {}), pinned_techniques: JSON.parse(e.target.value) }
-                    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
-                    mutateDraft()
-                  } catch {
-                    // keep typing tolerant
-                  }
-                }}
-              />
-              <p className='text-xs text-muted'>pinned_techniques 优先于 outline technique_prefs，同 technique_id 会覆盖强度与备注。</p>
-              <Textarea
-                className='h-24 mono'
-                value={JSON.stringify((draft?.meta || {}).pinned_technique_categories || [], null, 2)}
-                onChange={async (e) => {
-                  try {
-                    const meta = { ...(draft?.meta || {}), pinned_technique_categories: JSON.parse(e.target.value) }
-                    await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
-                    mutateDraft()
-                  } catch {
-                    // keep typing tolerant
-                  }
-                }}
-              />
-              <p className='text-xs text-muted'>pinned_technique_categories 为宏观分类覆盖层；可驱动 TechniqueDirector 自动推荐 micro 技法。</p>
-              <div className='rounded-ui border border-border bg-surface-2 p-2'>
-                <div className='text-xs font-medium mb-1'>Inherited from outline (read-only)</div>
-                <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify(inheritedTechniqueDefaults, null, 2)}</pre>
-              </div>
-              <div className='rounded-ui border border-border bg-surface-2 p-2'>
-                <div className='text-xs font-medium mb-1'>Auto-recommended micro from pinned categories (read-only)</div>
-                <div className='space-y-1'>
-                  {autoRecommendedTechniques.length ? autoRecommendedTechniques.map((row: any) => (
-                    <div key={`${row.technique_id}:${row.source}`} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-surface px-2 py-1'>
-                      <span className='text-xs'>{row.technique_id} <span className='text-muted'>({row.intensity || 'med'}, {row.source})</span></span>
-                      <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>转为 pinned micro</Button>
-                    </div>
-                  )) : <p className='text-xs text-muted'>暂无自动推荐（先 pin category 并运行生成）。</p>}
+          <Card title='开发者技法数据' extra={<Badge>折叠</Badge>}>
+            <details className='rounded-ui border border-border bg-surface-2 p-3'>
+              <summary className='cursor-pointer text-sm font-medium'>查看本章技法 JSON / 继承信息</summary>
+              <div className='mt-3 space-y-2'>
+                <Textarea
+                  className='h-24 mono'
+                  value={JSON.stringify((draft?.meta || {}).pinned_techniques || [], null, 2)}
+                  onChange={async (e) => {
+                    try {
+                      const meta = { ...(draft?.meta || {}), pinned_techniques: JSON.parse(e.target.value) }
+                      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
+                      mutateDraft()
+                    } catch {
+                      // keep typing tolerant
+                    }
+                  }}
+                />
+                <p className='text-xs text-muted'>pinned_techniques 优先于 outline technique_prefs，同 technique_id 会覆盖强度与备注。</p>
+                <Textarea
+                  className='h-24 mono'
+                  value={JSON.stringify((draft?.meta || {}).pinned_technique_categories || [], null, 2)}
+                  onChange={async (e) => {
+                    try {
+                      const meta = { ...(draft?.meta || {}), pinned_technique_categories: JSON.parse(e.target.value) }
+                      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, meta)
+                      mutateDraft()
+                    } catch {
+                      // keep typing tolerant
+                    }
+                  }}
+                />
+                <p className='text-xs text-muted'>pinned_technique_categories 为宏观分类覆盖层；可驱动 TechniqueDirector 自动推荐 micro 技法。</p>
+                <div className='rounded-ui border border-border bg-surface p-2'>
+                  <div className='text-xs font-medium mb-1'>Inherited from outline (read-only)</div>
+                  <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify(inheritedTechniqueDefaults, null, 2)}</pre>
+                </div>
+                <div className='rounded-ui border border-border bg-surface p-2'>
+                  <div className='text-xs font-medium mb-1'>Auto-recommended micro from pinned categories (read-only)</div>
+                  <div className='space-y-1'>
+                    {autoRecommendedTechniques.length ? autoRecommendedTechniques.map((row: any) => (
+                      <div key={`${row.technique_id}:${row.source}`} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-panel px-2 py-1'>
+                        <span className='text-xs'>{row.technique_id} <span className='text-muted'>({row.intensity || 'med'}, {row.source})</span></span>
+                        <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>转为 pinned micro</Button>
+                      </div>
+                    )) : <p className='text-xs text-muted'>暂无自动推荐（先 pin category 并运行生成）。</p>}
+                  </div>
                 </div>
               </div>
-            </div>
+            </details>
           </Card>
 
         </div>
@@ -4578,6 +4834,12 @@ export default function App() {
     chapterEditorText,
     chapterTitleDraft,
     chapterSaving,
+    alignmentIdea,
+    alignmentUnderstanding,
+    alignmentAgreedDraft,
+    alignmentConfirmed,
+    alignmentDiscussionInput,
+    alignmentMessages,
     storyPlanningTab,
     evidenceMarkRows,
     trustReport,
