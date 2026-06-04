@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_character_10",
+  "type": "technique_category",
+  "title": "人物技法/秘密",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_character"
+  ],
+  "payload": {
+    "name": "秘密",
+    "parent_id": "technique_category_character",
+    "description": "人物技法·秘密",
+    "sort_order": 10,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

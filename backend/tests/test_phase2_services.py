@@ -257,6 +257,7 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     story = s.read_yaml("p1", "cards/story_001.yaml")
     tool_skill = s.read_yaml("p1", "cards/tool_skill_problem_checker.yaml")
     technique = s.read_yaml("p1", "cards/technique_001.yaml")
+    character_technique = s.read_yaml("p1", "cards/technique_008.yaml")
     recipe = s.read_yaml("p1", "cards/technique_recipe_opening_hook.yaml")
 
     assert story["payload"]["keywords"]
@@ -268,6 +269,7 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     assert technique["payload"]["usage_layer"] in {"structure", "scene", "character", "language", "recipe"}
     assert technique["payload"]["suitable_scenes"]
     assert technique["payload"]["overuse_risks"]
+    assert character_technique["payload"]["usage_layer"] == "character"
     assert recipe["payload"]["usage_layer"] == "recipe"
     assert recipe["payload"]["recipe_steps"]
 

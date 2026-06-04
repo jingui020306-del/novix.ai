@@ -1,0 +1,23 @@
+{
+  "id": "technique_category_character_09",
+  "type": "technique_category",
+  "title": "人物技法/反差",
+  "tags": [
+    "technique",
+    "category",
+    "micro-group"
+  ],
+  "links": [
+    "technique_category_character"
+  ],
+  "payload": {
+    "name": "反差",
+    "parent_id": "technique_category_character",
+    "description": "人物技法·反差",
+    "sort_order": 9,
+    "tags": [
+      "二级"
+    ],
+    "core_techniques": []
+  }
+}

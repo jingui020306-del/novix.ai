@@ -250,6 +250,7 @@ class FSStore:
             ("technique_category_structure", "结构手法"),
             ("technique_category_description", "描写方法"),
             ("technique_category_performance", "表现手法"),
+            ("technique_category_character", "人物技法"),
             ("technique_category_recipe", "场景配方"),
         ]
         for i, (cid, cname) in enumerate(categories, start=1):
@@ -314,18 +315,28 @@ class FSStore:
                 "do": ["延迟期间持续给小进展", "回收要兑现承诺"],
                 "dont": ["无限拖延", "回收弱于铺垫"],
             },
+            {
+                "id": "technique_008", "title": "人物伤口触发", "category_id": "technique_category_character",
+                "description": "让人物的旧伤、恐惧或执念在当前选择中被触发，使行为更有根。",
+                "signals": ["当前事件触发人物旧伤", "人物反应超过表面事件本身", "选择暴露其欲望或恐惧"],
+                "apply_steps": ["明确人物旧伤", "设计当前触发物", "让人物用行动而不是解释回应"],
+                "do": ["让旧伤影响当前选择", "保留读者能回查的行为信号"],
+                "dont": ["用大段旁白解释创伤", "让人物突然违背已有人设"],
+            },
         ]
         layer_by_category = {
             "technique_category_expression": "language",
             "technique_category_structure": "structure",
             "technique_category_description": "scene",
             "technique_category_performance": "scene",
+            "technique_category_character": "character",
             "technique_category_recipe": "recipe",
         }
         layer_hints = {
             "structure": (["开章前", "爆点前", "卷末转折"], ["纯信息摘要", "情绪刚落地的静场"], ["结构痕迹太重", "为了反转牺牲人物动机"]),
             "scene": (["冲突场", "重要场景进入/退出", "情绪转折段"], ["一句话带过的过场", "纯设定解释"], ["场景拖长", "动作变成流水账"]),
             "language": (["关键句", "情绪余韵", "段落收束"], ["高速动作段", "必须清晰解释规则的段落"], ["辞藻堆砌", "语义变虚"]),
+            "character": (["人物选择前", "关系拉扯", "旧伤触发段"], ["纯设定解释", "群像快速调度"], ["人物变成谜语人", "动机不清"]),
             "recipe": (["章节关键节点", "AI 扩写前的共识阶段"], ["过场摘要"], ["每章都套同一配方会显得机械"]),
         }
         for tech in seed_techniques:

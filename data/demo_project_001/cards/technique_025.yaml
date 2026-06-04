@@ -1,45 +1,45 @@
 {
   "id": "technique_025",
   "type": "technique",
-  "title": "排比",
+  "title": "关系张力",
   "tags": [
     "technique",
-    "rhetoric"
+    "character"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_character"
   ],
   "payload": {
-    "name": "排比",
-    "category_id": "technique_category_rhetoric",
+    "name": "关系张力",
+    "category_id": "technique_category_character",
     "aliases": [
-      "排比"
+      "关系张力"
     ],
-    "description": "排比：用于提升段落表达与可检验性。",
-    "usage_layer": "language",
+    "description": "关系张力：用于提升段落表达与可检验性。",
+    "usage_layer": "character",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施排比",
+      "在关键句实施关系张力",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现排比可观察信号",
+      "出现关系张力可观察信号",
       "节奏/语义与目标一致"
     ],
     "suitable_scenes": [
-      "关键句",
-      "情绪余韵",
-      "气氛铺垫",
-      "段落收束"
+      "人物选择前",
+      "关系拉扯",
+      "秘密将露未露",
+      "人物弧光节点"
     ],
     "unsuitable_scenes": [
-      "动作高速段",
-      "信息必须清晰的规则说明"
+      "群像快速调度",
+      "纯设定解释"
     ],
     "overuse_risks": [
-      "辞藻堆砌",
-      "语义变虚",
-      "节奏被修辞拖慢"
+      "人物变成谜语人",
+      "动机不清",
+      "情绪重复"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -65,14 +65,14 @@
       ]
     },
     "examples": [
-      "示例：用排比改写一句场景句。"
+      "示例：用关系张力改写一句场景句。"
     ],
     "rewrite_examples": [
       {
         "source": "他走进雨里。",
-        "low": "他走进雨里，排比只在尾句轻轻点到。",
-        "med": "他走进雨里，动作、环境和停顿都服务于排比。",
-        "high": "他走进雨里，整段由排比主导节奏和信息释放。"
+        "low": "他走进雨里，关系张力只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于关系张力。",
+        "high": "他走进雨里，整段由关系张力主导节奏和信息释放。"
       }
     ]
   }
