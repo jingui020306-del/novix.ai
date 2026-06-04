@@ -326,6 +326,7 @@ export default function App() {
   const [chapterSaving, setChapterSaving] = useState(false)
   const [alignmentIdea, setAlignmentIdea] = useState('')
   const [alignmentUnderstanding, setAlignmentUnderstanding] = useState('')
+  const [alignmentUnderstandingVersions, setAlignmentUnderstandingVersions] = useState<any[]>([])
   const [alignmentAgreedDraft, setAlignmentAgreedDraft] = useState('')
   const [alignmentConfirmed, setAlignmentConfirmed] = useState(false)
   const [alignmentDiscussionInput, setAlignmentDiscussionInput] = useState('')
@@ -606,6 +607,7 @@ export default function App() {
     const alignment = draft?.meta?.writing_alignment || {}
     setAlignmentIdea(alignment.idea || '')
     setAlignmentUnderstanding(alignment.understanding || '')
+    setAlignmentUnderstandingVersions(Array.isArray(alignment.understanding_versions) ? alignment.understanding_versions : (alignment.understanding ? [{ version_id: 'current', text: alignment.understanding, created_at: alignment.updated_at, source: 'current' }] : []))
     setAlignmentAgreedDraft(alignment.agreed_draft || '')
     setAlignmentConfirmed(Boolean(alignment.confirmed))
     setAlignmentMessages(Array.isArray(alignment.messages) ? alignment.messages : [])
@@ -1476,6 +1478,7 @@ export default function App() {
   const buildWritingAlignmentPayload = (overrides: Record<string, any> = {}) => ({
     idea: overrides.idea ?? alignmentIdea,
     understanding: overrides.understanding ?? alignmentUnderstanding,
+    understanding_versions: overrides.understanding_versions ?? alignmentUnderstandingVersions,
     agreed_draft: overrides.agreed_draft ?? alignmentAgreedDraft,
     confirmed: overrides.confirmed ?? alignmentConfirmed,
     messages: overrides.messages ?? alignmentMessages,
@@ -1526,36 +1529,48 @@ export default function App() {
       bannedItems ? `不要写：${bannedItems}` : '',
       '写作约定：先按这个理解扩展初稿；不新增作者未确认的人设、世界规则和主线决定；不确定的地方保留为待确认建议。',
     ].filter(Boolean).join('\n')
-    const aiMessage = { role: 'ai', text: `我先把你的想法整理成中间这版理解稿。你可以继续在右侧讨论，也可以直接改中间文本后确认。`, created_at: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const version = { version_id: `ai_${Date.now()}`, text: understanding, created_at: now, source: 'AI 整理' }
+    const nextVersions = [version, ...alignmentUnderstandingVersions].slice(0, 6)
+    const aiMessage = { role: 'ai', text: `我生成了一版新的理解，放在右侧缓存里。你可以继续修正我，也可以挑一版带入最终确认稿。`, created_at: now }
     const nextMessages = [...alignmentMessages, aiMessage].slice(-12)
     setAlignmentUnderstanding(understanding)
-    setAlignmentAgreedDraft(understanding)
+    setAlignmentUnderstandingVersions(nextVersions)
     setAlignmentConfirmed(false)
     setAlignmentMessages(nextMessages)
-    await saveWritingAlignment({ understanding, agreed_draft: understanding, confirmed: false, messages: nextMessages })
+    await saveWritingAlignment({ understanding, understanding_versions: nextVersions, confirmed: false, messages: nextMessages })
   }
 
   const sendAlignmentMessage = async () => {
     const text = alignmentDiscussionInput.trim()
     if (!text) return
     const authorMessage = { role: 'author', text, created_at: new Date().toISOString() }
+    const nextUnderstanding = [
+      alignmentUnderstanding.trim() || 'AI 当前理解待整理。',
+      `\n作者最新修正：${text}`,
+    ].filter(Boolean).join('\n')
+    const now = new Date().toISOString()
+    const version = { version_id: `chat_${Date.now()}`, text: nextUnderstanding, created_at: now, source: '对话更新' }
+    const nextVersions = [version, ...alignmentUnderstandingVersions].slice(0, 6)
     const aiMessage = {
       role: 'ai',
-      text: `我会把这个修正纳入共识：${text}。如果这会改变人物动机、脉络或技法重点，请在中间的“作者同意这样写”里确认最终说法。`,
-      created_at: new Date().toISOString(),
+      text: `我会按这个修正更新理解。最终是否采用，以中间的确认稿为准。`,
+      created_at: now,
     }
     const nextMessages = [...alignmentMessages, authorMessage, aiMessage].slice(-12)
     setAlignmentMessages(nextMessages)
+    setAlignmentUnderstanding(nextUnderstanding)
+    setAlignmentUnderstandingVersions(nextVersions)
     setAlignmentDiscussionInput('')
     setAlignmentConfirmed(false)
-    await saveWritingAlignment({ messages: nextMessages, confirmed: false })
+    await saveWritingAlignment({ messages: nextMessages, understanding: nextUnderstanding, understanding_versions: nextVersions, confirmed: false })
   }
 
-  const mergeDiscussionIntoAgreement = async () => {
+  const mergeDiscussionIntoAgreement = async (text?: string) => {
     const recent = alignmentMessages.slice(-6).map((msg: any) => `${msg.role === 'author' ? '作者' : 'AI'}：${msg.text}`).join('\n')
     const next = [
-      alignmentAgreedDraft.trim() || alignmentUnderstanding.trim() || '共识稿待补充。',
-      recent ? `\n讨论补充：\n${recent}` : '',
+      alignmentAgreedDraft.trim() || text?.trim() || alignmentUnderstanding.trim() || '确认稿待补充。',
+      recent && !alignmentAgreedDraft.trim() ? `\n讨论补充：\n${recent}` : '',
     ].filter(Boolean).join('\n')
     setAlignmentAgreedDraft(next)
     setAlignmentConfirmed(false)
@@ -3817,9 +3832,6 @@ export default function App() {
         acc[key] = [...(acc[key] || []), mark]
         return acc
       }, {})
-      const pinnedTechniqueRows = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
-      const pinnedTechniqueIds = new Set(pinnedTechniqueRows.map((row: any) => row.technique_id))
-      const quickTechniqueRows = (Array.isArray(techniqueCards) ? techniqueCards : []).filter((tech: any) => !pinnedTechniqueIds.has(tech.id)).slice(0, 6)
       const alignmentReady = Boolean(alignmentConfirmed && alignmentAgreedDraft.trim())
       return (
         <div className='space-y-3 density-space'>
@@ -3827,12 +3839,11 @@ export default function App() {
             title='写作共识'
             extra={<Badge tone={alignmentReady ? 'success' : alignmentUnderstanding.trim() ? 'warn' : 'default'}>{alignmentReady ? '作者已确认' : alignmentUnderstanding.trim() ? '待确认' : '未开始'}</Badge>}
           >
-            <div className='mb-3 grid grid-cols-4 gap-2 text-xs'>
+            <div className='mb-3 grid grid-cols-3 gap-2 text-xs'>
               {[
-                ['1', '写下想法', alignmentIdea.trim()],
-                ['2', '整理理解', alignmentUnderstanding.trim()],
-                ['3', '作者确认', alignmentReady],
-                ['4', '生成初稿', false],
+                ['1', 'Idea', alignmentIdea.trim()],
+                ['2', 'Chat', alignmentMessages.length],
+                ['3', 'AI Cache', alignmentUnderstandingVersions.length],
               ].map(([num, label, done]: any) => (
                 <div key={label} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
                   <div className='text-[11px] text-muted'>第 {num} 步</div>
@@ -3841,120 +3852,108 @@ export default function App() {
               ))}
             </div>
 
-            <div className='grid grid-cols-1 gap-3 xl:grid-cols-2'>
+            <div className='grid grid-cols-1 gap-3 xl:grid-cols-[1.05fr_1fr_.9fr]'>
               <div className='space-y-3'>
                 <div>
                   <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-sm font-medium'>作者先说这一章</label>
-                    <Button className='text-xs' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存</Button>
+                    <label className='text-sm font-medium'>作者原始想法</label>
+                    <Button className='text-xs' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存想法</Button>
                   </div>
                   <Textarea
-                    className='min-h-[230px] resize-y text-[15px] leading-6'
+                    className='min-h-[360px] resize-y text-[15px] leading-6'
                     value={alignmentIdea}
                     onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='随便写，不用完整：这一章谁想要什么，遇到什么阻力，最后发生什么变化。'
+                    placeholder='这里保留作者最原始的想法，不需要完整：这一章想写什么、人物什么感觉、哪里不要太快揭露。'
                   />
                 </div>
-
-                <details className='rounded-ui border border-border bg-surface-2'>
-                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
-                    本章可用技法 <span className='text-xs text-muted'>({pinnedTechniqueRows.length})</span>
-                  </summary>
-                  <div className='space-y-2 border-t border-border p-3'>
-                    {pinnedTechniqueRows.map((row: any) => {
-                      const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
-                      return (
-                        <div key={row.technique_id} className='rounded-ui border border-border bg-surface p-2 text-xs'>
-                          <div className='flex items-start justify-between gap-2'>
-                            <div>
-                              <div className='font-medium'>{tech?.title || tech?.payload?.name || row.technique_id}</div>
-                              <div className='mt-1 text-muted'>{row.notes || tech?.payload?.purpose || '用于指导本章写法'}</div>
-                            </div>
-                            <Badge>{row.intensity || 'med'}</Badge>
-                          </div>
-                          <Button className='mt-2 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: tech?.title || row.technique_id })}>移除</Button>
-                        </div>
-                      )
-                    })}
-                    {!pinnedTechniqueRows.length && <p className='text-xs text-muted'>还没有给本章选择技法。</p>}
-                    <div className='grid grid-cols-2 gap-1'>
-                      {(autoRecommendedTechniques.length ? autoRecommendedTechniques.slice(0, 4) : quickTechniqueRows.slice(0, 4)).map((row: any) => {
-                        const isAuto = Boolean(row.technique_id)
-                        const id = isAuto ? row.technique_id : row.id
-                        return (
-                          <button
-                            key={`${id}:${row.source || 'quick'}`}
-                            className='rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel'
-                            onClick={() => isAuto ? toPinnedFromAuto(row) : pinTechniqueToChapter(row, 'med').then((out) => push(out.message || '已挂载技法'))}
-                          >
-                            {isAuto ? techniqueTitleById(row.technique_id) : (row.title || row.payload?.name || row.id)}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </details>
               </div>
 
               <div className='space-y-3'>
-                <div>
-                  <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-sm font-medium'>AI 先复述它理解的写法</label>
-                    <Button className='text-xs' onClick={generateAlignmentUnderstanding}>让 AI 复述</Button>
-                  </div>
-                  <Textarea
-                    className='min-h-[170px] resize-y whitespace-pre-wrap leading-6'
-                    value={alignmentUnderstanding}
-                    onChange={(e) => { setAlignmentUnderstanding(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='AI 会把你的想法整理成本章目标、必须保留的设定、不能提前写出的内容。'
-                  />
-                </div>
-                <div>
-                  <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-sm font-medium'>最终同意的写法</label>
-                    <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已确认' : '等作者确认'}</Badge>
-                  </div>
-                  <Textarea
-                    className='min-h-[230px] resize-y whitespace-pre-wrap text-[15px] leading-6'
-                    value={alignmentAgreedDraft}
-                    onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='这里是 AI 真正开写前要遵守的共识。你可以直接改，改完点“确认写法”。'
-                  />
-                  <div className='mt-2 flex flex-wrap gap-2'>
-                    <Button onClick={confirmWritingAlignment}>确认写法</Button>
-                    <Button onClick={() => saveWritingAlignment({ agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed })}>保存共识</Button>
-                    <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按这个写初稿</Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <details className='mt-3 rounded-ui border border-border bg-surface-2'>
-              <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>和 AI 继续讨论 <span className='text-xs text-muted'>({alignmentMessages.length})</span></summary>
-              <div className='grid grid-cols-1 gap-3 border-t border-border p-3 xl:grid-cols-2'>
-                <div className='max-h-48 space-y-2 overflow-auto'>
+                <div className='max-h-48 space-y-2 overflow-auto rounded-ui border border-border bg-surface-2 p-2'>
                   {alignmentMessages.map((msg: any, idx: number) => (
-                    <div key={`${msg.created_at || idx}:${idx}`} className={`rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
+                    <div key={`${msg.created_at || idx}:${idx}`} className={`max-w-[92%] rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'ml-auto border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
                       <div className='mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
                       <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
                     </div>
                   ))}
-                  {!alignmentMessages.length && <p className='text-xs text-muted'>可以先和 AI 聊清楚，再确认写法。</p>}
+                  {!alignmentMessages.length && <p className='text-xs text-muted'>这里像 ChatGPT 一样来回聊。左侧是原始想法，不会被对话覆盖。</p>}
                 </div>
                 <div>
                   <Textarea
                     className='min-h-[110px] resize-y'
                     value={alignmentDiscussionInput}
                     onChange={(e) => setAlignmentDiscussionInput(e.target.value)}
-                    placeholder='例如：这一章不要急着揭露真相，让主角先做一次错误判断。'
+                    placeholder='继续补充：比如这章更压抑、某人不能主动坦白、结尾留下误会。'
                   />
                   <div className='mt-2 flex flex-wrap gap-2'>
                     <Button onClick={sendAlignmentMessage}>发送</Button>
-                    <Button onClick={mergeDiscussionIntoAgreement} disabled={!alignmentMessages.length}>写入最终共识</Button>
+                    <Button onClick={generateAlignmentUnderstanding}>让 AI 生成理解</Button>
                   </div>
                 </div>
               </div>
-            </details>
+
+              <div className='space-y-3'>
+                <div className='flex items-center justify-between gap-2'>
+                  <label className='text-sm font-medium'>AI 理解缓存</label>
+                  <Button className='text-xs' onClick={generateAlignmentUnderstanding}>新增一版</Button>
+                </div>
+                <div className='max-h-[360px] space-y-2 overflow-auto rounded-ui border border-border bg-surface-2 p-2'>
+                  {alignmentUnderstandingVersions.map((version: any, idx: number) => (
+                    <div key={version.version_id || idx} className='rounded-ui border border-border bg-surface p-2 text-xs'>
+                      <div className='mb-1 flex items-center justify-between gap-2'>
+                        <span className='font-medium'>AI #{alignmentUnderstandingVersions.length - idx}</span>
+                        <Badge>{version.source || 'AI'}</Badge>
+                      </div>
+                      <div className='mb-2 whitespace-pre-wrap text-muted line-clamp-6'>{version.text}</div>
+                      <div className='flex flex-wrap gap-1'>
+                        <Button
+                          className='text-xs'
+                          onClick={() => {
+                            setAlignmentUnderstanding(version.text || '')
+                            setAlignmentAgreedDraft(version.text || '')
+                            setAlignmentConfirmed(false)
+                            saveWritingAlignment({ understanding: version.text || '', agreed_draft: version.text || '', confirmed: false })
+                          }}
+                        >
+                          带入最终稿
+                        </Button>
+                        <Button
+                          className='text-xs'
+                          onClick={() => {
+                            setAlignmentUnderstanding(version.text || '')
+                            saveWritingAlignment({ understanding: version.text || '', confirmed: false })
+                          }}
+                        >
+                          设为当前
+                        </Button>
+                      </div>
+                      {version.created_at ? <div className='mt-1 text-[10px] text-muted'>{version.created_at}</div> : null}
+                    </div>
+                  ))}
+                  {!alignmentUnderstandingVersions.length && <p className='text-xs text-muted'>AI 每次整理后的版本会留在这里，最多保留 6 个。</p>}
+                  {alignmentUnderstandingVersions.length ? <p className='text-[11px] text-muted'>最多保留最近 6 个版本。</p> : null}
+                </div>
+              </div>
+            </div>
+
+            <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3'>
+              <div className='mb-1 flex items-center justify-between gap-2'>
+                <label className='text-sm font-medium'>最终确认稿</label>
+                <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已确认' : '等作者确认'}</Badge>
+              </div>
+              <Textarea
+                className='min-h-[190px] resize-y whitespace-pre-wrap bg-surface text-[15px] leading-6'
+                value={alignmentAgreedDraft}
+                onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
+                placeholder='最后一步才改这里：作者从右侧挑一版，或自己重写成最终开写要求。'
+              />
+              <div className='mt-2 flex flex-wrap gap-2'>
+                <Button onClick={() => mergeDiscussionIntoAgreement()} disabled={!alignmentUnderstanding.trim() && !alignmentMessages.length}>带入当前 AI 理解</Button>
+                <Button onClick={confirmWritingAlignment}>确认写法</Button>
+                <Button onClick={() => saveWritingAlignment({ agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed })}>保存共识</Button>
+                <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按这个写初稿</Button>
+              </div>
+            </div>
           </Card>
 
           <details className='rounded-ui border border-border bg-surface'>
@@ -4860,6 +4859,7 @@ export default function App() {
     chapterSaving,
     alignmentIdea,
     alignmentUnderstanding,
+    alignmentUnderstandingVersions,
     alignmentAgreedDraft,
     alignmentConfirmed,
     alignmentDiscussionInput,
