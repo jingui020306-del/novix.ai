@@ -18,7 +18,7 @@ export default function Layout({ left, center, right, header }: { left: any; cen
             <div className='flex items-center justify-between border-b border-border px-3 py-2'>
               <div className='flex items-center gap-2 font-semibold text-sm'>
                 <BookOpen size={16} />
-                Novix IDE
+                Novix 写作台
               </div>
               <button className='focus-ring rounded-ui p-1 hover:bg-surface-2' onClick={() => setHideLeft(true)} title='Hide sidebar'>
                 <PanelLeftClose size={15} />

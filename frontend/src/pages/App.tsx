@@ -33,27 +33,27 @@ import { baseHelpCommands, CommandItem, iconForKind } from '../components/Comman
 import { createHelpText, isCreateMode, parseCreateInput, ParsedCreate } from '../components/CommandPalette/cliParser'
 
 const NAV_ITEMS = [
-  { id: 'projects', label: 'Projects', icon: FolderKanban },
-  { id: 'story', label: 'Story', icon: BookOpen },
-  { id: 'characters', label: 'Characters', icon: UserRound },
-  { id: 'style', label: 'Style', icon: Brush },
-  { id: 'chapter', label: 'Chapter', icon: FilePenLine },
-  { id: 'context', label: 'Context', icon: Waypoints },
-  { id: 'canon', label: 'Canon', icon: Sparkles },
-  { id: 'world', label: 'World', icon: Globe },
-  { id: 'techniques', label: 'Techniques', icon: Sparkles },
-  { id: 'wiki', label: 'Wiki', icon: BookOpen },
-  { id: 'sessions', label: 'Sessions', icon: Bot },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'projects', label: '工作台', icon: FolderKanban },
+  { id: 'story', label: '故事', icon: BookOpen },
+  { id: 'characters', label: '人物', icon: UserRound },
+  { id: 'style', label: '文风', icon: Brush },
+  { id: 'chapter', label: '正文', icon: FilePenLine },
+  { id: 'context', label: '材料', icon: Waypoints },
+  { id: 'canon', label: '事实', icon: Sparkles },
+  { id: 'world', label: '世界', icon: Globe },
+  { id: 'techniques', label: '技法', icon: Sparkles },
+  { id: 'wiki', label: '资料', icon: BookOpen },
+  { id: 'sessions', label: '对话', icon: Bot },
+  { id: 'settings', label: '设置', icon: Settings },
 ]
 
 const ACTIVITY_ITEMS = [
-  { id: 'explorer', label: 'Explorer', icon: FolderKanban },
-  { id: 'story', label: 'Story', icon: BookOpen },
-  { id: 'cards', label: 'Cards', icon: UserRound },
-  { id: 'techniques', label: 'Techniques', icon: Sparkles },
-  { id: 'canon', label: 'Canon', icon: Waypoints },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'explorer', label: '目录', icon: FolderKanban },
+  { id: 'story', label: '故事', icon: BookOpen },
+  { id: 'cards', label: '卡片', icon: UserRound },
+  { id: 'techniques', label: '技法', icon: Sparkles },
+  { id: 'canon', label: '事实', icon: Waypoints },
+  { id: 'settings', label: '设置', icon: Settings },
 ]
 
 type PaletteCache = {
@@ -1929,19 +1929,19 @@ export default function App() {
         })}
       </div>
       <div className='flex-1 p-3'>
-        <Input placeholder='Search resources...' value={sideSearch} onChange={(e) => setSideSearch(e.target.value)} />
+        <Input placeholder='搜索卷、章节、卡片...' value={sideSearch} onChange={(e) => setSideSearch(e.target.value)} />
 
         {activeActivity === 'explorer' ? (
           <div className='mt-3 space-y-3'>
             <div>
-              <div className='mb-1 text-xs font-semibold uppercase text-muted'>Project</div>
+              <div className='mb-1 text-xs font-semibold text-muted'>作品</div>
               <Select value={project} onChange={(e) => setProject(e.target.value)}>
                 {(projects || []).map((p: any) => <option key={p.id} value={p.id}>{p.title || p.id}</option>)}
               </Select>
             </div>
             <div className='flex gap-2'>
-              <Button className='text-xs' onClick={createVolume}>+ Volume</Button>
-              <Button className='text-xs' onClick={() => createChapterInVolume(currentVolume?.id)}>+ Chapter</Button>
+              <Button className='text-xs' onClick={createVolume}>新建卷</Button>
+              <Button className='text-xs' onClick={() => createChapterInVolume(currentVolume?.id)}>新建章</Button>
             </div>
             <div className='space-y-2'>
               {volumeRows.map((vol: any) => {
@@ -1961,29 +1961,29 @@ export default function App() {
                           className={`w-full rounded-ui px-2 py-1.5 text-left text-xs hover:bg-surface-2 ${selectedChapter === ch.chapter_id && view === 'chapter' ? 'bg-indigo-50 text-brand-700 dark:bg-indigo-900/20' : ''}`}
                         >
                           <div className='font-medium'>{ch.chapter_title || ch.title || ch.chapter_id}</div>
-                          <div className='text-[11px] text-muted'>{ch.chapter_id} · {ch.chapter_status || 'draft'}</div>
+                          <div className='text-[11px] text-muted'>{ch.chapter_status === 'done' ? '已完成' : ch.chapter_status === 'revising' ? '修改中' : ch.chapter_status === 'planned' ? '已规划' : '草稿中'}</div>
                         </button>
                       ))}
-                      <Button className='mt-1 w-full text-xs' onClick={() => createChapterInVolume(vol.id)}>+ Chapter in Volume</Button>
+                      <Button className='mt-1 w-full text-xs' onClick={() => createChapterInVolume(vol.id)}>在本卷加一章</Button>
                     </div>
                   </details>
                 )
               })}
-              {!volumeRows.length && <p className='text-sm text-muted'>No volumes yet.</p>}
+              {!volumeRows.length && <p className='text-sm text-muted'>还没有分卷。</p>}
             </div>
           </div>
         ) : null}
 
         {activeActivity === 'story' ? (
           <div className='mt-3 space-y-2'>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('story')}>Story Control</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('story')}>故事总控</Button>
             {['Overview', 'Stages', 'Lines', 'Foreshadowings', 'Chapter Matrix'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => { setStoryPlanningTab(tab); setView('story') }}
                 className={`w-full rounded-ui border px-2 py-1.5 text-left text-xs ${storyPlanningTab === tab && view === 'story' ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface hover:bg-surface-2'}`}
               >
-                {tab}
+                {{ Overview: '总览', Stages: '阶段', Lines: '脉络', Foreshadowings: '伏笔', 'Chapter Matrix': '章节矩阵' }[tab] || tab}
               </button>
             ))}
             <div className='pt-2 text-xs text-muted'>
@@ -1994,7 +1994,7 @@ export default function App() {
 
         {activeActivity === 'cards' ? (
           <div className='mt-3 space-y-3'>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('characters')}>Characters</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('characters')}>人物卡</Button>
             <div className='max-h-52 space-y-1 overflow-auto'>
               {(chars || []).map((c: any) => (
                 <button key={c.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setCharacterForm(c); setView('characters') }}>
@@ -2002,15 +2002,15 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('world')}>World</Button>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('style')}>Style</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('world')}>世界观</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('style')}>文风</Button>
           </div>
         ) : null}
 
         {activeActivity === 'techniques' ? (
           <div className='mt-3 space-y-2'>
-            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('Narrative Techniques'); setView('techniques') }}>Narrative Techniques</Button>
-            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('AI Tool Skills'); setView('techniques') }}>AI Tool Skills</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('Narrative Techniques'); setView('techniques') }}>叙事技巧</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('AI Tool Skills'); setView('techniques') }}>写作工具</Button>
             {(techniqueCategories || []).slice(0, 12).map((cat: any) => (
               <button key={cat.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setCategoryForm(cat); setView('techniques') }}>
                 {cat.title || cat.id}
@@ -2021,8 +2021,8 @@ export default function App() {
 
         {activeActivity === 'canon' ? (
           <div className='mt-3 space-y-2'>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('canon')}>Canon Facts</Button>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('context')}>Context Manifest</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('canon')}>作品事实</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('context')}>AI 使用材料</Button>
             {(proposals || []).slice(-8).reverse().map((p: any) => (
               <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
                 {p.name || p.proposal_id || p.id} <span className='text-muted'>({p.status || 'pending'})</span>
@@ -2033,10 +2033,10 @@ export default function App() {
 
         {activeActivity === 'settings' ? (
           <div className='mt-3 space-y-2'>
-            <Button className='w-full justify-start text-xs' onClick={() => setView('settings')}>Settings</Button>
-            <Button className='w-full justify-start text-xs' onClick={() => refreshPaletteData()}>Refresh Palette Data</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('settings')}>设置</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => refreshPaletteData()}>刷新素材</Button>
             <div className='rounded-ui border border-border bg-surface p-2 text-[11px] text-muted'>
-              Command Palette keeps create/search flows: + volume, + chapter, + character, pin technique.
+              快捷入口支持新建卷、章节、人物和挂载技法。
             </div>
           </div>
         ) : null}
@@ -2089,12 +2089,12 @@ export default function App() {
 
   const header = (
     <div className='flex items-center gap-2 text-sm'>
-      <span className='text-muted'>Project</span>
+      <span className='text-muted'>作品</span>
       <Badge>{project}</Badge>
       <span className='text-muted'>/</span>
-      <span className='font-medium capitalize'>{activeActivity}</span>
+      <span className='font-medium'>{ACTIVITY_ITEMS.find((x) => x.id === activeActivity)?.label || activeActivity}</span>
       <span className='text-muted'>/</span>
-      <span className='font-medium capitalize'>{view}</span>
+      <span className='font-medium'>{NAV_ITEMS.find((x) => x.id === view)?.label || view}</span>
       <div className='ml-2'>
         <CommandPalette
           items={commandItems.map((it) => ({ ...it, run: () => { it.run(); trackMRU(it) } }))}
@@ -3750,7 +3750,7 @@ export default function App() {
       const chapterWorkflowSteps = [
         {
           id: 'review',
-          label: '7. Review AI draft',
+          label: '确认 AI 草稿',
           done: acceptedChapterReviews.length > 0 || (chapterReviewList.length > 0 && pendingChapterReviews.length === 0),
           detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 草稿待确认` : chapterReviewList.length ? 'AI 草稿已处理' : '生成后这里会出现待审草稿',
           action: pendingChapterReviews.length ? '确认第一条' : '查看草稿',
@@ -3760,7 +3760,7 @@ export default function App() {
         },
         {
           id: 'edit',
-          label: '8. Author edit',
+          label: '作者修改正文',
           done: hasManuscriptBody,
           detail: hasManuscriptBody ? `${chapterEditorText.trim().length} 字` : '正文还为空',
           action: '编辑正文',
@@ -3768,7 +3768,7 @@ export default function App() {
         },
         {
           id: 'save',
-          label: '9. Save',
+          label: '保存正文',
           done: savedManuscript && hasManuscriptBody,
           detail: savedManuscript ? '本地编辑已保存' : '有未保存改动',
           action: '保存',
@@ -3776,10 +3776,10 @@ export default function App() {
         },
         {
           id: 'analyze_marks',
-          label: '10. Analyze Marks',
+          label: '检查写到没有',
           done: marksVerified,
-          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个 evidence mark` : '还没有证据标记',
-          action: '分析标记',
+          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个证据点` : '还没有检查正文',
+          action: '检查正文',
           run: analyzeMarks,
         },
       ]
@@ -3799,14 +3799,40 @@ export default function App() {
             title='写作共识'
             extra={<Badge tone={alignmentReady ? 'success' : alignmentUnderstanding.trim() ? 'warn' : 'default'}>{alignmentReady ? '作者已确认' : alignmentUnderstanding.trim() ? '待确认' : '未开始'}</Badge>}
           >
-            <div className='grid grid-cols-1 gap-3 xl:grid-cols-12'>
-              <div className='xl:col-span-3 space-y-3'>
-                <div className='rounded-ui border border-border bg-surface-2 p-3'>
-                  <div className='mb-2 flex items-center justify-between gap-2'>
-                    <span className='text-sm font-medium'>本章挂载技法</span>
-                    <Badge>{pinnedTechniqueRows.length}</Badge>
+            <div className='mb-3 grid grid-cols-4 gap-2 text-xs'>
+              {[
+                ['1', '写下想法', alignmentIdea.trim()],
+                ['2', '整理理解', alignmentUnderstanding.trim()],
+                ['3', '作者确认', alignmentReady],
+                ['4', '生成初稿', false],
+              ].map(([num, label, done]: any) => (
+                <div key={label} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
+                  <div className='text-[11px] text-muted'>第 {num} 步</div>
+                  <div className='font-medium'>{label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className='grid grid-cols-1 gap-3 xl:grid-cols-2'>
+              <div className='space-y-3'>
+                <div>
+                  <div className='mb-1 flex items-center justify-between gap-2'>
+                    <label className='text-sm font-medium'>作者先说这一章</label>
+                    <Button className='text-xs' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存</Button>
                   </div>
-                  <div className='space-y-2'>
+                  <Textarea
+                    className='min-h-[230px] resize-y text-[15px] leading-6'
+                    value={alignmentIdea}
+                    onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
+                    placeholder='随便写，不用完整：这一章谁想要什么，遇到什么阻力，最后发生什么变化。'
+                  />
+                </div>
+
+                <details className='rounded-ui border border-border bg-surface-2'>
+                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
+                    本章可用技法 <span className='text-xs text-muted'>({pinnedTechniqueRows.length})</span>
+                  </summary>
+                  <div className='space-y-2 border-t border-border p-3'>
                     {pinnedTechniqueRows.map((row: any) => {
                       const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
                       return (
@@ -3822,107 +3848,100 @@ export default function App() {
                         </div>
                       )
                     })}
-                    {!pinnedTechniqueRows.length && <p className='text-xs text-muted'>先挂载 1-3 个技法，AI 理解会更清楚。</p>}
+                    {!pinnedTechniqueRows.length && <p className='text-xs text-muted'>还没有给本章选择技法。</p>}
+                    <div className='grid grid-cols-2 gap-1'>
+                      {(autoRecommendedTechniques.length ? autoRecommendedTechniques.slice(0, 4) : quickTechniqueRows.slice(0, 4)).map((row: any) => {
+                        const isAuto = Boolean(row.technique_id)
+                        const id = isAuto ? row.technique_id : row.id
+                        return (
+                          <button
+                            key={`${id}:${row.source || 'quick'}`}
+                            className='rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel'
+                            onClick={() => isAuto ? toPinnedFromAuto(row) : pinTechniqueToChapter(row, 'med').then((out) => push(out.message || '已挂载技法'))}
+                          >
+                            {isAuto ? techniqueTitleById(row.technique_id) : (row.title || row.payload?.name || row.id)}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div className='mt-3 space-y-1'>
-                    <div className='text-xs font-medium'>快速挂载</div>
-                    {autoRecommendedTechniques.slice(0, 3).map((row: any) => (
-                      <button key={`${row.technique_id}:${row.source}`} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel' onClick={() => toPinnedFromAuto(row)}>
-                        {techniqueTitleById(row.technique_id)} <span className='text-muted'>({row.intensity || 'med'})</span>
-                      </button>
-                    ))}
-                    {!autoRecommendedTechniques.length ? quickTechniqueRows.slice(0, 4).map((tech: any) => (
-                      <button key={tech.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-panel' onClick={() => pinTechniqueToChapter(tech, 'med').then((out) => push(out.message || '已挂载技法'))}>
-                        {tech.title || tech.payload?.name || tech.id}
-                      </button>
-                    )) : null}
-                    {!autoRecommendedTechniques.length && !quickTechniqueRows.length && <p className='text-xs text-muted'>技法库暂无可挂载条目。</p>}
-                  </div>
-                </div>
-                <div>
-                  <label className='text-xs text-muted'>作者输入</label>
-                  <Textarea
-                    className='mt-1 min-h-[210px] resize-y'
-                    value={alignmentIdea}
-                    onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='用很粗的语言写这一章想发生什么：谁想要什么、遇到什么阻力、最后变成什么状态。'
-                  />
-                  <Button className='mt-2 w-full' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存想法</Button>
-                </div>
+                </details>
               </div>
 
-              <div className='xl:col-span-5 space-y-3'>
+              <div className='space-y-3'>
                 <div>
                   <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-xs text-muted'>AI 理解</label>
-                    <Button className='text-xs' onClick={generateAlignmentUnderstanding}>生成理解</Button>
+                    <label className='text-sm font-medium'>AI 先复述它理解的写法</label>
+                    <Button className='text-xs' onClick={generateAlignmentUnderstanding}>让 AI 复述</Button>
                   </div>
                   <Textarea
-                    className='min-h-[210px] resize-y whitespace-pre-wrap'
+                    className='min-h-[170px] resize-y whitespace-pre-wrap leading-6'
                     value={alignmentUnderstanding}
                     onChange={(e) => { setAlignmentUnderstanding(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='点击“生成理解”后，这里会把作者粗想法整理成本章目标、技法、明线暗线、禁写事项。'
+                    placeholder='AI 会把你的想法整理成本章目标、必须保留的设定、不能提前写出的内容。'
                   />
                 </div>
                 <div>
                   <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-xs text-muted'>作者同意这样写</label>
-                    <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已锁定' : '可修改'}</Badge>
+                    <label className='text-sm font-medium'>最终同意的写法</label>
+                    <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已确认' : '等作者确认'}</Badge>
                   </div>
                   <Textarea
-                    className='min-h-[210px] resize-y whitespace-pre-wrap'
+                    className='min-h-[230px] resize-y whitespace-pre-wrap text-[15px] leading-6'
                     value={alignmentAgreedDraft}
                     onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
-                    placeholder='把最终同意的写法放在这里。作者可以直接改，改完点“同意这样写”。'
+                    placeholder='这里是 AI 真正开写前要遵守的共识。你可以直接改，改完点“确认写法”。'
                   />
                   <div className='mt-2 flex flex-wrap gap-2'>
-                    <Button onClick={confirmWritingAlignment}>同意这样写</Button>
+                    <Button onClick={confirmWritingAlignment}>确认写法</Button>
                     <Button onClick={() => saveWritingAlignment({ agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed })}>保存共识</Button>
-                    <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按共识生成初稿</Button>
+                    <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按这个写初稿</Button>
                   </div>
-                </div>
-              </div>
-
-              <div className='xl:col-span-4 space-y-3'>
-                <div className='rounded-ui border border-border bg-surface-2 p-3'>
-                  <div className='mb-2 flex items-center justify-between gap-2'>
-                    <span className='text-sm font-medium'>作者和 AI 讨论</span>
-                    <Badge>{alignmentMessages.length}</Badge>
-                  </div>
-                  <div className='max-h-[330px] space-y-2 overflow-auto'>
-                    {alignmentMessages.map((msg: any, idx: number) => (
-                      <div key={`${msg.created_at || idx}:${idx}`} className={`rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
-                        <div className='mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
-                        <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
-                      </div>
-                    ))}
-                    {!alignmentMessages.length && <p className='text-xs text-muted'>这里用于小作者和 AI 先聊两轮：AI 只整理理解，作者确认后才进入写作。</p>}
-                  </div>
-                </div>
-                <Textarea
-                  className='min-h-[130px] resize-y'
-                  value={alignmentDiscussionInput}
-                  onChange={(e) => setAlignmentDiscussionInput(e.target.value)}
-                  placeholder='例如：这一章不要急着暴露真相，让主角误以为朋友背叛了他。'
-                />
-                <div className='flex flex-wrap gap-2'>
-                  <Button onClick={sendAlignmentMessage}>发送</Button>
-                  <Button onClick={mergeDiscussionIntoAgreement} disabled={!alignmentMessages.length}>把讨论更新到中间</Button>
                 </div>
               </div>
             </div>
+
+            <details className='mt-3 rounded-ui border border-border bg-surface-2'>
+              <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>和 AI 继续讨论 <span className='text-xs text-muted'>({alignmentMessages.length})</span></summary>
+              <div className='grid grid-cols-1 gap-3 border-t border-border p-3 xl:grid-cols-2'>
+                <div className='max-h-48 space-y-2 overflow-auto'>
+                  {alignmentMessages.map((msg: any, idx: number) => (
+                    <div key={`${msg.created_at || idx}:${idx}`} className={`rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
+                      <div className='mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
+                      <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
+                    </div>
+                  ))}
+                  {!alignmentMessages.length && <p className='text-xs text-muted'>可以先和 AI 聊清楚，再确认写法。</p>}
+                </div>
+                <div>
+                  <Textarea
+                    className='min-h-[110px] resize-y'
+                    value={alignmentDiscussionInput}
+                    onChange={(e) => setAlignmentDiscussionInput(e.target.value)}
+                    placeholder='例如：这一章不要急着揭露真相，让主角先做一次错误判断。'
+                  />
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    <Button onClick={sendAlignmentMessage}>发送</Button>
+                    <Button onClick={mergeDiscussionIntoAgreement} disabled={!alignmentMessages.length}>写入最终共识</Button>
+                  </div>
+                </div>
+              </div>
+            </details>
           </Card>
 
-          <Card title='AI 草稿审阅' extra={<Badge tone={pendingChapterReviews.length ? 'warn' : 'success'}>{pendingChapterReviews.length ? '待确认' : '无待审'}</Badge>}>
-            <div className='space-y-2'>
+          <details className='rounded-ui border border-border bg-surface'>
+            <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
+              AI 草稿待确认 <span className='text-xs text-muted'>({pendingChapterReviews.length})</span>
+            </summary>
+            <div className='space-y-2 border-t border-border p-3'>
               {chapterReviewList.slice(0, 4).map((review: any) => (
                 <div key={review.review_id} className='rounded-ui border border-border bg-surface p-2 text-xs'>
                   <div className='flex flex-wrap items-center justify-between gap-2'>
                     <div>
-                      <div className='font-medium'>{review.review_id}</div>
-                      <div className='text-muted'>{review.source || 'writer_agent'} · {review.job_id || 'no job'} · {review.word_count || 0} 字</div>
+                      <div className='font-medium'>AI 初稿</div>
+                      <div className='text-muted'>{review.word_count || 0} 字</div>
                     </div>
-                    <Badge tone={review.status === 'accepted' ? 'success' : review.status === 'pending_author_review' ? 'warn' : 'default'}>{review.status || 'unknown'}</Badge>
+                    <Badge tone={review.status === 'accepted' ? 'success' : review.status === 'pending_author_review' ? 'warn' : 'default'}>{review.status === 'accepted' ? '已确认' : review.status === 'pending_author_review' ? '待确认' : '已处理'}</Badge>
                   </div>
                   <div className='mt-2 text-muted'>{review.preview || '无预览'}</div>
                   {review.status === 'pending_author_review' ? (
@@ -3935,10 +3954,13 @@ export default function App() {
               ))}
               {!chapterReviewList.length && <p className='text-sm text-muted'>生成本章后，AI 草稿会先进入这里等待作者确认。</p>}
             </div>
-          </Card>
+          </details>
 
-          <Card title='章节生成后流程 7-10' extra={<Badge tone={chapterWorkflowSteps.every((step) => step.done) ? 'success' : 'warn'}>{chapterWorkflowSteps.filter((step) => step.done).length}/{chapterWorkflowSteps.length}</Badge>}>
-            <div className='grid grid-cols-1 gap-2 md:grid-cols-4'>
+          <details className='rounded-ui border border-border bg-surface'>
+            <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
+              生成后的作者流程 <span className='text-xs text-muted'>({chapterWorkflowSteps.filter((step) => step.done).length}/{chapterWorkflowSteps.length})</span>
+            </summary>
+            <div className='grid grid-cols-1 gap-2 border-t border-border p-3 md:grid-cols-4'>
               {chapterWorkflowSteps.map((step) => (
                 <div key={step.id} className={`rounded-ui border p-3 ${step.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
                   <div className='flex items-start justify-between gap-2'>
@@ -3954,31 +3976,30 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <p className='mt-2 text-xs text-muted'>这组步骤对应 README 的 7-10：先审 AI 草稿，再由作者改正文，保存，最后用 Analyze Marks 验证人物、技法、明线、暗线、伏笔是否真的在正文里出现。</p>
-          </Card>
+          </details>
 
           <Card
-            title='Chapter Manuscript'
+            title='正文'
             extra={
               <div className='flex flex-wrap gap-2'>
-                <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? 'Saving...' : 'Save'}</Button>
-                <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
-                <Button onClick={analyzeMarks} disabled={chapterSaving}>Analyze Marks</Button>
+                <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? '保存中...' : '保存正文'}</Button>
+                <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? '检查中...' : '保存并检查'}</Button>
+                <Button onClick={analyzeMarks} disabled={chapterSaving}>检查要求</Button>
                 <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按共识生成</Button>
               </div>
             }
           >
             <div className='grid grid-cols-12 gap-3'>
               <div className='col-span-4'>
-                <label className='text-xs text-muted'>Chapter ID</label>
+                <label className='text-xs text-muted'>章节编号</label>
                 <Input value={selectedChapter} onChange={(e) => setSelectedChapter(e.target.value)} />
               </div>
               <div className='col-span-4'>
-                <label className='text-xs text-muted'>Title</label>
+                <label className='text-xs text-muted'>章节名</label>
                 <Input value={chapterTitleDraft} onChange={(e) => setChapterTitleDraft(e.target.value)} />
               </div>
               <div className='col-span-2'>
-                <label className='text-xs text-muted'>Volume</label>
+                <label className='text-xs text-muted'>所属卷</label>
                 <Select
                   value={currentChapterMeta?.volume_id || currentVolume?.id || 'volume_default'}
                   onChange={async (e) => {
@@ -3993,7 +4014,7 @@ export default function App() {
                 </Select>
               </div>
               <div className='col-span-2'>
-                <label className='text-xs text-muted'>Status</label>
+                <label className='text-xs text-muted'>状态</label>
                 <Select
                   value={currentChapterMeta?.chapter_status || 'draft'}
                   onChange={async (e) => {
@@ -4003,60 +4024,35 @@ export default function App() {
                     mutateDraftDetails()
                   }}
                 >
-                  <option value='draft'>draft</option>
-                  <option value='drafting'>drafting</option>
-                  <option value='planned'>planned</option>
-                  <option value='revising'>revising</option>
-                  <option value='done'>done</option>
+                  <option value='draft'>草稿</option>
+                  <option value='drafting'>写作中</option>
+                  <option value='planned'>已规划</option>
+                  <option value='revising'>修改中</option>
+                  <option value='done'>已完成</option>
                 </Select>
               </div>
-              <div className='col-span-5'>
-                <label className='text-xs text-muted'>Model routing</label>
-                <label className='mb-1 flex items-center gap-2 text-xs'>
-                  <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
-                  use Settings agent assignments
-                </label>
-                <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)} disabled={useAgentAssignments}>
-                  {Object.entries(profiles).map(([k, v]: any) => (
-                    <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
-                  ))}
-                </Select>
-                <div className='mt-1 flex flex-wrap items-center gap-2 text-xs'>
-                  {useAgentAssignments ? (
-                    <>
-                      <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
-                        assignments
-                      </Badge>
-                      <span className='text-muted'>{writeRouteRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/{writeRouteRows.length || 4} modules ready</span>
-                    </>
-                  ) : selectedProfileHealth ? (
-                    <>
-                      <Badge tone={selectedProfileHealth.is_mock ? 'warn' : selectedProfileHealth.missing_fields?.length ? 'warn' : 'success'}>
-                        {selectedProfileHealth.is_mock ? 'mock mode' : selectedProfileHealth.missing_fields?.length ? 'incomplete' : 'ready'}
-                      </Badge>
-                      <span className='text-muted'>{selectedProfileHealth.provider} · {selectedProfileHealth.model || 'no model'}</span>
-                      <span className='text-muted'>API key {selectedProfileHealth.requires_api_key ? (selectedProfileHealth.api_key_configured ? 'configured' : 'missing') : 'not required'}</span>
-                      {selectedProfileHealth.missing_fields?.length ? <span className='text-amber-700 dark:text-amber-300'>Missing: {selectedProfileHealth.missing_fields.join(', ')}</span> : null}
-                    </>
-                  ) : profiles[llmProfileId] ? (
-                    <>
-                      <Badge>project profile</Badge>
-                      <span className='text-muted'>This profile is project-local; global health status is not available.</span>
-                    </>
-                  ) : (
-                    <>
-                      <Badge tone='warn'>missing</Badge>
-                      <span className='text-amber-700 dark:text-amber-300'>Profile not found; generation may fallback.</span>
-                    </>
-                  )}
+              <details className='col-span-12 rounded-ui border border-border bg-surface-2 text-xs'>
+                <summary className='cursor-pointer px-3 py-2 font-medium'>高级设置</summary>
+                <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
+                  <div>
+                    <label className='text-xs text-muted'>模型选择</label>
+                    <label className='mb-1 flex items-center gap-2 text-xs'>
+                      <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
+                      使用设置里的分工模型
+                    </label>
+                    <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)} disabled={useAgentAssignments}>
+                      {Object.entries(profiles).map(([k, v]: any) => (
+                        <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
+                      ))}
+                    </Select>
+                    <div className='mt-1 text-muted'>给开源维护和高级用户使用，作者默认不用改。</div>
+                  </div>
+                  <label className='flex items-center gap-2 text-sm'>
+                    <input type='checkbox' checked={autoApplyPatch} onChange={(e) => setAutoApplyPatch(e.target.checked)} />
+                    自动应用 AI 修改建议
+                  </label>
                 </div>
-              </div>
-              <div className='col-span-3 flex items-end'>
-                <label className='flex items-center gap-2 text-sm'>
-                  <input type='checkbox' checked={autoApplyPatch} onChange={(e) => setAutoApplyPatch(e.target.checked)} />
-                  auto apply
-                </label>
-              </div>
+              </details>
             </div>
             <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3'>
               <div className='mb-2 flex items-center justify-between gap-2'>
@@ -4089,29 +4085,31 @@ export default function App() {
                 <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseLines} onChange={(e) => setGenerationUseLines(e.target.checked)} /> 使用脉络/明暗线</label>
               </div>
             </div>
-            <div className='mt-3 grid grid-cols-12 gap-2'>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>Selection Mode</label>
-                <Select value={selectionMode} onChange={(e) => setSelectionMode(e.target.value as any)}>
-                  <option value='line'>By Line</option>
-                  <option value='paragraph'>By Paragraph</option>
-                </Select>
+            <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs'>
+              <summary className='cursor-pointer px-3 py-2 font-medium'>只修改正文中的一小段</summary>
+              <div className='grid grid-cols-12 gap-2 border-t border-border p-3'>
+                <div className='col-span-3'>
+                  <label className='text-xs text-muted'>选择方式</label>
+                  <Select value={selectionMode} onChange={(e) => setSelectionMode(e.target.value as any)}>
+                    <option value='line'>按行</option>
+                    <option value='paragraph'>按段落</option>
+                  </Select>
+                </div>
+                <div className='col-span-3'>
+                  <label className='text-xs text-muted'>{selectionMode === 'line' ? '开始行' : '开始段'}</label>
+                  <Input value={selectionStart} onChange={(e) => setSelectionStart(e.target.value)} placeholder='开始' />
+                </div>
+                <div className='col-span-3'>
+                  <label className='text-xs text-muted'>{selectionMode === 'line' ? '结束行' : '结束段'}</label>
+                  <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='结束' />
+                </div>
+                <div className='col-span-3 flex items-end gap-2'>
+                  {selectionRange ? <Button onClick={() => requestRunJob(1200, selectionRange, '修改选中段落')}>让 AI 改这一段</Button> : null}
+                </div>
+                {selectionRange ? <p className='col-span-12 text-xs text-muted'>已选择：L{selectionRange.start}-L{selectionRange.end}</p> : <p className='col-span-12 text-xs text-muted'>填写开始和结束位置后，可以只让 AI 修改这一小段。</p>}
               </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>{selectionMode === 'line' ? 'Start Line' : 'Start Paragraph'}</label>
-                <Input value={selectionStart} onChange={(e) => setSelectionStart(e.target.value)} placeholder='start' />
-              </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>{selectionMode === 'line' ? 'End Line' : 'End Paragraph'}</label>
-                <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='end' />
-              </div>
-              <div className='col-span-6 flex items-end gap-2'>
-                <Button onClick={() => requestRunJob(160, null, '超预算模拟')}>超预算模拟</Button>
-                {selectionRange ? <Button onClick={() => requestRunJob(1200, selectionRange, 'Edit Selection')}>Edit Selection</Button> : null}
-              </div>
-            </div>
-            {selectionRange ? <p className='mt-2 text-xs text-muted'>Selection range: L{selectionRange.start}-L{selectionRange.end}</p> : <p className='mt-2 text-xs text-muted'>Set start/end to enable Edit Selection.</p>}
-            {analyzeResult ? <p className='mt-1 text-xs text-muted'>Analyze result: +{analyzeResult.new_facts_count || 0} facts, +{analyzeResult.new_proposals_count || 0} proposals.</p> : null}
+            </details>
+            {analyzeResult ? <p className='mt-1 text-xs text-muted'>检查结果：新增 {analyzeResult.new_facts_count || 0} 条事实，{analyzeResult.new_proposals_count || 0} 条待确认建议。</p> : null}
             {highlightRange ? (
               <div className='mt-3 rounded-ui border border-border bg-surface-2 p-2'>
                 <div className='mb-1 text-xs font-medium'>Evidence: {selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
@@ -4929,6 +4927,20 @@ export default function App() {
     if (level === 'partial') return 'warn'
     return 'default'
   }
+  const requirementTypeLabel = (type: string) => {
+    if (type === 'open_line') return '明线'
+    if (type === 'hidden_line') return '暗线'
+    if (type === 'foreshadowing') return '伏笔'
+    if (type === 'technique') return '技法'
+    if (type === 'character') return '人物'
+    return '要求'
+  }
+  const supportLabel = (level?: string) => {
+    if (level === 'supported') return '已写到'
+    if (level === 'partial') return '部分写到'
+    if (level === 'contradicted') return '有矛盾'
+    return '未证实'
+  }
   const findRequirementMark = (targetType: string, candidates: string[]) => {
     const normalized = candidates.map((x) => String(x || '').trim()).filter(Boolean)
     return evidenceMarkRows.find((m: any) => {
@@ -4986,7 +4998,7 @@ export default function App() {
                   <Badge tone={done ? 'success' : 'default'}>{done ? '已完成' : '等待中'}</Badge>
                 </div>
                 <div className='mt-1 text-xs text-muted'>{step.desc}</div>
-                <div className='mt-1 text-xs'>{step.data?.output_summary || '等待本次 job 事件'}</div>
+                <div className='mt-1 text-xs'>{step.data?.output_summary || '等待开始生成'}</div>
               </div>
             )
           })}
@@ -5007,10 +5019,10 @@ export default function App() {
             </div>
           ))}
         </div>
-        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>重新分析证据标记</Button>
+        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>重新检查正文</Button>
       </Card>
 
-      <Card title='本章上下文' extra={<Badge>{selectedChapter}</Badge>}>
+      <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>}>
         <div className='space-y-2 text-xs'>
           <div className='rounded-ui border border-border bg-surface-2 p-2'>
             <div className='font-medium'>{currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
@@ -5064,10 +5076,10 @@ export default function App() {
                 }}
               >
                 <div className='flex items-center justify-between gap-2'>
-                  <span>{item.type} · {item.label || '未命名要求'}</span>
-                  <Badge tone={markTone(level) as any}>{item.mark?.span?.quote ? level : '未证实'}</Badge>
+                  <span>{requirementTypeLabel(item.type)} · {item.label || '未命名要求'}</span>
+                  <Badge tone={markTone(level) as any}>{item.mark?.span?.quote ? supportLabel(level) : '未证实'}</Badge>
                 </div>
-                {item.mark?.span?.quote ? <div className='mt-1 truncate text-muted'>L{item.mark.span.start_line}: {item.mark.span.quote}</div> : <div className='mt-1 text-muted'>没有真实 quote，不能显示为已命中</div>}
+                {item.mark?.span?.quote ? <div className='mt-1 truncate text-muted'>正文第 {item.mark.span.start_line} 行：{item.mark.span.quote}</div> : <div className='mt-1 text-muted'>没有正文原句，不能算写到了</div>}
               </button>
             )
           })}
@@ -5075,10 +5087,10 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{selectedMark?.detection?.support_level || '-'}</Badge> : undefined}>
+      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{supportLabel(selectedMark?.detection?.support_level)}</Badge> : undefined}>
         {selectedMark ? (
           <div className='space-y-2 text-xs'>
-            <div className='font-medium'>{selectedMark.target_type} · {selectedMark.label || selectedMark.target_id}</div>
+                <div className='font-medium'>{requirementTypeLabel(selectedMark.target_type)} · {selectedMark.label || selectedMark.target_id}</div>
             <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
             {selectedMark.author_feedback ? (
               <div className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-muted'>
@@ -5093,8 +5105,8 @@ export default function App() {
                 if (start > 0) setHighlightRange({ start, end })
               }}
             >
-              <div>L{selectedMark.span?.start_line || 0}-L{selectedMark.span?.end_line || 0}</div>
-              <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '无真实 quote，不能视为已命中'}</div>
+              <div>正文第 {selectedMark.span?.start_line || 0}-{selectedMark.span?.end_line || 0} 行</div>
+              <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '没有正文原句，不能算写到了'}</div>
             </button>
             <div className='grid grid-cols-2 gap-1'>
               <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'confirm_hit')}>确认命中</Button>
