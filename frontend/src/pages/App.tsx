@@ -3871,7 +3871,7 @@ export default function App() {
               </div>
 
               <div className='space-y-3'>
-                <div className='module-card module-chat max-h-48 space-y-2 overflow-auto rounded-ui border p-2'>
+                <div className='module-card module-chat min-h-[220px] max-h-[220px] space-y-2 overflow-auto rounded-ui border p-2'>
                   {alignmentMessages.map((msg: any, idx: number) => (
                     <div key={`${msg.created_at || idx}:${idx}`} className={`max-w-[92%] rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'ml-auto border-amber-300 bg-amber-50 dark:bg-amber-950/20' : 'border-teal-300 bg-teal-50 dark:bg-teal-950/20'}`}>
                       <div className='font-display mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
@@ -3899,7 +3899,7 @@ export default function App() {
                   <label className='font-display text-sm font-medium'>AI 理解缓存</label>
                   <Button className='text-xs' onClick={generateAlignmentUnderstanding}>新增一版</Button>
                 </div>
-                <div className='module-card module-ai max-h-[360px] space-y-2 overflow-auto rounded-ui border p-2'>
+                <div className='module-card module-ai min-h-[360px] max-h-[360px] space-y-2 overflow-auto rounded-ui border p-2'>
                   {alignmentUnderstandingVersions.map((version: any, idx: number) => (
                     <div key={version.version_id || idx} className='rounded-ui border border-border bg-surface p-2 text-xs'>
                       <div className='mb-1 flex items-center justify-between gap-2'>
