@@ -2040,6 +2040,34 @@ export default function App() {
             </div>
           </div>
         ) : null}
+
+        <div className='mt-4 rounded-ui border border-border bg-surface p-2 text-xs'>
+          <div className='flex items-center justify-between gap-2'>
+            <span className='font-medium'>可信检查</span>
+            <Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>
+              {trustReport?.support_rate ?? '--'}
+            </Badge>
+          </div>
+          <div className='mt-2 grid grid-cols-4 gap-1 text-center'>
+            {[
+              ['supported', 'OK'],
+              ['partial', 'Part'],
+              ['unsupported', 'Miss'],
+              ['contradicted', 'Risk'],
+            ].map(([level, label]) => (
+              <button
+                key={level}
+                className='rounded-ui border border-border bg-surface-2 p-1 hover:bg-surface'
+                onClick={() => setView('chapter')}
+                title={label}
+              >
+                <div className='font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
+                <div className='text-[10px] text-muted'>{label}</div>
+              </button>
+            ))}
+          </div>
+          <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>检查正文</Button>
+        </div>
       </div>
     </div>
   )
@@ -4918,9 +4946,9 @@ export default function App() {
   const latestTechniqueBriefForRight = events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}
   const latestEvent = (name: string) => events.filter((e) => e.event === name).slice(-1)[0]?.data
   const agentSteps = [
-    { name: '审查助手', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN'), desc: '先看人设、脉络、伏笔、技法是否齐' },
-    { name: '撰写助手', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT'), desc: '按作者确认的共识扩展初稿' },
-    { name: '校对助手', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH'), desc: '只处理错字、标点、病句等基础问题' },
+    { name: 'A Review', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN') },
+    { name: 'B Draft', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT') },
+    { name: 'C Polish', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH') },
   ]
   const markTone = (level?: string) => {
     if (level === 'supported') return 'success'
@@ -4958,6 +4986,19 @@ export default function App() {
       return { type: 'technique', label: tech?.title || row.technique_id, mark: findRequirementMark('technique', [row.technique_id, tech?.title, tech?.payload?.name, ...(tech?.payload?.signals || [])]) }
     }),
   ]
+  const rightPinnedTechniqueRows = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+  const rightPinnedTechniqueIds = new Set(rightPinnedTechniqueRows.map((row: any) => row.technique_id))
+  const rightQuickTechniqueRows = (Array.isArray(techniqueCards) ? techniqueCards : []).filter((tech: any) => !rightPinnedTechniqueIds.has(tech.id)).slice(0, 6)
+  const rightAutoRecommendedTechniques = (latestTechniqueBriefForRight?.checklist || []).filter((x: any) => String(x?.source || '').startsWith('auto_from_category'))
+  const pinRightAutoTechnique = async (row: any) => {
+    const tech = (techniqueCards || []).find((x: any) => x.id === row.technique_id)
+    if (!tech) {
+      push(`Technique not found: ${row.technique_id}`, 'error')
+      return
+    }
+    const out = await pinTechniqueToChapter(tech, row.intensity || 'med', row.weight, row.notes)
+    push(out.message || (out.ok ? '已挂载技法' : '挂载失败'), out.ok ? 'success' : 'error')
+  }
 
   const eventGroups = useMemo(() => {
     const map: Record<string, any[]> = {
@@ -4987,39 +5028,54 @@ export default function App() {
 
   const right = (
     <div className='space-y-3 density-space'>
-      <Card title='AI 协作进度'>
-        <div className='space-y-2'>
+      <div className='rounded-ui border border-border bg-surface p-2'>
+        <div className='grid grid-cols-3 gap-2'>
           {agentSteps.map((step) => {
             const done = Boolean(step.data)
             return (
-              <div key={step.event} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
-                <div className='flex items-center justify-between gap-2'>
-                  <span className='text-sm font-medium'>{step.name}</span>
-                  <Badge tone={done ? 'success' : 'default'}>{done ? '已完成' : '等待中'}</Badge>
-                </div>
-                <div className='mt-1 text-xs text-muted'>{step.desc}</div>
-                <div className='mt-1 text-xs'>{step.data?.output_summary || '等待开始生成'}</div>
+              <div key={step.event} className='flex items-center justify-center gap-1.5 rounded-ui bg-surface-2 px-2 py-1.5 text-xs'>
+                <span className={`h-2.5 w-2.5 rounded-full ${done ? 'bg-emerald-500' : 'bg-muted/40'}`} />
+                <span className={done ? 'font-medium text-foreground' : 'text-muted'}>{step.name}</span>
               </div>
             )
           })}
         </div>
-      </Card>
+      </div>
 
-      <Card title='可信检查' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '-'}</Badge>}>
-        <div className='grid grid-cols-4 gap-1 text-center text-xs'>
-          {[
-            ['supported', '已证实'],
-            ['partial', '部分'],
-            ['unsupported', '未证实'],
-            ['contradicted', '矛盾'],
-          ].map(([level, label]) => (
-            <div key={level} className='rounded-ui border border-border bg-surface p-1'>
-              <div className='font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
-              <div className='text-[10px] text-muted'>{label}</div>
-            </div>
-          ))}
+      <Card title='Techniques' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>}>
+        <div className='space-y-2 text-xs'>
+          {rightPinnedTechniqueRows.map((row: any) => {
+            const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+            return (
+              <div key={row.technique_id} className='rounded-ui border border-border bg-surface px-2 py-1.5'>
+                <div className='flex items-start justify-between gap-2'>
+                  <div>
+                    <div className='font-medium'>{tech?.title || tech?.payload?.name || row.technique_id}</div>
+                    <div className='mt-1 text-muted'>{row.notes || tech?.payload?.purpose || '用于本章写法'}</div>
+                  </div>
+                  <Badge>{row.intensity || 'med'}</Badge>
+                </div>
+                <Button className='mt-2 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: tech?.title || row.technique_id })}>移除</Button>
+              </div>
+            )
+          })}
+          {!rightPinnedTechniqueRows.length && <p className='text-muted'>本章还没有挂载技法。</p>}
+          <div className='grid grid-cols-2 gap-1'>
+            {(rightAutoRecommendedTechniques.length ? rightAutoRecommendedTechniques.slice(0, 4) : rightQuickTechniqueRows.slice(0, 4)).map((row: any) => {
+              const isAuto = Boolean(row.technique_id)
+              const id = isAuto ? row.technique_id : row.id
+              return (
+                <button
+                  key={`${id}:${row.source || 'right'}`}
+                  className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-left hover:bg-surface'
+                  onClick={() => isAuto ? pinRightAutoTechnique(row) : pinTechniqueToChapter(row, 'med').then((out) => push(out.message || '已挂载技法'))}
+                >
+                  {isAuto ? techniqueTitleById(row.technique_id) : (row.title || row.payload?.name || row.id)}
+                </button>
+              )
+            })}
+          </div>
         </div>
-        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>重新检查正文</Button>
       </Card>
 
       <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>}>
