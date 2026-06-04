@@ -3841,15 +3841,15 @@ export default function App() {
             extra={<Badge tone={alignmentReady ? 'success' : alignmentUnderstanding.trim() ? 'warn' : 'default'}>{alignmentReady ? '作者已确认' : alignmentUnderstanding.trim() ? '待确认' : '未开始'}</Badge>}
             className='module-card module-author'
           >
-            <div className='mb-3 grid grid-cols-3 gap-2 text-xs'>
+            <div className='mb-3 grid grid-cols-1 gap-3 text-xs xl:grid-cols-[1.05fr_1fr_.9fr]'>
               {[
-                ['1', 'Idea', alignmentIdea.trim(), 'module-author'],
-                ['2', 'Chat', alignmentMessages.length, 'module-chat'],
-                ['3', 'AI Cache', alignmentUnderstandingVersions.length, 'module-ai'],
+                ['01', '作者原始想法', alignmentIdea.trim(), 'module-author'],
+                ['02', '对话调整', alignmentMessages.length, 'module-chat'],
+                ['03', 'AI 理解缓存', alignmentUnderstandingVersions.length, 'module-ai'],
               ].map(([num, label, done, tone]: any) => (
-                <div key={label} className={`module-card ${tone} rounded-ui border px-2 py-2 ${done ? '' : 'opacity-80'}`}>
-                  <div className='text-[11px] text-muted'>第 {num} 步</div>
-                  <div className='font-display font-medium'>{label}</div>
+                <div key={label} className={`module-card ${tone} flex h-14 flex-col justify-center rounded-ui border px-3 py-2 ${done ? '' : 'opacity-80'}`}>
+                  <div className='text-[11px] text-muted'>{num}</div>
+                  <div className='font-display truncate font-medium'>{label}</div>
                 </div>
               ))}
             </div>
@@ -3878,7 +3878,7 @@ export default function App() {
                       <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
                     </div>
                   ))}
-                  {!alignmentMessages.length && <p className='text-xs text-muted'>这里像 ChatGPT 一样来回聊。左侧是原始想法，不会被对话覆盖。</p>}
+                  {!alignmentMessages.length && <p className='text-xs text-muted'>先补充你想调整的地方，AI 的回应会留在这里。</p>}
                 </div>
                 <div>
                   <Textarea
