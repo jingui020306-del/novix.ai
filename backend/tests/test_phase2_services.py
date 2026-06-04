@@ -948,6 +948,11 @@ def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
         detail = client.get(f'/api/projects/p1/jobs/{jid}')
         assert detail.status_code == 200
         assert detail.json()['event_counts']['TRUST_REPORT'] == 1
+        detail_body = detail.json()
+        assert detail_body['event_total'] >= 8
+        assert any(e['event'] == 'CONTEXT_MANIFEST' for e in detail_body['events'])
+        assert 'context_manifest' in detail_body
+        assert 'trust_report_event' in detail_body
         reviews = client.get('/api/projects/p1/drafts/chapter_001/reviews')
         assert reviews.status_code == 200
         review = reviews.json()[0]

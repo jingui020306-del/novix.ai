@@ -162,6 +162,7 @@ export default function App() {
   const [llmProfileId, setLlmProfileId] = useState('mock_default')
   const [useAgentAssignments, setUseAgentAssignments] = useState(true)
   const [selectedChapter, setSelectedChapter] = useState('chapter_001')
+  const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedProposalId, setSelectedProposalId] = useState('')
   const [selectedBlueprintId, setSelectedBlueprintId] = useState('')
   const [highlightRange, setHighlightRange] = useState<{ start: number; end: number } | null>(null)
@@ -259,6 +260,7 @@ export default function App() {
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
   const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
   const { data: jobRows, mutate: mutateJobs } = useSWR(project ? `/api/projects/${project}/jobs` : null, api.get)
+  const { data: selectedJobDetail, mutate: mutateSelectedJobDetail } = useSWR(project && selectedJobId ? `/api/projects/${project}/jobs/${selectedJobId}` : null, api.get)
   const { data: chapterReviewRows, mutate: mutateChapterReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/reviews` : null, api.get)
   const { data: patchReviewRows, mutate: mutatePatchReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/patch-reviews` : null, api.get)
 
@@ -306,6 +308,10 @@ export default function App() {
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
   const jobList = Array.isArray(jobRows) ? jobRows : []
   const latestJob = jobList[0]
+  const selectedJobSummary = selectedJobDetail || jobList.find((job: any) => job.job_id === selectedJobId)
+  const selectedJobEvents = Array.isArray(selectedJobDetail?.events) ? selectedJobDetail.events : []
+  const selectedJobManifest = selectedJobDetail?.context_manifest || selectedJobEvents.filter((evt: any) => evt.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
+  const selectedJobTrust = selectedJobDetail?.trust_report_event || selectedJobEvents.filter((evt: any) => evt.event === 'TRUST_REPORT').slice(-1)[0]?.data
   const chapterReviewList = Array.isArray(chapterReviewRows) ? chapterReviewRows : []
   const pendingChapterReviews = chapterReviewList.filter((x: any) => x.status === 'pending_author_review')
   const patchReviewList = Array.isArray(patchReviewRows) ? patchReviewRows : []
@@ -338,6 +344,12 @@ export default function App() {
     rejected: processedBuildDrafts.filter((x: any) => x.status === 'rejected').length,
   }
   const acceptedScopeLabels = (rec: any) => (Array.isArray(rec?.accepted_scope) ? rec.accepted_scope.filter((x: any) => typeof x === 'string' && x.trim()) : [])
+  const hasText = (value: any) => String(value || '').trim().length > 0
+  const hasArrayItems = (value: any) => Array.isArray(value) && value.some((item: any) => {
+    if (typeof item === 'string') return hasText(item)
+    if (!item || typeof item !== 'object') return Boolean(item)
+    return Object.values(item).some((entry) => Array.isArray(entry) ? entry.length > 0 : hasText(entry))
+  })
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -2471,12 +2483,6 @@ export default function App() {
       const realReadyProfiles = profileHealthRows.filter((row: any) => !row.is_mock && !row.missing_fields?.length)
       const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
       const agentAssignmentsReady = agentModuleRows.length > 0 && agentModuleRows.every((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
-      const hasText = (value: any) => String(value || '').trim().length > 0
-      const hasArrayItems = (value: any) => Array.isArray(value) && value.some((item: any) => {
-        if (typeof item === 'string') return hasText(item)
-        if (!item || typeof item !== 'object') return Boolean(item)
-        return Object.values(item).some((entry) => Array.isArray(entry) ? entry.length > 0 : hasText(entry))
-      })
       const hasQuotedMarks = evidenceMarkRows.some((mark: any) => hasText(mark?.span?.quote) && Number(mark?.span?.start_line || 0) > 0)
       const supportedMarks = evidenceMarkRows.filter((mark: any) => mark?.detection?.support_level === 'supported' && hasText(mark?.span?.quote))
       const pinnedTechniqueCount = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques.length : 0
@@ -2520,7 +2526,7 @@ export default function App() {
             { id: 'open_line', label: '明线节点', done: openLineRows.length > 0, detail: `${openLineRows.length} 个`, run: () => goStoryStep('lines') },
             { id: 'hidden_line', label: '暗线节点', done: hiddenLineRows.length > 0, detail: `${hiddenLineRows.length} 个`, run: () => goStoryStep('lines') },
             { id: 'foreshadowing', label: '伏笔节点', done: foreshadowingRows.length > 0, detail: `${foreshadowingRows.length} 个`, run: () => goStoryStep('lines') },
-            { id: 'chapter_plan', label: '章节矩阵', done: hasArrayItems(activeStoryPayload.chapter_plan), detail: `${(activeStoryPayload.chapter_plan || []).filter((x: any) => hasText(x?.chapter) || hasText(x?.title) || hasText(x?.focus)).length || 0} 行`, run: () => { setView('story'); setStoryPlanningTab('matrix') } },
+            { id: 'chapter_plan', label: '章节矩阵', done: hasArrayItems(activeStoryPayload.chapter_plan), detail: `${(activeStoryPayload.chapter_plan || []).filter((x: any) => hasText(x?.chapter) || hasText(x?.title) || hasText(x?.focus)).length || 0} 行`, run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
           ],
         },
         {
@@ -2542,7 +2548,7 @@ export default function App() {
             { id: 'volumes', label: '卷', done: volumeRows.length > 0, detail: `${volumeRows.length} 卷`, run: () => { if (volumeRows.length) setActiveActivity('explorer'); else void createVolume() } },
             { id: 'chapters', label: '章', done: chapterRows.length > 0, detail: `${chapterRows.length} 章`, run: () => { if (chapterRows.length) { setView('chapter'); setActiveActivity('explorer') } else void createChapterInVolume(volumeRows[0]?.id || 'volume_default') } },
             { id: 'chapter_title', label: '章节标题', done: hasText(chapterTitleDraft || currentChapterMeta?.chapter_title), detail: chapterTitleDraft || currentChapterMeta?.chapter_title || '未填写', run: () => { setView('chapter'); setActiveActivity('explorer') } },
-            { id: 'linked_plan', label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行`, run: () => { setView('story'); setStoryPlanningTab('matrix') } },
+            { id: 'linked_plan', label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行`, run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
             { id: 'linked_lines', label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}`, run: () => goStoryStep('lines') },
             { id: 'pinned_techniques', label: '本章技法挂载', done: pinnedTechniqueCount + pinnedCategoryCount > 0, detail: `技法 ${pinnedTechniqueCount} · 分类 ${pinnedCategoryCount}`, run: () => { setView('chapter'); setActiveActivity('explorer') } },
           ],
@@ -2861,11 +2867,10 @@ export default function App() {
               {jobList.slice(0, 6).map((job: any) => (
                 <button
                   key={job.job_id}
-                  className='rounded-ui border border-border bg-surface px-3 py-2 text-left hover:bg-surface-2'
+                  className={`rounded-ui border px-3 py-2 text-left hover:bg-surface-2 ${selectedJobId === job.job_id ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface'}`}
                   onClick={() => {
                     if (job.chapter_id) setSelectedChapter(job.chapter_id)
-                    setView('chapter')
-                    setActiveActivity('explorer')
+                    setSelectedJobId(job.job_id)
                   }}
                 >
                   <div className='flex items-center justify-between gap-2'>
@@ -2881,6 +2886,63 @@ export default function App() {
               {!jobList.length && <p className='text-sm text-muted'>还没有生成任务。生成本章后，这里会保留任务状态。</p>}
             </div>
           </Card>
+
+          {selectedJobSummary ? (
+            <Card
+              title='AI 任务详情'
+              extra={<Badge tone={selectedJobSummary.status === 'completed' ? 'success' : selectedJobSummary.status === 'failed' ? 'warn' : 'default'}>{selectedJobSummary.status || 'unknown'}</Badge>}
+            >
+              <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
+                <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+                  <div className='mb-2 font-medium'>{selectedJobSummary.job_id}</div>
+                  <div>Chapter: {selectedJobSummary.chapter_id || '-'}</div>
+                  <div>Stage: {selectedJobSummary.stage || selectedJobSummary.last_event || '-'}</div>
+                  <div>Provider: {selectedJobSummary.provider || '-'}</div>
+                  <div>Model: {selectedJobSummary.model || '-'}</div>
+                  <div>Fallback: {selectedJobSummary.fallback ? 'yes' : 'no'}</div>
+                  <div>Created: {selectedJobSummary.created_at || '-'}</div>
+                  <div>Updated: {selectedJobSummary.updated_at || '-'}</div>
+                  <div className='mt-2 flex flex-wrap gap-1'>
+                    <Button className='text-xs' onClick={() => mutateSelectedJobDetail()}>刷新详情</Button>
+                    <Button className='text-xs' onClick={() => { if (selectedJobSummary.chapter_id) setSelectedChapter(selectedJobSummary.chapter_id); setView('chapter'); setActiveActivity('explorer') }}>打开章节</Button>
+                  </div>
+                </div>
+                <div className='rounded-ui border border-border bg-surface p-3 text-xs lg:col-span-2'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <span className='font-medium'>Stage 历史</span>
+                    <Badge>{selectedJobEvents.length || selectedJobSummary.event_total || 0}</Badge>
+                  </div>
+                  <div className='max-h-72 space-y-1 overflow-auto'>
+                    {selectedJobEvents.map((evt: any, index: number) => {
+                      const data = evt.data || {}
+                      return (
+                        <div key={`${evt.event}-${index}`} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5'>
+                          <div className='flex flex-wrap items-center justify-between gap-2'>
+                            <span className='font-medium'>{evt.event}</span>
+                            <Badge tone={data.fallback ? 'warn' : 'default'}>{data.stage || evt.event}</Badge>
+                          </div>
+                          <div className='mt-1 text-muted'>{data.provider || 'system'} / {data.model || '-'} {data.fallback ? '(fallback)' : ''}</div>
+                          {data.input_summary ? <div className='mt-1'>Input: {data.input_summary}</div> : null}
+                          {data.output_summary ? <div className='mt-1'>Output: {data.output_summary}</div> : null}
+                        </div>
+                      )
+                    })}
+                    {!selectedJobEvents.length ? <p className='text-muted'>选择任务后会显示每个 stage 的输入摘要、输出摘要、provider/model 和 fallback。</p> : null}
+                  </div>
+                </div>
+              </div>
+              <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
+                <details className='rounded-ui border border-border bg-surface'>
+                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Context Manifest</summary>
+                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobManifest || {}, null, 2)}</pre>
+                </details>
+                <details className='rounded-ui border border-border bg-surface'>
+                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Trust Report</summary>
+                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobTrust || {}, null, 2)}</pre>
+                </details>
+              </div>
+            </Card>
+          ) : null}
 
           <div className='grid grid-cols-2 gap-3'>
             <Card title='待确认 Canon'>
@@ -4240,6 +4302,13 @@ export default function App() {
     acceptedScopeLabels,
     jobList,
     latestJob,
+    selectedJobId,
+    selectedJobDetail,
+    selectedJobSummary,
+    selectedJobEvents,
+    selectedJobManifest,
+    selectedJobTrust,
+    mutateSelectedJobDetail,
     chapterReviewList,
     pendingChapterReviews,
     memoryPacks,
@@ -4576,6 +4645,21 @@ export default function App() {
     </div>
   )
 
+  const confirmRouteRiskCount = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length).length
+  const confirmPinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+  const confirmPinnedCategories = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories : []
+  const confirmReadinessItems = [
+    { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
+    { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
+    { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
+    { label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张` },
+    { label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行` },
+    { label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}` },
+    { label: '本章技法', done: confirmPinnedTechniques.length + confirmPinnedCategories.length > 0, detail: `技法 ${confirmPinnedTechniques.length} · 分类 ${confirmPinnedCategories.length}` },
+    { label: 'Agent 路由', done: writeRouteRows.length > 0 && confirmRouteRiskCount === 0, detail: writeRouteRows.length ? `风险 ${confirmRouteRiskCount}` : 'runtime 未加载' },
+  ]
+  const confirmReadyCount = confirmReadinessItems.filter((item) => item.done).length
+
   const writeConfirmOverlay = pendingWriteJob ? (
     <div className='fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 py-10 backdrop-blur-[1px]' onMouseDown={() => setPendingWriteJob(null)}>
       <div
@@ -4629,6 +4713,23 @@ export default function App() {
                 ))}
                 {!writeRouteRows.length ? <div className='text-muted'>Runtime status not loaded yet.</div> : null}
               </div>
+            </div>
+          </div>
+          <div className='mt-3 rounded-ui border border-border bg-surface p-3 text-xs'>
+            <div className='mb-2 flex items-center justify-between gap-2'>
+              <span className='font-medium'>本章开写检查</span>
+              <Badge tone={confirmReadyCount === confirmReadinessItems.length ? 'success' : 'warn'}>{confirmReadyCount}/{confirmReadinessItems.length}</Badge>
+            </div>
+            <div className='grid grid-cols-2 gap-1.5 md:grid-cols-4'>
+              {confirmReadinessItems.map((item) => (
+                <div key={item.label} className={`rounded-ui border px-2 py-1.5 ${item.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-medium'>{item.label}</span>
+                    <Badge tone={item.done ? 'success' : 'warn'}>{item.done ? '已亮' : '待补'}</Badge>
+                  </div>
+                  <div className='mt-1 truncate text-muted'>{item.detail}</div>
+                </div>
+              ))}
             </div>
           </div>
           <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-3'>

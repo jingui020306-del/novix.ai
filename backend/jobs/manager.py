@@ -128,7 +128,21 @@ class JobManager:
         })
 
     def get_job(self, project_id: str, job_id: str) -> dict[str, Any]:
-        return self.store.read_json(project_id, self._job_path(job_id))
+        rec = self.store.read_json(project_id, self._job_path(job_id))
+        if not rec:
+            return rec
+        events = [
+            row for row in self.store.read_jsonl(project_id, "sessions/session_001.jsonl")
+            if row.get("job_id") == job_id
+        ]
+        detail = {**rec, "events": events, "event_total": len(events)}
+        manifest = next((row.get("data") for row in reversed(events) if row.get("event") == "CONTEXT_MANIFEST"), None)
+        trust_report = next((row.get("data") for row in reversed(events) if row.get("event") == "TRUST_REPORT"), None)
+        if manifest is not None:
+            detail["context_manifest"] = manifest
+        if trust_report is not None:
+            detail["trust_report_event"] = trust_report
+        return detail
 
     def list_jobs(self, project_id: str, status: str | None = None, chapter_id: str | None = None) -> list[dict[str, Any]]:
         root = self.store._safe_path(project_id, "meta/jobs")
