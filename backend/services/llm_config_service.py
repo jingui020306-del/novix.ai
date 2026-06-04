@@ -5,6 +5,25 @@ from pathlib import Path
 from typing import Any
 
 
+TASK_AGENT_MODULES = [
+    "setup_story",
+    "setup_character",
+    "setup_lines",
+    "outline_research",
+    "chapter_writer",
+    "chapter_reviewer",
+    "proofreader",
+    "canon_extractor",
+    "timeline_checker",
+    "scene_checker",
+    "foreshadow_tracker",
+    "recap_reviewer",
+    "writer",
+    "critic",
+    "editor",
+]
+
+
 class LLMConfigService:
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
@@ -20,7 +39,7 @@ class LLMConfigService:
                 "mock_default": {"provider": "mock", "model": "mock-writer-v1", "base_url": "", "api_key": "", "timeout_s": 60, "stream": True}
             })
         if not self.assignments_file.exists():
-            self.write_assignments({"writer": "mock_default", "critic": "mock_default", "editor": "mock_default", "canon_extractor": "mock_default"})
+            self.write_assignments({module: "mock_default" for module in TASK_AGENT_MODULES})
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         if not path.exists():

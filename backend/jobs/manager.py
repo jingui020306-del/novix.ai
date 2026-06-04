@@ -170,6 +170,13 @@ class JobManager:
 
         req_profile_id = payload.get("llm_profile_id")
         assignment_profile_id = assignments.get(module)
+        legacy_module = {
+            "chapter_writer": "writer",
+            "chapter_reviewer": "critic",
+            "proofreader": "editor",
+        }.get(module)
+        if legacy_module and (not assignment_profile_id or assignment_profile_id == "mock_default") and assignments.get(legacy_module):
+            assignment_profile_id = assignments.get(legacy_module)
         project_default = project.get("default_llm_profile_id", "mock_default")
         req_id = req_profile_id or assignment_profile_id or project_default
 
@@ -329,7 +336,8 @@ class JobManager:
             selection_range = self._normalize_selection_range(payload)
             scene = bp.get("scene_plan", [])[scene_index]
             outline = self.store.read_yaml(project_id, "cards/outline_001.yaml")
-            req_profile_id, selected, fallback = self._resolve_profile(project_id, payload, "writer")
+            generation_control = payload.get("generation_control") if isinstance(payload.get("generation_control"), dict) else {}
+            req_profile_id, selected, fallback = self._resolve_profile(project_id, payload, "chapter_writer")
 
             plan = {"scene": scene, "beats": outline.get("payload", {}).get("beats", [])}
             await self.emit(project_id, job_id, "DIRECTOR_PLAN", {**plan, "output_summary": "导演阶段生成场景计划"})
@@ -372,6 +380,7 @@ class JobManager:
 
             manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle)
             manifest["llm"] = {"requested_profile_id": req_profile_id, "requested_provider": selected.get("provider"), "requested_model": selected.get("model")}
+            manifest["generation_control"] = generation_control
             manifest["usage_estimate"] = {"prompt_tokens": 0, "completion_tokens": 0}
             manifest["manifest_hash"] = self._hash_payload(manifest)
             manifest["evidence_policy"] = {"required_quote_for_supported": True, "unsupported_without_quote": True}
@@ -413,7 +422,7 @@ class JobManager:
             await self.emit(project_id, job_id, "CLAIM_VERIFICATION", {"chapter_id": chapter_id, "verified_mark_ids": [m.get("mark_id") for m in supported], "unsupported_mark_ids": [m.get("mark_id") for m in unsupported], "provider": "rules", "model": "quote-verifier-v1", "input_summary": "回查 quote 和行号", "output_summary": f"{len(unsupported)} 条未证实"})
 
             critic_messages = [{"role": "system", "content": "你是审稿人，输出一句主要问题。"}, {"role": "user", "content": draft[:900] + "\n证据:" + str(manifest.get("critic_evidence", [])[:3])}]
-            _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "critic")
+            _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "chapter_reviewer")
             critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback)
             issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
             style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
@@ -429,7 +438,7 @@ class JobManager:
                 {"role": "system", "content": "你是编辑。输出JSON: {\"ops\":[{\"op_id\":\"op_001\",\"type\":\"replace\",\"target_range\":{\"start\":2,\"end\":3},\"before\":\"...\",\"after\":\"...\",\"rationale\":\"...\"}]}. 若给定 selection_range，则所有 target_range 必须完全落在 selection_range 内。"},
                 {"role": "user", "content": f"{editor_scope_hint}\n{draft[:1200]}"},
             ]
-            _, editor_selected, editor_fallback = self._resolve_profile(project_id, payload, "editor")
+            _, editor_selected, editor_fallback = self._resolve_profile(project_id, payload, "proofreader")
             editor_out, editor_used = await self._complete_with_fallback(project_id, job_id, "editor", editor_messages, editor_selected, editor_fallback)
             ops = []
             try:
