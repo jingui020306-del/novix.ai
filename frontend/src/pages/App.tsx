@@ -331,6 +331,7 @@ export default function App() {
   const [alignmentConfirmed, setAlignmentConfirmed] = useState(false)
   const [alignmentDiscussionInput, setAlignmentDiscussionInput] = useState('')
   const [alignmentMessages, setAlignmentMessages] = useState<any[]>([])
+  const [chapterWorkMode, setChapterWorkMode] = useState<'alignment' | 'draft'>('alignment')
   const [selectedMarkId, setSelectedMarkId] = useState('')
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
@@ -3864,6 +3865,7 @@ export default function App() {
                   <Textarea
                     className='font-writing min-h-[360px] resize-y bg-amber-50/60 text-[15px] leading-7 dark:bg-amber-950/20'
                     value={alignmentIdea}
+                    onFocus={() => setChapterWorkMode('alignment')}
                     onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
                     placeholder='这里保留作者最原始的想法，不需要完整：这一章想写什么、人物什么感觉、哪里不要太快揭露。'
                   />
@@ -3884,6 +3886,7 @@ export default function App() {
                   <Textarea
                     className='min-h-[110px] resize-y'
                     value={alignmentDiscussionInput}
+                    onFocus={() => setChapterWorkMode('alignment')}
                     onChange={(e) => setAlignmentDiscussionInput(e.target.value)}
                     placeholder='继续补充：比如这章更压抑、某人不能主动坦白、结尾留下误会。'
                   />
@@ -3946,6 +3949,7 @@ export default function App() {
               <Textarea
                 className='font-writing min-h-[190px] resize-y whitespace-pre-wrap bg-white/80 text-[15px] leading-7 dark:bg-slate-950/30'
                 value={alignmentAgreedDraft}
+                onFocus={() => setChapterWorkMode('alignment')}
                 onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
                 placeholder='最后一步才改这里：作者从右侧挑一版，或自己重写成最终开写要求。'
               />
@@ -4012,8 +4016,7 @@ export default function App() {
             extra={
               <div className='flex flex-wrap gap-2'>
                 <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? '保存中...' : '保存正文'}</Button>
-                <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? '检查中...' : '保存并检查'}</Button>
-                <Button onClick={analyzeMarks} disabled={chapterSaving}>检查要求</Button>
+                <Button onClick={() => { setChapterWorkMode('draft'); analyzeMarks() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? '检查中...' : '检查要求'}</Button>
                 <Button variant='primary' onClick={requestRunJobWithAgreement} disabled={!alignmentReady}>按共识生成</Button>
               </div>
             }
@@ -4083,37 +4086,38 @@ export default function App() {
                 </div>
               </details>
             </div>
-            <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3'>
-              <div className='mb-2 flex items-center justify-between gap-2'>
-                <span className='text-sm font-medium'>AI 生成控制</span>
-                <Badge>{GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</Badge>
-              </div>
-              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
-                <div>
-                  <label className='text-xs text-muted'>生成范围</label>
-                  <Select value={generationScope} onChange={(e) => setGenerationScope(e.target.value)}>
-                    {GENERATION_SCOPE_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                  </Select>
+            <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs'>
+              <summary className='cursor-pointer px-3 py-2 font-medium'>
+                AI 生成控制 <span className='ml-2 text-muted'>({GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope})</span>
+              </summary>
+              <div className='border-t border-border p-3'>
+                <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
+                  <div>
+                    <label className='text-xs text-muted'>生成范围</label>
+                    <Select value={generationScope} onChange={(e) => setGenerationScope(e.target.value)}>
+                      {GENERATION_SCOPE_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className='text-xs text-muted'>停止点</label>
+                    <Select value={generationStopPoint} onChange={(e) => setGenerationStopPoint(e.target.value)}>
+                      {GENERATION_STOP_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className='text-xs text-muted'>检查方式</label>
+                    <Select value={generationCheckMode} onChange={(e) => setGenerationCheckMode(e.target.value)}>
+                      {GENERATION_CHECK_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                    </Select>
+                  </div>
                 </div>
-                <div>
-                  <label className='text-xs text-muted'>停止点</label>
-                  <Select value={generationStopPoint} onChange={(e) => setGenerationStopPoint(e.target.value)}>
-                    {GENERATION_STOP_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                  </Select>
-                </div>
-                <div>
-                  <label className='text-xs text-muted'>检查方式</label>
-                  <Select value={generationCheckMode} onChange={(e) => setGenerationCheckMode(e.target.value)}>
-                    {GENERATION_CHECK_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                  </Select>
+                <div className='mt-2 flex flex-wrap gap-3 text-xs'>
+                  <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseCards} onChange={(e) => setGenerationUseCards(e.target.checked)} /> 使用人物/世界/文风卡</label>
+                  <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseTechniques} onChange={(e) => setGenerationUseTechniques(e.target.checked)} /> 使用技法挂载</label>
+                  <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseLines} onChange={(e) => setGenerationUseLines(e.target.checked)} /> 使用脉络/明暗线</label>
                 </div>
               </div>
-              <div className='mt-2 flex flex-wrap gap-3 text-xs'>
-                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseCards} onChange={(e) => setGenerationUseCards(e.target.checked)} /> 使用人物/世界/文风卡</label>
-                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseTechniques} onChange={(e) => setGenerationUseTechniques(e.target.checked)} /> 使用技法挂载</label>
-                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseLines} onChange={(e) => setGenerationUseLines(e.target.checked)} /> 使用脉络/明暗线</label>
-              </div>
-            </div>
+            </details>
             <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs'>
               <summary className='cursor-pointer px-3 py-2 font-medium'>只修改正文中的一小段</summary>
               <div className='grid grid-cols-12 gap-2 border-t border-border p-3'>
@@ -4163,6 +4167,7 @@ export default function App() {
                               key={mark.mark_id}
                               className={`w-full rounded-ui border px-2 py-1 text-left text-[11px] ${supportClass(level)}`}
                               onClick={() => {
+                                setChapterWorkMode('draft')
                                 setSelectedMarkId(mark.mark_id)
                                 const start = Number(mark?.span?.start_line || 0)
                                 const end = Number(mark?.span?.end_line || start)
@@ -4184,6 +4189,7 @@ export default function App() {
                 id='chapter-manuscript-editor'
                 className='editor-text col-span-9 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7'
                 value={chapterEditorText}
+                onFocus={() => setChapterWorkMode('draft')}
                 onChange={(e) => setChapterEditorText(e.target.value)}
                 placeholder='开始写这一章...'
               />
@@ -5042,8 +5048,24 @@ export default function App() {
             )
           })}
         </div>
+        <div className='mt-2 grid grid-cols-2 gap-1 text-xs'>
+          <button
+            className={`rounded-ui border px-2 py-1 ${chapterWorkMode === 'alignment' ? 'border-teal-300 bg-teal-50 text-teal-800 dark:bg-teal-950/30 dark:text-teal-100' : 'border-border bg-surface-2 text-muted'}`}
+            onClick={() => setChapterWorkMode('alignment')}
+          >
+            写法
+          </button>
+          <button
+            className={`rounded-ui border px-2 py-1 ${chapterWorkMode === 'draft' ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100' : 'border-border bg-surface-2 text-muted'}`}
+            onClick={() => setChapterWorkMode('draft')}
+          >
+            正文
+          </button>
+        </div>
       </div>
 
+      {chapterWorkMode === 'alignment' ? (
+        <>
       <Card title='Techniques' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
         <div className='space-y-2 text-xs'>
           {rightPinnedTechniqueRows.map((row: any) => {
@@ -5116,7 +5138,25 @@ export default function App() {
           </div>
         </div>
       </Card>
-
+        </>
+      ) : (
+        <>
+      <Card title='风险概览' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '--'}</Badge>} className='module-card module-risk'>
+        <div className='grid grid-cols-4 gap-1 text-center text-xs'>
+          {[
+            ['supported', 'OK'],
+            ['partial', 'Part'],
+            ['unsupported', 'Miss'],
+            ['contradicted', 'Risk'],
+          ].map(([level, label]) => (
+            <div key={level} className='rounded-ui border border-border bg-surface p-1'>
+              <div className='font-display font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
+              <div className='text-[10px] text-muted'>{label}</div>
+            </div>
+          ))}
+        </div>
+        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>检查正文</Button>
+      </Card>
       <Card title='本章要求点亮' className='module-card module-draft'>
         <div className='space-y-1'>
           {requirementLights.map((item: any, idx: number) => {
@@ -5185,6 +5225,8 @@ export default function App() {
           </div>
         ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
       </Card>
+        </>
+      )}
 
       <details className='rounded-ui border border-border bg-surface'>
         <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>维护记录 <span className='text-xs text-muted'>开源维护 / 调试</span></summary>
