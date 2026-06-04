@@ -3688,6 +3688,47 @@ export default function App() {
             </div>
           </Card>
 
+          <Card title='本地数据与安全'>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>API Key 存储</span>
+                  <Badge tone={llmStatus?.storage?.api_keys_returned_in_status ? 'warn' : 'success'}>
+                    {llmStatus?.storage?.api_keys_returned_in_status ? 'visible' : 'not returned'}
+                  </Badge>
+                </div>
+                <div className='space-y-1 text-muted'>
+                  <div>Profile 文件: {llmStatus?.storage?.profiles_path || '-'}</div>
+                  <div>Agent 分配文件: {llmStatus?.storage?.assignments_path || '-'}</div>
+                  <div>状态接口只显示 api_key_configured，不显示 API key 原文。</div>
+                </div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>作者确认策略</span>
+                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? 'auto apply on' : 'manual review'}</Badge>
+                </div>
+                <div className='space-y-1 text-muted'>
+                  <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
+                  <div>Proofread patch 默认应由作者接受/拒绝。</div>
+                  <div>证据标记没有真实 quote 时不能显示为已命中。</div>
+                </div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs md:col-span-2'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>项目备份与导出</span>
+                  <Badge>{project}</Badge>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button onClick={downloadProjectBackup}>导出项目备份</Button>
+                  <Button onClick={downloadManuscriptMarkdown}>导出正文 Markdown</Button>
+                  <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
+                </div>
+                <div className='mt-2 text-muted'>备份包含项目资料；正文 Markdown 适合投稿、迁移和人工阅读。导入备份会作为新项目恢复，不覆盖当前项目。</div>
+              </div>
+            </div>
+          </Card>
+
           <Card title='LLM Profiles (Global)'>
             <p className='text-xs text-muted mb-2'>Create a profile from a provider preset, then assign writer / critic / editor agents below. Advanced JSON editing remains available.</p>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
