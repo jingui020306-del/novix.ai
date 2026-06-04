@@ -21,6 +21,19 @@ async def create_job(project_id: str, body: dict, jm: JobManager = Depends(get_m
     return {"job_id": job_id}
 
 
+@router.get('/projects/{project_id}/jobs')
+def list_jobs(project_id: str, status: str | None = None, chapter_id: str | None = None, jm: JobManager = Depends(get_manager)):
+    return jm.list_jobs(project_id, status=status, chapter_id=chapter_id)
+
+
+@router.get('/projects/{project_id}/jobs/{job_id}')
+def get_job(project_id: str, job_id: str, jm: JobManager = Depends(get_manager)):
+    rec = jm.get_job(project_id, job_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail='job not found')
+    return rec
+
+
 @router.websocket('/jobs/{job_id}/stream')
 async def job_stream(job_id: str, websocket: WebSocket):
     from main import job_manager

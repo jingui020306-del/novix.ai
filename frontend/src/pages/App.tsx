@@ -160,7 +160,9 @@ export default function App() {
   const [styleUploadText, setStyleUploadText] = useState('')
   const [activeStyleAssets, setActiveStyleAssets] = useState<string[]>([])
   const [llmProfileId, setLlmProfileId] = useState('mock_default')
+  const [useAgentAssignments, setUseAgentAssignments] = useState(true)
   const [selectedChapter, setSelectedChapter] = useState('chapter_001')
+  const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedProposalId, setSelectedProposalId] = useState('')
   const [selectedBlueprintId, setSelectedBlueprintId] = useState('')
   const [highlightRange, setHighlightRange] = useState<{ start: number; end: number } | null>(null)
@@ -171,6 +173,7 @@ export default function App() {
   const [selectionMode, setSelectionMode] = useState<'line' | 'paragraph'>('line')
   const [selectionStart, setSelectionStart] = useState('')
   const [selectionEnd, setSelectionEnd] = useState('')
+  const [pendingWriteJob, setPendingWriteJob] = useState<{ maxTokens: number; range: { start: number; end: number } | null; label: string } | null>(null)
   const [analyzeBusy, setAnalyzeBusy] = useState(false)
   const [analyzeResult, setAnalyzeResult] = useState<any>(null)
   const [factRevisionModal, setFactRevisionModal] = useState<{ open: boolean; fact: any | null; patch: string; reason: string }>({ open: false, fact: null, patch: '{}', reason: '' })
@@ -203,6 +206,7 @@ export default function App() {
   })
 
   const schemaCacheRef = useRef<SchemaCache>({ cardSchemas: {} })
+  const backupImportInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const loaded = loadSettings()
@@ -250,10 +254,15 @@ export default function App() {
   const { data: globalProfiles, mutate: mutateGlobalProfiles } = useSWR('/api/config/llm/profiles', api.get)
   const { data: globalAssignments, mutate: mutateGlobalAssignments } = useSWR('/api/config/llm/assignments', api.get)
   const { data: providersMeta } = useSWR('/api/config/llm/providers_meta', api.get)
+  const { data: llmStatus, mutate: mutateLlmStatus } = useSWR('/api/config/llm/status', api.get)
   const { data: memoryPacks, mutate: mutateMemoryPacks } = useSWR(project ? `/api/projects/${project}/memory_packs?chapter_id=${selectedChapter}` : null, api.get)
   const { data: evidenceMarks, mutate: mutateEvidenceMarks } = useSWR(project ? `/api/projects/${project}/chapters/${selectedChapter}/evidence-marks` : null, api.get)
   const { data: trustReport, mutate: mutateTrustReport } = useSWR(project ? `/api/projects/${project}/trust-report?chapter_id=${selectedChapter}` : null, api.get)
   const { data: buildDraftRows, mutate: mutateBuildDraftRows } = useSWR(project ? `/api/projects/${project}/build-drafts` : null, api.get)
+  const { data: jobRows, mutate: mutateJobs } = useSWR(project ? `/api/projects/${project}/jobs` : null, api.get)
+  const { data: selectedJobDetail, mutate: mutateSelectedJobDetail } = useSWR(project && selectedJobId ? `/api/projects/${project}/jobs/${selectedJobId}` : null, api.get)
+  const { data: chapterReviewRows, mutate: mutateChapterReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/reviews` : null, api.get)
+  const { data: patchReviewRows, mutate: mutatePatchReviews } = useSWR(project ? `/api/projects/${project}/drafts/${selectedChapter}/patch-reviews` : null, api.get)
 
   const [storyForm, setStoryForm] = useState<any>(normalizeStoryCard(null))
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
@@ -262,8 +271,10 @@ export default function App() {
   const [toolSkillForm, setToolSkillForm] = useState<any>(null)
   const [profilesEditor, setProfilesEditor] = useState('')
   const [assignmentsEditor, setAssignmentsEditor] = useState('')
+  const [assignmentDraft, setAssignmentDraft] = useState<Record<string, string>>({})
   const [presetProfileId, setPresetProfileId] = useState('')
   const [selectedPresetId, setSelectedPresetId] = useState('openai_compat:deepseek')
+  const [profileDraft, setProfileDraft] = useState<any>({})
   const [selectedMemoryPackId, setSelectedMemoryPackId] = useState('')
   const [storyPlanningTab, setStoryPlanningTab] = useState('Overview')
   const [chapterEditorText, setChapterEditorText] = useState('')
@@ -273,7 +284,8 @@ export default function App() {
   const currentManifest = events.filter((e) => e.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
   const latestPatch = events.filter((e) => e.event === 'EDITOR_PATCH').slice(-1)[0]?.data
 
-  const profiles = projectInfo?.llm_profiles || {}
+  const projectProfiles = projectInfo?.llm_profiles || {}
+  const profiles = { ...(globalProfiles?.profiles || {}), ...projectProfiles }
   const providerPresets = ((providersMeta?.providers || []) as ProviderMeta[])
   const selectedPreset = providerPresets.find((x) => x.provider_id === selectedPresetId)
   const { data: selectedMemoryPack } = useSWR(
@@ -294,8 +306,36 @@ export default function App() {
   const evidenceMarkRows = Array.isArray(evidenceMarks) ? evidenceMarks : []
   const selectedMark = evidenceMarkRows.find((m: any) => m.mark_id === selectedMarkId) || evidenceMarkRows[0]
   const buildDraftList = Array.isArray(buildDraftRows) ? buildDraftRows : []
+  const jobList = Array.isArray(jobRows) ? jobRows : []
+  const latestJob = jobList[0]
+  const selectedJobSummary = selectedJobDetail || jobList.find((job: any) => job.job_id === selectedJobId)
+  const selectedJobEvents = Array.isArray(selectedJobDetail?.events) ? selectedJobDetail.events : []
+  const selectedJobManifest = selectedJobDetail?.context_manifest || selectedJobEvents.filter((evt: any) => evt.event === 'CONTEXT_MANIFEST').slice(-1)[0]?.data
+  const selectedJobTrust = selectedJobDetail?.trust_report_event || selectedJobEvents.filter((evt: any) => evt.event === 'TRUST_REPORT').slice(-1)[0]?.data
+  const chapterReviewList = Array.isArray(chapterReviewRows) ? chapterReviewRows : []
+  const pendingChapterReviews = chapterReviewList.filter((x: any) => x.status === 'pending_author_review')
+  const patchReviewList = Array.isArray(patchReviewRows) ? patchReviewRows : []
+  const pendingPatchReviews = patchReviewList.filter((x: any) => x.status === 'pending_author_review')
+  const activePatchReview = pendingPatchReviews[0] || patchReviewList[0]
+  const reviewPatch = latestPatch?.ops?.length ? latestPatch : activePatchReview ? { ...activePatchReview, patch_review_id: activePatchReview.review_id } : null
   const pendingBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') === 'pending')
   const processedBuildDrafts = buildDraftList.filter((x: any) => (x.status || 'pending') !== 'pending')
+  const profileHealthRows = Array.isArray(llmStatus?.profiles) ? llmStatus.profiles : []
+  const selectedProfileHealth = profileHealthRows.find((row: any) => row.profile_id === llmProfileId)
+  const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
+  const writeRouteRows = useAgentAssignments
+    ? agentModuleRows
+    : ['writer', 'critic', 'editor', 'canon_extractor'].map((module) => ({
+      module,
+      profile_id: llmProfileId,
+      provider: selectedProfileHealth?.provider || profiles[llmProfileId]?.provider || 'missing',
+      model: selectedProfileHealth?.model || profiles[llmProfileId]?.model || '',
+      is_mock: Boolean(selectedProfileHealth?.is_mock || profiles[llmProfileId]?.provider === 'mock'),
+      missing_fields: selectedProfileHealth?.missing_fields || (!profiles[llmProfileId] ? ['profile'] : []),
+      profile_missing: !profiles[llmProfileId],
+      requires_api_key: selectedProfileHealth?.requires_api_key,
+      api_key_configured: selectedProfileHealth?.api_key_configured,
+    }))
   const buildDraftHistoryRows = buildDraftHistoryFilter === 'all' ? processedBuildDrafts : processedBuildDrafts.filter((x: any) => x.status === buildDraftHistoryFilter)
   const buildDraftHistoryCounts = {
     all: processedBuildDrafts.length,
@@ -304,6 +344,12 @@ export default function App() {
     rejected: processedBuildDrafts.filter((x: any) => x.status === 'rejected').length,
   }
   const acceptedScopeLabels = (rec: any) => (Array.isArray(rec?.accepted_scope) ? rec.accepted_scope.filter((x: any) => typeof x === 'string' && x.trim()) : [])
+  const hasText = (value: any) => String(value || '').trim().length > 0
+  const hasArrayItems = (value: any) => Array.isArray(value) && value.some((item: any) => {
+    if (typeof item === 'string') return hasText(item)
+    if (!item || typeof item !== 'object') return Boolean(item)
+    return Object.values(item).some((entry) => Array.isArray(entry) ? entry.length > 0 : hasText(entry))
+  })
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -373,13 +419,98 @@ export default function App() {
     }
   }
 
+  const saveProfileDraft = async () => {
+    const profileId = (presetProfileId || '').trim()
+    if (!profileId) {
+      push('Please input profile id before saving', 'error')
+      return
+    }
+    const required = selectedPreset?.required_fields || ['provider', 'model']
+    const existing = globalProfiles?.profiles?.[profileId] || {}
+    const normalized = {
+      provider: String(profileDraft.provider || selectedPreset?.defaults?.provider || '').trim(),
+      model: String(profileDraft.model || '').trim(),
+      base_url: String(profileDraft.base_url || '').trim(),
+      api_key: String(profileDraft.api_key || existing.api_key || ''),
+      timeout_s: Number(profileDraft.timeout_s || 60),
+      stream: Boolean(profileDraft.stream ?? selectedPreset?.supports_stream ?? true),
+    }
+    const missing = required.filter((field) => !String((normalized as any)[field] || '').trim())
+    if (missing.length) {
+      push(`Missing required fields: ${missing.join(', ')}`, 'error')
+      return
+    }
+    try {
+      await api.post('/api/config/llm/profiles', { mode: 'upsert', id: profileId, profile: normalized })
+      const next = { ...(globalProfiles?.profiles || {}), [profileId]: normalized }
+      setProfilesEditor(JSON.stringify(next, null, 2))
+      await mutateGlobalProfiles()
+      await mutateLlmStatus()
+      push(`Profile saved: ${profileId}`)
+    } catch {
+      push('Profile save failed', 'error')
+    }
+  }
+
+  const loadProfileDraft = (profileId: string) => {
+    const profile = globalProfiles?.profiles?.[profileId] || {}
+    const matchedPreset = providerPresets.find((preset) => {
+      const defaults = preset.defaults || {}
+      return defaults.provider === profile.provider && (!defaults.base_url || defaults.base_url === profile.base_url)
+    }) || providerPresets.find((preset) => preset.defaults?.provider === profile.provider)
+    if (matchedPreset) setSelectedPresetId(matchedPreset.provider_id)
+    setPresetProfileId(profileId)
+    setProfileDraft({ ...profile, api_key: '' })
+    push(`Loaded profile: ${profileId}`)
+  }
+
+  const deleteProfileDraft = async (profileId: string) => {
+    if (profileId === 'mock_default') {
+      push('mock_default cannot be deleted', 'error')
+      return
+    }
+    try {
+      await api.post('/api/config/llm/profiles', { mode: 'delete', id: profileId })
+      if (presetProfileId === profileId) {
+        setPresetProfileId('')
+        setProfileDraft({ ...(selectedPreset?.defaults || {}) })
+      }
+      await mutateGlobalProfiles()
+      await mutateLlmStatus()
+      push(`Profile deleted: ${profileId}`)
+    } catch {
+      push('Profile delete failed', 'error')
+    }
+  }
+
+  const saveAgentAssignment = async (module: string, profileId: string) => {
+    try {
+      await api.post('/api/config/llm/assignments', { mode: 'upsert', module, profile_id: profileId })
+      const next = { ...assignmentDraft, [module]: profileId }
+      setAssignmentDraft(next)
+      setAssignmentsEditor(JSON.stringify(next, null, 2))
+      await mutateGlobalAssignments()
+      await mutateLlmStatus()
+      push(`${module} assigned to ${profileId}`)
+    } catch {
+      push('Agent assignment save failed', 'error')
+    }
+  }
+
   useEffect(() => {
     setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))
   }, [globalProfiles])
 
   useEffect(() => {
-    setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))
+    const next = globalAssignments?.assignments || {}
+    setAssignmentsEditor(JSON.stringify(next, null, 2))
+    setAssignmentDraft(next)
   }, [globalAssignments])
+
+  useEffect(() => {
+    const preset = providerPresets.find((x) => x.provider_id === selectedPresetId)
+    if (preset) setProfileDraft({ ...(preset.defaults || {}) })
+  }, [providersMeta, selectedPresetId])
 
   useEffect(() => {
     const rows = Array.isArray(memoryPacks) ? memoryPacks : []
@@ -1090,6 +1221,18 @@ export default function App() {
 
   const runJob = async (maxTokens = 2400, range: { start: number; end: number } | null = null) => {
     try {
+      const routeRisks = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length)
+      if (useAgentAssignments && !writeRouteRows.length) {
+        push('Agent assignments 状态还未加载，生成时将按后端配置解析', 'error')
+      } else if (useAgentAssignments && routeRisks.length) {
+        push(`Agent assignments 有 ${routeRisks.length} 个模块未 ready，生成时可能 mock/fallback`, 'error')
+      } else if (!useAgentAssignments && selectedProfileHealth?.is_mock) {
+        push(`当前 profile ${llmProfileId} 是 mock 模式，会生成模拟结果`, 'error')
+      } else if (!useAgentAssignments && selectedProfileHealth?.missing_fields?.length) {
+        push(`当前 profile ${llmProfileId} 缺少: ${selectedProfileHealth.missing_fields.join(', ')}，生成时可能 fallback`, 'error')
+      } else if (!useAgentAssignments && !profiles[llmProfileId]) {
+        push(`当前 profile ${llmProfileId} 未找到，生成时可能 fallback`, 'error')
+      }
       setSelectedOpIds([])
       setEvents([])
       const j = await api.post(`/api/projects/${project}/jobs/write`, {
@@ -1098,12 +1241,13 @@ export default function App() {
         scene_index: 0,
         agent_mode: 'three_agent',
         agents: ['reviewer', 'writer', 'proofreader'],
-        llm_profile_id: llmProfileId,
+        llm_profile_id: useAgentAssignments ? undefined : llmProfileId,
         auto_apply_patch: Boolean(autoApplyPatch),
         word_checkpoint_chars: 1500,
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
       })
+      mutateJobs()
       const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const ws = new WebSocket(`${wsProto}://${window.location.host}/api/jobs/${j.job_id}/stream`)
       ws.onmessage = (e) => {
@@ -1120,12 +1264,19 @@ export default function App() {
           mutateEvidenceMarks()
           mutateTrustReport()
           mutateProposals()
+          mutateJobs()
+          mutateChapterReviews()
+          mutatePatchReviews()
           push('Job finished')
         }
       }
     } catch {
       push('Run job failed', 'error')
     }
+  }
+
+  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章') => {
+    setPendingWriteJob({ maxTokens, range, label })
   }
 
   const analyzeChapter = async () => {
@@ -1152,6 +1303,19 @@ export default function App() {
       push(`Marks analyzed: ${res?.marks?.length || 0}`)
     } catch {
       push('Analyze marks failed', 'error')
+    }
+  }
+
+  const updateEvidenceFeedback = async (mark: any, action: string) => {
+    if (!mark?.mark_id) return
+    try {
+      await api.post(`/api/projects/${project}/chapters/${selectedChapter}/evidence-marks/${mark.mark_id}/feedback`, { action })
+      await mutateEvidenceMarks()
+      await mutateTrustReport()
+      const labels: Record<string, string> = { confirm_hit: '已确认命中', false_positive: '已标为误判', ignore_chapter: '本章已忽略' }
+      push(labels[action] || '反馈已保存')
+    } catch {
+      push('反馈保存失败', 'error')
     }
   }
 
@@ -1211,6 +1375,7 @@ export default function App() {
       await mutateDraft()
       await mutateDraftDetails()
       await mutateVolumes()
+      await mutateChapterReviews()
       push('Chapter saved')
     } catch {
       push('Chapter save failed', 'error')
@@ -1219,17 +1384,43 @@ export default function App() {
     }
   }
 
-  const applySelectedPatch = async () => {
-    if (!latestPatch?.ops?.length) return
+  const updateChapterReview = async (review: any, status: string) => {
+    if (!review?.review_id) return
     try {
-      const accept = selectedOpIds.length ? selectedOpIds : latestPatch.ops.map((o: any) => o.op_id)
-      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: latestPatch.patch_id, patch_ops: latestPatch.ops, accept_op_ids: accept, selection_range: latestPatch.selection_range || undefined })
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/reviews/${review.review_id}`, { status })
+      await mutateChapterReviews()
+      await mutateDraft()
+      await mutateDraftDetails()
+      push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已拒绝')
+    } catch {
+      push('Review update failed', 'error')
+    }
+  }
+
+  const applySelectedPatch = async () => {
+    if (!reviewPatch?.ops?.length) return
+    try {
+      const accept = selectedOpIds.length ? selectedOpIds : reviewPatch.ops.map((o: any) => o.op_id)
+      await api.post(`/api/projects/${project}/drafts/${selectedChapter}/apply-patch`, { patch_id: reviewPatch.patch_id, patch_review_id: reviewPatch.patch_review_id || reviewPatch.review_id, patch_ops: reviewPatch.ops, accept_op_ids: accept, selection_range: reviewPatch.selection_range || undefined })
       mutateDraft()
       mutateVersions()
       mutateSessionMeta()
+      mutatePatchReviews()
       push('Patch applied')
     } catch {
       push('Patch apply failed', 'error')
+    }
+  }
+
+  const rejectPatchReview = async () => {
+    const reviewId = reviewPatch?.patch_review_id || reviewPatch?.review_id
+    if (!reviewId) return
+    try {
+      await api.put(`/api/projects/${project}/drafts/${selectedChapter}/patch-reviews/${reviewId}`, { status: 'rejected', accepted_op_ids: [] })
+      await mutatePatchReviews()
+      push('Patch rejected')
+    } catch {
+      push('Patch reject failed', 'error')
     }
   }
 
@@ -1249,11 +1440,42 @@ export default function App() {
   const rollbackVersion = async (versionId: string) => {
     try {
       await api.post(`/api/projects/${project}/drafts/${selectedChapter}/rollback`, { version_id: versionId })
-      mutateDraft()
-      mutateVersions()
+      await mutateDraft()
+      await mutateVersions()
+      await mutateDraftDetails()
       push(`Rolled back to ${versionId}`)
     } catch {
       push('Rollback failed', 'error')
+    }
+  }
+
+  const downloadProjectBackup = () => {
+    if (!project) return
+    window.location.href = `/api/projects/${project}/export.zip`
+  }
+
+  const downloadManuscriptMarkdown = () => {
+    if (!project) return
+    window.location.href = `/api/projects/${project}/export.md`
+  }
+
+  const importProjectBackup = async (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/projects/import.zip', { method: 'POST', body: form })
+      if (!res.ok) throw new Error(await res.text())
+      const body = await res.json()
+      await mutateProjects()
+      setProject(body.project_id)
+      setView('projects')
+      push(`备份已导入: ${body.project_id}`)
+    } catch {
+      push('备份导入失败', 'error')
+    } finally {
+      e.target.value = ''
     }
   }
 
@@ -2257,23 +2479,207 @@ export default function App() {
       const recentChapters = [...chapterRows].sort((a: any, b: any) => Number(b.order_index || 0) - Number(a.order_index || 0)).slice(0, 6)
       const unsupportedMarks = evidenceMarkRows.filter((m: any) => m?.detection?.support_level === 'unsupported' || m?.detection?.support_level === 'contradicted')
       const runningEvent = events.length > 0 && events.slice(-1)[0]?.event !== 'DONE'
-      const pendingPatchCount = latestPatch?.ops?.length || 0
+      const pendingPatchCount = pendingPatchReviews.length || latestPatch?.ops?.length || 0
+      const realReadyProfiles = profileHealthRows.filter((row: any) => !row.is_mock && !row.missing_fields?.length)
+      const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
+      const agentAssignmentsReady = agentModuleRows.length > 0 && agentModuleRows.every((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
+      const hasQuotedMarks = evidenceMarkRows.some((mark: any) => hasText(mark?.span?.quote) && Number(mark?.span?.start_line || 0) > 0)
+      const supportedMarks = evidenceMarkRows.filter((mark: any) => mark?.detection?.support_level === 'supported' && hasText(mark?.span?.quote))
+      const pinnedTechniqueCount = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques.length : 0
+      const pinnedCategoryCount = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories.length : 0
+      const goStoryStep = (step: string) => {
+        setView('story')
+        setBuildWizardStep(step)
+      }
+      const readinessGroups = [
+        {
+          id: 'foundation',
+          label: '大重要 · 建书底座',
+          detail: '决定这本书写什么、给谁看、不能写什么。',
+          items: [
+            { id: 'book_title', label: '书名', done: hasText(storyForm?.title), detail: storyForm?.title || '未填写', run: () => goStoryStep('basics') },
+            { id: 'genre', label: '题材', done: hasText(activeStoryPayload.genre), detail: activeStoryPayload.genre || '未填写', run: () => goStoryStep('basics') },
+            { id: 'keywords', label: '关键词', done: hasArrayItems(activeStoryPayload.keywords), detail: `${(activeStoryPayload.keywords || []).length || 0} 个`, run: () => goStoryStep('basics') },
+            { id: 'reader', label: '目标读者', done: hasText(activeStoryPayload.target_reader), detail: activeStoryPayload.target_reader || '未填写', run: () => goStoryStep('basics') },
+            { id: 'banned', label: '禁写事项', done: hasArrayItems(activeStoryPayload.banned_items), detail: `${(activeStoryPayload.banned_items || []).length || 0} 条`, run: () => goStoryStep('basics') },
+          ],
+        },
+        {
+          id: 'story_core',
+          label: '大重要 · 故事核心',
+          detail: '让 AI 和作者对主线、主题、冲突有同一份理解。',
+          items: [
+            { id: 'logline', label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事', run: () => goStoryStep('outline') },
+            { id: 'theme', label: '主题', done: hasText(activeStoryPayload.theme), detail: activeStoryPayload.theme || '未填写', run: () => goStoryStep('outline') },
+            { id: 'worldview', label: '世界观', done: hasText(activeStoryPayload.worldview), detail: activeStoryPayload.worldview ? '已填写' : '未填写', run: () => goStoryStep('outline') },
+            { id: 'main_conflict', label: '主冲突', done: hasText(activeStoryPayload.main_conflict), detail: activeStoryPayload.main_conflict ? '已填写' : '未填写', run: () => goStoryStep('outline') },
+            { id: 'platform_style', label: '平台风格', done: hasText(activeStoryPayload.platform_style), detail: activeStoryPayload.platform_style || '未填写', run: () => goStoryStep('outline') },
+          ],
+        },
+        {
+          id: 'structure',
+          label: '大重要 · 结构脉络',
+          detail: '阶段、章节、明线、暗线、伏笔都在这里对齐。',
+          items: [
+            { id: 'stages', label: '阶段目标', done: hasArrayItems(activeStoryPayload.stages), detail: `${(activeStoryPayload.stages || []).filter((x: any) => hasText(x?.stage) || hasText(x?.goal)).length || 0} 个`, run: () => goStoryStep('scenes') },
+            { id: 'scenes', label: '重要场景', done: importantSceneRows.length > 0, detail: `${importantSceneRows.length} 个`, run: () => goStoryStep('scenes') },
+            { id: 'open_line', label: '明线节点', done: openLineRows.length > 0, detail: `${openLineRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'hidden_line', label: '暗线节点', done: hiddenLineRows.length > 0, detail: `${hiddenLineRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'foreshadowing', label: '伏笔节点', done: foreshadowingRows.length > 0, detail: `${foreshadowingRows.length} 个`, run: () => goStoryStep('lines') },
+            { id: 'chapter_plan', label: '章节矩阵', done: hasArrayItems(activeStoryPayload.chapter_plan), detail: `${(activeStoryPayload.chapter_plan || []).filter((x: any) => hasText(x?.chapter) || hasText(x?.title) || hasText(x?.focus)).length || 0} 行`, run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
+          ],
+        },
+        {
+          id: 'cards',
+          label: '大重要 · 卡片资产',
+          detail: '人物、风格、技法、工具 skill 会成为章节生成约束。',
+          items: [
+            { id: 'characters', label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('characters') } },
+            { id: 'style_cards', label: '文风卡', done: Array.isArray(styles) && styles.length > 0, detail: `${Array.isArray(styles) ? styles.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('style') } },
+            { id: 'technique_cards', label: '叙事技巧', done: Array.isArray(techniqueCards) && techniqueCards.length > 0, detail: `${Array.isArray(techniqueCards) ? techniqueCards.length : 0} 张`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+            { id: 'tool_skills', label: '工具 skill', done: Array.isArray(toolSkillCards) && toolSkillCards.length > 0, detail: `${Array.isArray(toolSkillCards) ? toolSkillCards.length : 0} 个`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+          ],
+        },
+        {
+          id: 'chapter',
+          label: '大重要 · 当前章节',
+          detail: '这一章是否能明确挂到卷、章节计划和要求节点。',
+          items: [
+            { id: 'volumes', label: '卷', done: volumeRows.length > 0, detail: `${volumeRows.length} 卷`, run: () => { if (volumeRows.length) setActiveActivity('explorer'); else void createVolume() } },
+            { id: 'chapters', label: '章', done: chapterRows.length > 0, detail: `${chapterRows.length} 章`, run: () => { if (chapterRows.length) { setView('chapter'); setActiveActivity('explorer') } else void createChapterInVolume(volumeRows[0]?.id || 'volume_default') } },
+            { id: 'chapter_title', label: '章节标题', done: hasText(chapterTitleDraft || currentChapterMeta?.chapter_title), detail: chapterTitleDraft || currentChapterMeta?.chapter_title || '未填写', run: () => { setView('chapter'); setActiveActivity('explorer') } },
+            { id: 'linked_plan', label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行`, run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
+            { id: 'linked_lines', label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}`, run: () => goStoryStep('lines') },
+            { id: 'pinned_techniques', label: '本章技法挂载', done: pinnedTechniqueCount + pinnedCategoryCount > 0, detail: `技法 ${pinnedTechniqueCount} · 分类 ${pinnedCategoryCount}`, run: () => { setView('chapter'); setActiveActivity('explorer') } },
+          ],
+        },
+        {
+          id: 'trust',
+          label: '大重要 · 可信点亮',
+          detail: 'AI 判断必须有正文 quote 和行号，不能只靠自述。',
+          items: [
+            { id: 'profile', label: '真实 API Profile', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个 ready`, run: () => setView('settings') },
+            { id: 'agents', label: 'Agent 分配', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} ready` : '未读取 runtime', run: () => setView('settings') },
+            { id: 'marks', label: '证据标记', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个 mark`, run: () => { setView('chapter'); void analyzeMarks() } },
+            { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
+            { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
+            { id: 'pending_reviews', label: '待审稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `稿 ${pendingChapterReviews.length} · patch ${pendingPatchCount}`, run: () => setView('chapter') },
+          ],
+        },
+      ]
+      const readinessItemCount = readinessGroups.reduce((sum, group) => sum + group.items.length, 0)
+      const readinessDoneCount = readinessGroups.reduce((sum, group) => sum + group.items.filter((item) => item.done).length, 0)
+      const readinessMajorDoneCount = readinessGroups.filter((group) => group.items.every((item) => item.done)).length
+      const renderReadinessGroup = (group: any) => {
+        const done = group.items.filter((item: any) => item.done).length
+        const allDone = done === group.items.length
+        return (
+          <div key={group.id} className={`rounded-ui border p-3 ${allDone ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
+            <div className='flex items-start justify-between gap-2'>
+              <div>
+                <div className='text-sm font-semibold'>{group.label}</div>
+                <div className='mt-1 text-xs text-muted'>{group.detail}</div>
+              </div>
+              <Badge tone={allDone ? 'success' : 'warn'}>{done}/{group.items.length}</Badge>
+            </div>
+            <div className='mt-3 flex flex-wrap gap-1.5'>
+              {group.items.map((item: any) => (
+                <button
+                  key={item.id}
+                  className={`rounded-full border px-2 py-1 text-left text-xs transition ${item.done ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : 'border-border bg-surface-2 text-muted hover:bg-surface'}`}
+                  onClick={item.run}
+                  title={`${item.label}: ${item.detail}`}
+                >
+                  <span className='font-medium'>{item.label}</span>
+                  <span className='ml-1 opacity-80'>{item.done ? '已亮' : '待补'}</span>
+                </button>
+              ))}
+            </div>
+            <div className='mt-2 text-[11px] text-muted'>
+              {group.items.filter((item: any) => !item.done).slice(0, 3).map((item: any) => `${item.label}: ${item.detail}`).join(' · ') || '这一块已经可以支撑开写。'}
+            </div>
+          </div>
+        )
+      }
+      const setupChecklist = [
+        {
+          id: 'api',
+          label: '配置 API Profile',
+          done: realReadyProfiles.length > 0,
+          detail: realReadyProfiles.length ? `${realReadyProfiles.length} 个可用真实 profile` : '还没有 ready 的真实 profile',
+          action: '去配置',
+          run: () => setView('settings'),
+        },
+        {
+          id: 'agents',
+          label: '分配三 Agent 模型',
+          done: agentAssignmentsReady,
+          detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 个模块 ready` : '等待 LLM runtime status',
+          action: '分配模型',
+          run: () => setView('settings'),
+        },
+        {
+          id: 'story',
+          label: '填写建书核心',
+          done: completedBuildSteps >= Math.min(4, storyBuildProgress.length),
+          detail: `${completedBuildSteps}/${storyBuildProgress.length} 个建设步骤`,
+          action: '打开向导',
+          run: () => { setView('story'); setBuildWizardStep('basics') },
+        },
+        {
+          id: 'characters',
+          label: '准备人物卡',
+          done: Array.isArray(chars) && chars.length > 0,
+          detail: `${Array.isArray(chars) ? chars.length : 0} 张人物卡`,
+          action: '去人物卡',
+          run: () => { setActiveActivity('cards'); setView('characters') },
+        },
+        {
+          id: 'chapters',
+          label: '创建卷 / 章',
+          done: volumeRows.length > 0 && chapterRows.length > 0,
+          detail: `${volumeRows.length} 卷 · ${chapterRows.length} 章`,
+          action: chapterRows.length ? '打开章节' : '新建章节',
+          run: () => {
+            if (chapterRows.length) {
+              setView('chapter')
+              setActiveActivity('explorer')
+            } else {
+              createChapterInVolume(volumeRows[0]?.id || 'volume_default')
+            }
+          },
+        },
+        {
+          id: 'evidence',
+          label: '建立证据标记',
+          done: evidenceMarkRows.length > 0 || Boolean(trustReport?.updated_at),
+          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个 mark · 风险 ${unsupportedMarks.length}` : '还没有分析当前章节',
+          action: '分析当前章',
+          run: () => { setView('chapter'); analyzeMarks() },
+        },
+      ]
+      const setupDoneCount = setupChecklist.filter((step) => step.done).length
       return (
         <div className='space-y-3 density-space'>
           <Card
             title='写作工作台'
             extra={<Button variant='primary' onClick={() => { setView('chapter'); setActiveActivity('explorer') }}>打开当前章节</Button>}
           >
-            <div className='grid grid-cols-4 gap-3'>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-5'>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>生成状态</div>
-                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (pendingPatchCount ? '待审稿' : '空闲')}</div>
-                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || 'no job event'}</div>
+                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
+                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || latestJob?.last_event || 'no job event'}</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>待审 Patch</div>
                 <div className='mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface p-3'>
+                <div className='text-xs text-muted'>待审 AI 草稿</div>
+                <div className='mt-1 text-lg font-semibold'>{pendingChapterReviews.length}</div>
+                <div className='text-xs text-muted'>确认后才视为作者稿</div>
               </div>
               <div className='rounded-ui border border-border bg-surface p-3'>
                 <div className='text-xs text-muted'>待确认草案</div>
@@ -2286,6 +2692,53 @@ export default function App() {
                 <div className='text-xs text-muted'>unsupported / contradicted</div>
               </div>
             </div>
+          </Card>
+
+          <Card
+            title='写作准备地图'
+            extra={<Badge tone={readinessDoneCount === readinessItemCount ? 'success' : 'warn'}>大重要 {readinessMajorDoneCount}/{readinessGroups.length} · 小节点 {readinessDoneCount}/{readinessItemCount}</Badge>}
+          >
+            <div className='flex flex-col gap-3 lg:flex-row'>
+              <div className='lg:w-64'>
+                <div className='rounded-ui border border-border bg-surface p-3'>
+                  <div className='text-xs text-muted'>当前开写状态</div>
+                  <div className='mt-1 text-2xl font-semibold'>{readinessMajorDoneCount}/{readinessGroups.length}</div>
+                  <div className='text-xs text-muted'>大重要节点已亮起</div>
+                  <Button
+                    className='mt-3 w-full'
+                    variant={readinessMajorDoneCount >= 4 ? 'primary' : 'secondary'}
+                    onClick={() => { setView('chapter'); setActiveActivity('explorer') }}
+                  >
+                    开始写当前章
+                  </Button>
+                  <div className='mt-2 text-xs text-muted'>
+                    点击下面任意小节点，会跳到对应填写页；绿色表示已有材料，灰色表示缺失或还没被证据点亮。
+                  </div>
+                </div>
+              </div>
+              <div className='grid flex-1 grid-cols-1 gap-2 xl:grid-cols-2'>
+                {readinessGroups.map(renderReadinessGroup)}
+              </div>
+            </div>
+          </Card>
+
+          <Card title='首次启动检查' extra={<Badge tone={setupDoneCount === setupChecklist.length ? 'success' : 'warn'}>{setupDoneCount}/{setupChecklist.length}</Badge>}>
+            <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
+              {setupChecklist.map((step) => (
+                <button
+                  key={step.id}
+                  className={`rounded-ui border px-3 py-2 text-left ${step.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}
+                  onClick={step.run}
+                >
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='text-sm font-medium'>{step.label}</span>
+                    <Badge tone={step.done ? 'success' : 'warn'}>{step.done ? 'ready' : step.action}</Badge>
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>{step.detail}</div>
+                </button>
+              ))}
+            </div>
+            <p className='mt-2 text-xs text-muted'>建议按顺序完成：先配置 API 和 Agent，再建书、建人物、建卷章，最后用证据标记检查 AI 是否真的写到了要求。</p>
           </Card>
 
           <Card title='建书完成度' extra={<Badge tone={completedBuildSteps === storyBuildProgress.length ? 'success' : 'warn'}>{completedBuildSteps}/{storyBuildProgress.length}</Badge>}>
@@ -2333,7 +2786,14 @@ export default function App() {
                   <div className='text-xs text-muted'>{p.title}</div>
                 </button>
               ))}
-              <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
+              <div className='flex flex-wrap gap-2'>
+                <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
+                <Button onClick={downloadProjectBackup}>导出备份</Button>
+                <Button onClick={downloadManuscriptMarkdown}>导出正文</Button>
+                <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
+              </div>
+              <input ref={backupImportInputRef} className='hidden' type='file' accept='.zip,application/zip' onChange={importProjectBackup} />
+              <div className='text-xs text-muted'>备份用于恢复全项目；正文 Markdown 用于投稿、迁移和直接阅读。</div>
             </div>
           </Card>
 
@@ -2392,15 +2852,97 @@ export default function App() {
             </Card>
             <Card title='待审 AI Patch'>
               <div className='space-y-1'>
-                {(latestPatch?.ops || []).slice(0, 5).map((op: any) => (
+                {(reviewPatch?.ops || []).slice(0, 5).map((op: any) => (
                   <button key={op.op_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => setView('chapter')}>
                     {op.op_id} · {op.rationale || op.type}
                   </button>
                 ))}
-                {!latestPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+                {!reviewPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
               </div>
             </Card>
           </div>
+
+          <Card title='最近 AI 任务'>
+            <div className='grid grid-cols-2 gap-2'>
+              {jobList.slice(0, 6).map((job: any) => (
+                <button
+                  key={job.job_id}
+                  className={`rounded-ui border px-3 py-2 text-left hover:bg-surface-2 ${selectedJobId === job.job_id ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface'}`}
+                  onClick={() => {
+                    if (job.chapter_id) setSelectedChapter(job.chapter_id)
+                    setSelectedJobId(job.job_id)
+                  }}
+                >
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='truncate text-sm font-medium'>{job.chapter_id || job.job_id}</span>
+                    <Badge tone={job.status === 'completed' ? 'success' : job.status === 'failed' || job.status === 'awaiting_review' ? 'warn' : 'default'}>
+                      {job.status || 'unknown'}
+                    </Badge>
+                  </div>
+                  <div className='mt-1 text-xs text-muted'>{job.last_event || job.stage || 'no event'} · {job.model || 'model pending'}</div>
+                  <div className='mt-1 text-xs text-muted'>{job.output_summary || job.input_summary || job.updated_at}</div>
+                </button>
+              ))}
+              {!jobList.length && <p className='text-sm text-muted'>还没有生成任务。生成本章后，这里会保留任务状态。</p>}
+            </div>
+          </Card>
+
+          {selectedJobSummary ? (
+            <Card
+              title='AI 任务详情'
+              extra={<Badge tone={selectedJobSummary.status === 'completed' ? 'success' : selectedJobSummary.status === 'failed' ? 'warn' : 'default'}>{selectedJobSummary.status || 'unknown'}</Badge>}
+            >
+              <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
+                <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+                  <div className='mb-2 font-medium'>{selectedJobSummary.job_id}</div>
+                  <div>Chapter: {selectedJobSummary.chapter_id || '-'}</div>
+                  <div>Stage: {selectedJobSummary.stage || selectedJobSummary.last_event || '-'}</div>
+                  <div>Provider: {selectedJobSummary.provider || '-'}</div>
+                  <div>Model: {selectedJobSummary.model || '-'}</div>
+                  <div>Fallback: {selectedJobSummary.fallback ? 'yes' : 'no'}</div>
+                  <div>Created: {selectedJobSummary.created_at || '-'}</div>
+                  <div>Updated: {selectedJobSummary.updated_at || '-'}</div>
+                  <div className='mt-2 flex flex-wrap gap-1'>
+                    <Button className='text-xs' onClick={() => mutateSelectedJobDetail()}>刷新详情</Button>
+                    <Button className='text-xs' onClick={() => { if (selectedJobSummary.chapter_id) setSelectedChapter(selectedJobSummary.chapter_id); setView('chapter'); setActiveActivity('explorer') }}>打开章节</Button>
+                  </div>
+                </div>
+                <div className='rounded-ui border border-border bg-surface p-3 text-xs lg:col-span-2'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <span className='font-medium'>Stage 历史</span>
+                    <Badge>{selectedJobEvents.length || selectedJobSummary.event_total || 0}</Badge>
+                  </div>
+                  <div className='max-h-72 space-y-1 overflow-auto'>
+                    {selectedJobEvents.map((evt: any, index: number) => {
+                      const data = evt.data || {}
+                      return (
+                        <div key={`${evt.event}-${index}`} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5'>
+                          <div className='flex flex-wrap items-center justify-between gap-2'>
+                            <span className='font-medium'>{evt.event}</span>
+                            <Badge tone={data.fallback ? 'warn' : 'default'}>{data.stage || evt.event}</Badge>
+                          </div>
+                          <div className='mt-1 text-muted'>{data.provider || 'system'} / {data.model || '-'} {data.fallback ? '(fallback)' : ''}</div>
+                          {data.input_summary ? <div className='mt-1'>Input: {data.input_summary}</div> : null}
+                          {data.output_summary ? <div className='mt-1'>Output: {data.output_summary}</div> : null}
+                        </div>
+                      )
+                    })}
+                    {!selectedJobEvents.length ? <p className='text-muted'>选择任务后会显示每个 stage 的输入摘要、输出摘要、provider/model 和 fallback。</p> : null}
+                  </div>
+                </div>
+              </div>
+              <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
+                <details className='rounded-ui border border-border bg-surface'>
+                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Context Manifest</summary>
+                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobManifest || {}, null, 2)}</pre>
+                </details>
+                <details className='rounded-ui border border-border bg-surface'>
+                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Trust Report</summary>
+                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobTrust || {}, null, 2)}</pre>
+                </details>
+              </div>
+            </Card>
+          ) : null}
 
           <div className='grid grid-cols-2 gap-3'>
             <Card title='待确认 Canon'>
@@ -2865,6 +3407,30 @@ export default function App() {
       }, {})
       return (
         <div className='space-y-3 density-space'>
+          <Card title='AI 草稿审阅' extra={<Badge tone={pendingChapterReviews.length ? 'warn' : 'success'}>{pendingChapterReviews.length ? '待确认' : '无待审'}</Badge>}>
+            <div className='space-y-2'>
+              {chapterReviewList.slice(0, 4).map((review: any) => (
+                <div key={review.review_id} className='rounded-ui border border-border bg-surface p-2 text-xs'>
+                  <div className='flex flex-wrap items-center justify-between gap-2'>
+                    <div>
+                      <div className='font-medium'>{review.review_id}</div>
+                      <div className='text-muted'>{review.source || 'writer_agent'} · {review.job_id || 'no job'} · {review.word_count || 0} 字</div>
+                    </div>
+                    <Badge tone={review.status === 'accepted' ? 'success' : review.status === 'pending_author_review' ? 'warn' : 'default'}>{review.status || 'unknown'}</Badge>
+                  </div>
+                  <div className='mt-2 text-muted'>{review.preview || '无预览'}</div>
+                  {review.status === 'pending_author_review' ? (
+                    <div className='mt-2 flex gap-2'>
+                      <Button className='text-xs' onClick={() => updateChapterReview(review, 'accepted')}>确认草稿</Button>
+                      <Button className='text-xs' onClick={() => updateChapterReview(review, 'rejected')}>拒绝草稿</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {!chapterReviewList.length && <p className='text-sm text-muted'>生成本章后，AI 草稿会先进入这里等待作者确认。</p>}
+            </div>
+          </Card>
+
           <Card
             title='Chapter Manuscript'
             extra={
@@ -2872,7 +3438,7 @@ export default function App() {
                 <Button onClick={saveChapterDraft} disabled={chapterSaving}>{chapterSaving ? 'Saving...' : 'Save'}</Button>
                 <Button onClick={async () => { await saveChapterDraft(); await analyzeChapter() }} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? 'Analyzing...' : 'Analyze & Save'}</Button>
                 <Button onClick={analyzeMarks} disabled={chapterSaving}>Analyze Marks</Button>
-                <Button variant='primary' onClick={() => runJob(2400)}>生成本章</Button>
+                <Button variant='primary' onClick={() => requestRunJob(2400, null, '生成本章')}>生成本章</Button>
               </div>
             }
           >
@@ -2919,12 +3485,45 @@ export default function App() {
                 </Select>
               </div>
               <div className='col-span-5'>
-                <label className='text-xs text-muted'>Model profile</label>
-                <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)}>
+                <label className='text-xs text-muted'>Model routing</label>
+                <label className='mb-1 flex items-center gap-2 text-xs'>
+                  <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
+                  use Settings agent assignments
+                </label>
+                <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)} disabled={useAgentAssignments}>
                   {Object.entries(profiles).map(([k, v]: any) => (
                     <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
                   ))}
                 </Select>
+                <div className='mt-1 flex flex-wrap items-center gap-2 text-xs'>
+                  {useAgentAssignments ? (
+                    <>
+                      <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
+                        assignments
+                      </Badge>
+                      <span className='text-muted'>{writeRouteRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/{writeRouteRows.length || 4} modules ready</span>
+                    </>
+                  ) : selectedProfileHealth ? (
+                    <>
+                      <Badge tone={selectedProfileHealth.is_mock ? 'warn' : selectedProfileHealth.missing_fields?.length ? 'warn' : 'success'}>
+                        {selectedProfileHealth.is_mock ? 'mock mode' : selectedProfileHealth.missing_fields?.length ? 'incomplete' : 'ready'}
+                      </Badge>
+                      <span className='text-muted'>{selectedProfileHealth.provider} · {selectedProfileHealth.model || 'no model'}</span>
+                      <span className='text-muted'>API key {selectedProfileHealth.requires_api_key ? (selectedProfileHealth.api_key_configured ? 'configured' : 'missing') : 'not required'}</span>
+                      {selectedProfileHealth.missing_fields?.length ? <span className='text-amber-700 dark:text-amber-300'>Missing: {selectedProfileHealth.missing_fields.join(', ')}</span> : null}
+                    </>
+                  ) : profiles[llmProfileId] ? (
+                    <>
+                      <Badge>project profile</Badge>
+                      <span className='text-muted'>This profile is project-local; global health status is not available.</span>
+                    </>
+                  ) : (
+                    <>
+                      <Badge tone='warn'>missing</Badge>
+                      <span className='text-amber-700 dark:text-amber-300'>Profile not found; generation may fallback.</span>
+                    </>
+                  )}
+                </div>
               </div>
               <div className='col-span-3 flex items-end'>
                 <label className='flex items-center gap-2 text-sm'>
@@ -2950,8 +3549,8 @@ export default function App() {
                 <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='end' />
               </div>
               <div className='col-span-6 flex items-end gap-2'>
-                <Button onClick={() => runJob(160)}>超预算模拟</Button>
-                {selectionRange ? <Button onClick={() => runJob(1200, selectionRange)}>Edit Selection</Button> : null}
+                <Button onClick={() => requestRunJob(160, null, '超预算模拟')}>超预算模拟</Button>
+                {selectionRange ? <Button onClick={() => requestRunJob(1200, selectionRange, 'Edit Selection')}>Edit Selection</Button> : null}
               </div>
             </div>
             {selectionRange ? <p className='mt-2 text-xs text-muted'>Selection range: L{selectionRange.start}-L{selectionRange.end}</p> : <p className='mt-2 text-xs text-muted'>Set start/end to enable Edit Selection.</p>}
@@ -3274,6 +3873,28 @@ export default function App() {
     if (view === 'settings') {
       return (
         <div className='space-y-3 density-space'>
+          <Card title='LLM Runtime Safety' extra={<Badge tone={llmStatus?.all_mock ? 'warn' : (llmStatus?.missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.all_mock ? 'mock mode' : `${llmStatus?.missing_count || 0} missing`}</Badge>}>
+            <div className='grid grid-cols-1 gap-2 text-xs md:grid-cols-4'>
+              {(llmStatus?.modules || []).map((row: any) => (
+                <div key={row.module} className='rounded-ui border border-border bg-surface-2 p-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-medium'>{row.module}</span>
+                    <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.provider}</Badge>
+                  </div>
+                  <div className='mt-1 text-muted'>{row.profile_id}</div>
+                  <div className='mt-1 text-muted'>{row.model || 'no model'}</div>
+                  <div className='mt-1'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                  {row.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                  {row.profile_missing ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Profile not found</div> : null}
+                </div>
+              ))}
+            </div>
+            <div className='mt-3 space-y-1 text-xs text-muted'>
+              <div>API key 不会在状态卡里显示原文；当前全局配置文件：{llmStatus?.storage?.profiles_path || '-'}</div>
+              <div>{llmStatus?.fallback_policy || 'Fallback policy loading...'}</div>
+            </div>
+          </Card>
+
           <Card title='Settings'>
             <div className='grid grid-cols-2 gap-3'>
               <div>
@@ -3312,13 +3933,62 @@ export default function App() {
             </div>
           </Card>
 
+          <Card title='本地数据与安全'>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>API Key 存储</span>
+                  <Badge tone={llmStatus?.storage?.api_keys_returned_in_status ? 'warn' : 'success'}>
+                    {llmStatus?.storage?.api_keys_returned_in_status ? 'visible' : 'not returned'}
+                  </Badge>
+                </div>
+                <div className='space-y-1 text-muted'>
+                  <div>Profile 文件: {llmStatus?.storage?.profiles_path || '-'}</div>
+                  <div>Agent 分配文件: {llmStatus?.storage?.assignments_path || '-'}</div>
+                  <div>状态接口只显示 api_key_configured，不显示 API key 原文。</div>
+                </div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>作者确认策略</span>
+                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? 'auto apply on' : 'manual review'}</Badge>
+                </div>
+                <div className='space-y-1 text-muted'>
+                  <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
+                  <div>Proofread patch 默认应由作者接受/拒绝。</div>
+                  <div>证据标记没有真实 quote 时不能显示为已命中。</div>
+                </div>
+              </div>
+              <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs md:col-span-2'>
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='font-medium'>项目备份与导出</span>
+                  <Badge>{project}</Badge>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Button onClick={downloadProjectBackup}>导出项目备份</Button>
+                  <Button onClick={downloadManuscriptMarkdown}>导出正文 Markdown</Button>
+                  <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
+                </div>
+                <div className='mt-2 text-muted'>备份包含项目资料；正文 Markdown 适合投稿、迁移和人工阅读。导入备份会作为新项目恢复，不覆盖当前项目。</div>
+              </div>
+            </div>
+          </Card>
+
           <Card title='LLM Profiles (Global)'>
-            <p className='text-xs text-muted mb-2'>Edit global profiles at `data/_global/llm_profiles.json` via config API.</p>
+            <p className='text-xs text-muted mb-2'>Create a profile from a provider preset, then assign writer / critic / editor agents below. Advanced JSON editing remains available.</p>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
-              <div className='grid grid-cols-3 gap-2'>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
                 <div>
                   <label className='text-xs text-muted'>Preset</label>
-                  <Select value={selectedPresetId} onChange={(e) => setSelectedPresetId(e.target.value)}>
+                  <Select
+                    value={selectedPresetId}
+                    onChange={(e) => {
+                      const nextId = e.target.value
+                      const preset = providerPresets.find((p) => p.provider_id === nextId)
+                      setSelectedPresetId(nextId)
+                      setProfileDraft({ ...(preset?.defaults || {}) })
+                    }}
+                  >
                     {providerPresets.map((p) => <option key={p.provider_id} value={p.provider_id}>{p.display_name}</option>)}
                   </Select>
                 </div>
@@ -3326,15 +3996,76 @@ export default function App() {
                   <label className='text-xs text-muted'>Profile ID</label>
                   <Input value={presetProfileId} onChange={(e) => setPresetProfileId(e.target.value)} placeholder='e.g. deepseek_writer' />
                 </div>
-                <div className='flex items-end'>
-                  <Button onClick={applyPresetToEditor}>Apply Preset</Button>
+                <div>
+                  <label className='text-xs text-muted'>Provider</label>
+                  <Input value={profileDraft.provider || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, provider: e.target.value }))} placeholder='openai_compat' />
                 </div>
               </div>
-              <div className='mt-2 text-xs text-muted'>
+              <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2'>
+                <div>
+                  <label className='text-xs text-muted'>Model</label>
+                  <Input value={profileDraft.model || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, model: e.target.value }))} placeholder='deepseek-chat' />
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>Base URL</label>
+                  <Input value={profileDraft.base_url || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, base_url: e.target.value }))} placeholder='https://api.example.com' />
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>API Key</label>
+                  <Input type='password' value={profileDraft.api_key || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, api_key: e.target.value }))} placeholder='Stored locally in data/_global' />
+                </div>
+                <div className='grid grid-cols-[1fr_auto] gap-2'>
+                  <div>
+                    <label className='text-xs text-muted'>Timeout (seconds)</label>
+                    <Input type='number' min='1' value={profileDraft.timeout_s || 60} onChange={(e) => setProfileDraft((x: any) => ({ ...x, timeout_s: e.target.value }))} />
+                  </div>
+                  <label className='mt-6 flex items-center gap-2 text-sm'>
+                    <input type='checkbox' checked={Boolean(profileDraft.stream ?? true)} onChange={(e) => setProfileDraft((x: any) => ({ ...x, stream: e.target.checked }))} />
+                    Stream
+                  </label>
+                </div>
+              </div>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                <Button variant='primary' onClick={saveProfileDraft}>Save Profile</Button>
+                <Button onClick={applyPresetToEditor}>Fill JSON Only</Button>
+              </div>
+              <div className='mt-3 text-xs text-muted'>
                 <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
                 <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
                 <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
+                <div>Editing an existing profile with an empty API Key field keeps the stored key.</div>
               </div>
+            </div>
+            <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <div>
+                  <h4 className='text-sm font-semibold'>Profile Health</h4>
+                  <p className='text-xs text-muted'>Local validation only. No provider call is made and API keys are not displayed.</p>
+                </div>
+                <Badge tone={(llmStatus?.profile_missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.profile_missing_count || 0} incomplete</Badge>
+              </div>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+                {profileHealthRows.map((row: any) => (
+                  <div key={row.profile_id} className='rounded-ui border border-border bg-surface p-2'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='font-medium'>{row.profile_id}</span>
+                      <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.missing_fields?.length ? 'incomplete' : 'ready'}</Badge>
+                    </div>
+                    <div className='mt-1 text-xs text-muted'>{row.provider} · {row.model || 'no model'}</div>
+                    <div className='mt-1 text-xs'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                    {row.missing_fields?.length ? <div className='mt-1 text-xs text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                    <div className='mt-2 flex flex-wrap gap-2'>
+                      <Button className='text-xs' onClick={() => loadProfileDraft(row.profile_id)}>Edit</Button>
+                      <Button className='text-xs' onClick={() => deleteProfileDraft(row.profile_id)} disabled={row.profile_id === 'mock_default'}>Delete</Button>
+                    </div>
+                  </div>
+                ))}
+                {!profileHealthRows.length && <p className='text-sm text-muted'>No profiles found.</p>}
+              </div>
+            </div>
+            <div className='mb-1 flex items-center justify-between gap-2'>
+              <label className='text-xs text-muted'>Advanced JSON</label>
+              <Badge>{Object.keys(globalProfiles?.profiles || {}).length} profiles</Badge>
             </div>
             <Textarea className='h-48 mono' value={profilesEditor} onChange={(e) => setProfilesEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
@@ -3342,6 +4073,7 @@ export default function App() {
                 try {
                   await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
                   mutateGlobalProfiles()
+                  mutateLlmStatus()
                   push('Global LLM profiles saved')
                 } catch {
                   push('Invalid profiles JSON', 'error')
@@ -3353,12 +4085,42 @@ export default function App() {
 
           <Card title='LLM Assignments (Global)'>
             <p className='text-xs text-muted mb-2'>Module {'->'} profile_id mapping. Priority: request.llm_profile_id {'>'} assignment[module] {'>'} project default.</p>
+            <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-2'>
+              {['writer', 'critic', 'editor', 'canon_extractor'].map((module) => {
+                const row = (llmStatus?.modules || []).find((x: any) => x.module === module)
+                const current = assignmentDraft[module] || row?.profile_id || 'mock_default'
+                return (
+                  <div key={module} className='rounded-ui border border-border bg-surface-2 p-2'>
+                    <div className='mb-1 flex items-center justify-between gap-2'>
+                      <label className='text-sm font-medium'>{module}</label>
+                      <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? 'mock' : row?.provider || 'missing'}</Badge>
+                    </div>
+                    <Select
+                      value={current}
+                      onChange={(e) => {
+                        const profileId = e.target.value
+                        setAssignmentDraft((x) => ({ ...x, [module]: profileId }))
+                        saveAgentAssignment(module, profileId)
+                      }}
+                    >
+                      {Object.keys(globalProfiles?.profiles || {}).map((profileId) => (
+                        <option key={profileId} value={profileId}>{profileId}</option>
+                      ))}
+                    </Select>
+                    <div className='mt-1 text-xs text-muted'>{row?.model || 'no model'} · API key {row?.requires_api_key ? (row?.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                  </div>
+                )
+              })}
+            </div>
             <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
               <Button variant='primary' onClick={async () => {
                 try {
-                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: JSON.parse(assignmentsEditor || '{}') })
+                  const next = JSON.parse(assignmentsEditor || '{}')
+                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: next })
+                  setAssignmentDraft(next)
                   mutateGlobalAssignments()
+                  mutateLlmStatus()
                   push('Global assignments saved')
                 } catch {
                   push('Invalid assignments JSON', 'error')
@@ -3473,7 +4235,10 @@ export default function App() {
     activeStyleAssets,
     currentManifest,
     llmProfileId,
+    useAgentAssignments,
     profiles,
+    selectedProfileHealth,
+    writeRouteRows,
     selectedChapter,
     currentChapterMeta,
     currentVolume,
@@ -3488,6 +4253,9 @@ export default function App() {
     selectedMarkId,
     highlighted,
     latestPatch,
+    reviewPatch,
+    patchReviewList,
+    pendingPatchReviews,
     selectedOpIds,
     versions,
     autoApplyPatch,
@@ -3499,6 +4267,17 @@ export default function App() {
     worldRows,
     sideSearch,
     settings,
+    llmStatus,
+    globalProfiles,
+    globalAssignments,
+    providerPresets,
+    selectedPreset,
+    selectedPresetId,
+    presetProfileId,
+    profileDraft,
+    profilesEditor,
+    assignmentsEditor,
+    assignmentDraft,
     selectedProposalId,
     selectedBlueprintId,
     techniqueCards,
@@ -3512,6 +4291,7 @@ export default function App() {
     buildDraftBusy,
     buildWizardStep,
     activeBuildWizardStep,
+    pendingWriteJob,
     storyBuildProgress,
     completedBuildSteps,
     pendingBuildDrafts,
@@ -3520,6 +4300,17 @@ export default function App() {
     buildDraftHistoryCounts,
     buildDraftHistoryFilter,
     acceptedScopeLabels,
+    jobList,
+    latestJob,
+    selectedJobId,
+    selectedJobDetail,
+    selectedJobSummary,
+    selectedJobEvents,
+    selectedJobManifest,
+    selectedJobTrust,
+    mutateSelectedJobDetail,
+    chapterReviewList,
+    pendingChapterReviews,
     memoryPacks,
     selectedMemoryPackId,
     selectedMemoryPack,
@@ -3700,6 +4491,11 @@ export default function App() {
           <div className='space-y-2 text-xs'>
             <div className='font-medium'>{selectedMark.target_type} · {selectedMark.label || selectedMark.target_id}</div>
             <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
+            {selectedMark.author_feedback ? (
+              <div className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-muted'>
+                作者反馈: {selectedMark.author_feedback.action} · {selectedMark.author_feedback.ts || ''}
+              </div>
+            ) : null}
             <button
               className='w-full rounded-ui border border-border bg-surface-2 p-2 text-left hover:bg-surface'
               onClick={() => {
@@ -3712,10 +4508,20 @@ export default function App() {
               <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '无真实 quote，不能视为已命中'}</div>
             </button>
             <div className='grid grid-cols-2 gap-1'>
-              <Button className='text-xs'>确认命中</Button>
-              <Button className='text-xs'>标为误判</Button>
-              <Button className='text-xs'>让 AI 改段</Button>
-              <Button className='text-xs'>忽略本章</Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'confirm_hit')}>确认命中</Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'false_positive')}>标为误判</Button>
+              <Button
+                className='text-xs'
+                onClick={() => {
+                  const start = Number(selectedMark?.span?.start_line || 0)
+                  const end = Number(selectedMark?.span?.end_line || start)
+                  if (start > 0) requestRunJob(1200, { start, end }, '让 AI 改段')
+                  else push('这个标记没有可编辑行号', 'error')
+                }}
+              >
+                让 AI 改段
+              </Button>
+              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'ignore_chapter')}>忽略本章</Button>
             </div>
           </div>
         ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
@@ -3729,9 +4535,18 @@ export default function App() {
       </Card>
 
       <details open className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({latestPatch?.ops?.length || 0})</span></summary>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({reviewPatch?.ops?.length || 0})</span></summary>
         <div className='space-y-2 border-t border-border p-2'>
-          {(latestPatch?.ops || []).map((op: any) => (
+          {reviewPatch ? (
+            <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+              <div className='flex items-center justify-between gap-2'>
+                <span>{reviewPatch.patch_review_id || reviewPatch.review_id || reviewPatch.patch_id}</span>
+                <Badge tone={reviewPatch.status === 'pending_author_review' ? 'warn' : reviewPatch.status === 'accepted' ? 'success' : 'default'}>{reviewPatch.status || 'event_patch'}</Badge>
+              </div>
+              <div className='mt-1 text-muted'>{reviewPatch.source || 'proofread_agent'} · {reviewPatch.provider || '-'} / {reviewPatch.model || '-'}</div>
+            </div>
+          ) : null}
+          {(reviewPatch?.ops || []).map((op: any) => (
             <div key={op.op_id} className='rounded-ui border border-border bg-surface-2 p-2'>
               <label className='flex items-center gap-2 text-xs'>
                 <input type='checkbox' checked={selectedOpIds.includes(op.op_id)} onChange={(e) => setSelectedOpIds((x) => (e.target.checked ? [...x, op.op_id] : x.filter((id) => id !== op.op_id)))} />
@@ -3742,21 +4557,38 @@ export default function App() {
               <pre className='mono mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-emerald-50 p-2 text-[11px] dark:bg-emerald-950/20'>+ {op.after || ''}</pre>
             </div>
           ))}
-          {!latestPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
+          {!reviewPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
           <div className='flex gap-2'>
-            <Button className='text-xs' onClick={() => setSelectedOpIds((latestPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
+            <Button className='text-xs' onClick={() => setSelectedOpIds((reviewPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
             <Button className='text-xs' onClick={applySelectedPatch}>应用</Button>
+            <Button className='text-xs' onClick={rejectPatchReview}>拒绝</Button>
           </div>
         </div>
       </details>
 
       <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Version Tree <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
-        <div className='space-y-1 border-t border-border p-2'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>版本时间线 <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
+        <div className='space-y-2 border-t border-border p-2'>
+          <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='font-medium'>当前版本</span>
+              <Badge>{versions?.current_version || '未记录'}</Badge>
+            </div>
+            <div className='mt-1 text-muted'>回滚会先保存“回滚前备份”，不会直接丢掉当前正文。</div>
+          </div>
           {(versions?.versions || []).map((v: any) => (
-            <div key={v.version_id} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-surface-2 px-2 py-1'>
-              <span className='truncate text-xs'>{v.version_id}</span>
-              <Button className='text-xs' onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
+            <div key={v.version_id} className='rounded-ui border border-border bg-surface-2 px-2 py-2 text-xs'>
+              <div className='flex items-start justify-between gap-2'>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-1'>
+                    <span className='font-medium'>{v.label || v.reason || '版本快照'}</span>
+                    <Badge tone={v.tone === 'warn' ? 'warn' : v.is_current ? 'success' : 'default'}>{v.is_current ? '当前' : v.version_id}</Badge>
+                  </div>
+                  <div className='mt-1 text-muted'>{v.ts || 'no timestamp'}</div>
+                  {v.patch_id ? <div className='mt-1 truncate text-muted'>关联: {v.patch_id}</div> : null}
+                </div>
+                <Button className='shrink-0 text-xs' disabled={v.is_current} onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
+              </div>
             </div>
           ))}
           {(!versions?.versions || versions.versions.length === 0) && <p className='text-xs text-muted'>No versions yet.</p>}
@@ -3813,5 +4645,157 @@ export default function App() {
     </div>
   )
 
-  return <Layout left={left} center={center} right={right} header={header} />
+  const confirmRouteRiskCount = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length).length
+  const confirmPinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+  const confirmPinnedCategories = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories : []
+  const confirmReadinessItems = [
+    { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
+    { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
+    { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
+    { label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张` },
+    { label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行` },
+    { label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}` },
+    { label: '本章技法', done: confirmPinnedTechniques.length + confirmPinnedCategories.length > 0, detail: `技法 ${confirmPinnedTechniques.length} · 分类 ${confirmPinnedCategories.length}` },
+    { label: 'Agent 路由', done: writeRouteRows.length > 0 && confirmRouteRiskCount === 0, detail: writeRouteRows.length ? `风险 ${confirmRouteRiskCount}` : 'runtime 未加载' },
+  ]
+  const confirmReadyCount = confirmReadinessItems.filter((item) => item.done).length
+
+  const writeConfirmOverlay = pendingWriteJob ? (
+    <div className='fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 py-10 backdrop-blur-[1px]' onMouseDown={() => setPendingWriteJob(null)}>
+      <div
+        role='dialog'
+        aria-modal='true'
+        aria-label='生成前确认'
+        className='w-[min(840px,96vw)] rounded-ui border border-border bg-panel shadow-soft'
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className='border-b border-border px-4 py-3'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div>
+              <h3 className='text-base font-semibold'>生成前确认</h3>
+              <p className='text-xs text-muted'>确认本次 job 的模型状态和当前 UI 已绑定材料，再启动三 Agent 流程。</p>
+            </div>
+            <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
+              {useAgentAssignments ? 'agent assignments' : 'manual override'}
+            </Badge>
+          </div>
+        </div>
+        <div className='max-h-[72vh] overflow-auto p-4'>
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 font-medium'>Job</div>
+              <div>Action: {pendingWriteJob.label}</div>
+              <div>Chapter: {selectedChapter}</div>
+              <div>Title: {chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
+              <div>Volume: {currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
+              <div>Max tokens: {pendingWriteJob.maxTokens}</div>
+              <div>Selection: {pendingWriteJob.range ? `L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : 'full chapter'}</div>
+              <div>Routing: {useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}</div>
+              <div>Auto apply patch: {autoApplyPatch ? 'on' : 'off'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <span className='font-medium'>Agent Routing</span>
+                <Badge>{useAgentAssignments ? 'Settings assignments' : `${llmProfileId} override`}</Badge>
+              </div>
+              <div className='space-y-1'>
+                {writeRouteRows.map((row: any) => (
+                  <div key={row.module} className='rounded-ui border border-border bg-surface-2 px-2 py-1'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='font-medium'>{row.module}</span>
+                      <Badge tone={row.is_mock || row.profile_missing || row.missing_fields?.length ? 'warn' : 'success'}>
+                        {row.is_mock ? 'mock' : row.profile_missing ? 'missing' : row.missing_fields?.length ? 'incomplete' : 'ready'}
+                      </Badge>
+                    </div>
+                    <div className='mt-0.5 text-muted'>{row.profile_id} · {row.provider || 'missing'} / {row.model || 'no model'}</div>
+                    {row.missing_fields?.length ? <div className='text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                  </div>
+                ))}
+                {!writeRouteRows.length ? <div className='text-muted'>Runtime status not loaded yet.</div> : null}
+              </div>
+            </div>
+          </div>
+          <div className='mt-3 rounded-ui border border-border bg-surface p-3 text-xs'>
+            <div className='mb-2 flex items-center justify-between gap-2'>
+              <span className='font-medium'>本章开写检查</span>
+              <Badge tone={confirmReadyCount === confirmReadinessItems.length ? 'success' : 'warn'}>{confirmReadyCount}/{confirmReadinessItems.length}</Badge>
+            </div>
+            <div className='grid grid-cols-2 gap-1.5 md:grid-cols-4'>
+              {confirmReadinessItems.map((item) => (
+                <div key={item.label} className={`rounded-ui border px-2 py-1.5 ${item.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
+                  <div className='flex items-center justify-between gap-2'>
+                    <span className='font-medium'>{item.label}</span>
+                    <Badge tone={item.done ? 'success' : 'warn'}>{item.done ? '已亮' : '待补'}</Badge>
+                  </div>
+                  <div className='mt-1 truncate text-muted'>{item.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-3'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>章节计划</span><Badge>{currentStoryLinks.chapterPlan.length}</Badge></div>
+              {(currentStoryLinks.chapterPlan || []).slice(0, 4).map((row: any, idx: number) => (
+                <div key={`confirm-plan-${idx}`} className='mb-1 truncate text-muted'>{row.title || row.focus || row.chapter || row.chapter_id}</div>
+              ))}
+              {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>No linked plan row.</div>}
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>明线 / 暗线</span><Badge>{currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length}</Badge></div>
+              <div className='text-muted'>明线: {currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : 'none'}</div>
+              <div className='mt-1 text-muted'>暗线: {currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.visible_hint || x.truth || x.chapter).join(' / ') : 'none'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>伏笔</span><Badge>{currentStoryLinks.foreshadowings.length}</Badge></div>
+              {currentStoryLinks.foreshadowings.slice(0, 4).map((x: any) => (
+                <div key={x.id || x.content} className='mb-1 truncate text-muted'>{x.content || x.id} ({x.status || '未出现'})</div>
+              ))}
+              {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>No linked foreshadowing.</div>}
+            </div>
+          </div>
+          <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Pinned Techniques</span><Badge>{(currentChapterMeta?.pinned_techniques || []).length}</Badge></div>
+              {(currentChapterMeta?.pinned_techniques || []).slice(0, 6).map((row: any) => {
+                const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
+                return <div key={row.technique_id} className='mb-1 truncate text-muted'>{tech?.title || row.technique_id} · {row.intensity || 'med'}</div>
+              })}
+              {!(currentChapterMeta?.pinned_techniques || []).length && <div className='text-muted'>No pinned techniques.</div>}
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Memory Packs</span><Badge>{Array.isArray(memoryPacks) ? memoryPacks.length : 0}</Badge></div>
+              {(Array.isArray(memoryPacks) ? memoryPacks : []).slice(0, 4).map((p: any) => (
+                <div key={p.pack_id} className='mb-1 truncate text-muted'>{p.chapter_id} / {p.job_id}</div>
+              ))}
+              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <div className='text-muted'>No memory packs yet.</div> : null}
+            </div>
+          </div>
+          <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3 text-xs text-muted'>
+            这些是当前界面可确认的绑定材料；真正传入模型的材料会在 job 事件的 Context Manifest 中记录。没有证据 quote 的判断不会被显示为已命中。
+          </div>
+        </div>
+        <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
+          <Button onClick={() => { setPendingWriteJob(null); setView('settings') }}>去配置 API</Button>
+          <Button onClick={() => setPendingWriteJob(null)}>取消</Button>
+          <Button
+            variant='primary'
+            onClick={() => {
+              const job = pendingWriteJob
+              setPendingWriteJob(null)
+              if (job) runJob(job.maxTokens, job.range)
+            }}
+          >
+            确认生成
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      <Layout left={left} center={center} right={right} header={header} />
+      {writeConfirmOverlay}
+    </>
+  )
 }

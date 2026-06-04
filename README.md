@@ -1,199 +1,425 @@
 # novix.ai
 
-WenShape-parity context-engineering workbench for longform fiction.
+`novix.ai` is a local-first longform fiction workbench for writers who want an AI-assisted novel IDE without giving up control of structure, evidence, or revision decisions.
+
+It keeps detailed literary planning assets such as story control, characters, world rules, open lines, hidden lines, foreshadowing, techniques, canon facts, volumes, and chapters. The writing API is a single action from the UI, while the backend can orchestrate reviewer, writer, proofreader, and canon extraction work with visible job events and evidence checks.
 
 [![Backend Tests](https://github.com/jingui020306-del/novix.ai/actions/workflows/backend.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/backend.yml)
 [![Frontend Build](https://github.com/jingui020306-del/novix.ai/actions/workflows/frontend.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/frontend.yml)
 [![Smoke](https://github.com/jingui020306-del/novix.ai/actions/workflows/smoke.yml/badge.svg)](https://github.com/jingui020306-del/novix.ai/actions/workflows/smoke.yml)
 
----
+## What It Does
 
-## Why
+- Three-column writing IDE: project explorer, manuscript/editor center, AI/context panel.
+- Novel setup wizard: title, genre, keywords, small outline, character seeds, important scenes, main conflict, banned items.
+- Volume and chapter tree: generated chapters appear in the workspace and can be edited before saving.
+- Story planning views: stages, open line, hidden line, foreshadowing, chapter matrix.
+- Skill Library: narrative technique cards and AI tool skill cards such as problem checking, character biography, outline research, timeline check, scene consistency, and foreshadowing tracking.
+- Single write API: `POST /api/projects/{project_id}/jobs/write`.
+- Three Agent workflow: reviewer, writer, proofreader, plus canon extraction support.
+- Evidence marks and trust reports: AI claims must map back to quotes and line ranges before they can be treated as supported.
+- Patch review: AI patches are pending by default and can be accepted, rejected, or rolled back.
+- Local backup and export: project ZIP backup, backup restore as a new project, manuscript Markdown export.
 
-长篇写作常见问题是：
+## Current Trust Model
 
-- 前后设定漂移（人物、世界规则、时间线不一致）；
-- 上下文过长导致提示词不可控；
-- 编辑修改无法追踪，回退成本高。
+The product is designed to avoid hiding AI uncertainty.
 
-`novix.ai` 的目标是把“长篇一致性”变成一个可验证的工程问题：
+- AI generated drafts go to author review.
+- Proofread patches are not silently applied unless the user enables auto apply.
+- Canon facts and evidence marks require quote or line-range support.
+- Unsupported or contradicted marks are shown as risks.
+- Author feedback can confirm a mark, mark it as a false positive, or ignore it for the current chapter.
+- API keys are stored in local profile files and are not returned by the status API.
+- The UI shows whether the current LLM profile is ready, mock, incomplete, or missing before generation.
 
-- 用 WenShape 兼容存储保证结构稳定；
-- 用 Context Engine + BudgetManager 控制上下文预算；
-- 用 Canon / Proposals / Patch History 保证可追溯与可回滚。
+## Requirements
 
-## Core design
+- Python 3.10 or newer.
+- Node.js 18 or newer.
+- npm.
 
-### 5-stage pipeline
-
-| Stage | Purpose | Primary output |
-|---|---|---|
-| `DIRECTOR_PLAN` | 章节计划与写作意图 | director plan |
-| `TECHNIQUE_BRIEF` | 技法约束与检查清单 | technique checklist |
-| `CONTEXT_MANIFEST` | 预算分配 + 检索证据 + 固定块注入 | context manifest |
-| `WRITER_DRAFT` | 产出章节草稿 | chapter draft |
-| `CRITIC_REVIEW` + `EDITOR_PATCH` | 审稿与最小补丁 | patch ops + diff + merge/canon updates |
-
-### System pillars
-
-- **BudgetManager**：按 bucket 分配 token 预算，记录裁剪与退化信息。
-- **Canon / Proposals**：动态事实 append-only，提案可接受/拒绝。
-- **KB Retrieval**：`kb_style / kb_docs / kb_manuscript / kb_world` 多源检索。
-- **World Model**：世界卡 + 世界状态事实联合查询。
-- **Techniques**：macro category + micro technique 双层挂载与继承。
-- **Technique Agent Tags**：自动汇总 technique/category 标签，并注入 `TECHNIQUE_BRIEF` 与 Context Manifest（`fixed_blocks.technique_agent_tags`）供 Writer/Reviewer 管道消费。
-- **Talk editing**：审稿问题 -> patch ops -> selective apply/rollback。
+No hosted API key is bundled with this repository. Users add their own API profile in Settings.
 
 ## Quickstart
 
-### Unified launcher (recommended)
+### 1. Clone
 
 ```bash
-python start.py
+git clone https://github.com/jingui020306-del/novix.ai.git
+cd novix.ai
 ```
 
-功能：
+### 2. Install Dependencies
 
-- 自动端口探测（后端从 `8000`、前端从 `5173` 起递增）。
-- 先启动后端并轮询 `/api/health`。
-- 开发模式自动拉起前端 dev server。
-
-生产体验模式（前端已打包）
+Backend:
 
 ```bash
-python start.py --prod
+cd backend
+python -m venv ../.venv
+../.venv/bin/pip install -r requirements.txt
+cd ..
 ```
 
-- 若 `backend/static_dist/index.html` 存在，前端由后端静态托管。
-- 可用 `--no-browser` 禁止自动打开浏览器。
+Frontend:
 
-### Legacy one-command startup
+```bash
+cd frontend
+npm install
+cd ..
+```
 
-- Linux / macOS: `./start.sh`
-- Windows: `start.bat`
+On Windows, use `.venv\Scripts\pip` instead of `../.venv/bin/pip`.
 
-### Manual startup
+### 3. Start The App
 
-- Backend (`:8000`)
+Recommended launcher:
 
-  ```bash
-  cd backend
-  pip install -r requirements.txt
-  uvicorn main:app --reload --port 8000
-  ```
+```bash
+./.venv/bin/python start.py
+```
 
-- Frontend (`:5173`)
+The launcher:
 
-  ```bash
-  cd frontend
-  npm install
-  npm run dev
-  ```
+- Finds an available backend port starting at `8000`.
+- Finds an available frontend port starting at `5173`.
+- Starts the backend.
+- Starts the Vite frontend dev server.
+- Opens the browser unless `--no-browser` is passed.
 
-- Frontend static bundle -> backend host
+Manual startup:
 
-  ```bash
-  cd frontend
-  npm install
-  npm run build:static
-  ```
+```bash
+cd backend
+../.venv/bin/python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
 
-  该命令会将 `frontend/dist` 复制到 `backend/static_dist`。
+In another terminal:
 
-### Ports
+```bash
+cd frontend
+npm run dev
+```
 
-- Backend API: `127.0.0.1:8000`
-- Frontend Vite: `127.0.0.1:5173`
+Then open:
 
-## Demo walkthrough
+```text
+http://127.0.0.1:5173
+```
 
-1. 打开 Workbench，选择 `demo_project_001`。
-2. 在 **Style** 面板上传文风样本并分析。
-3. 在 **Wiki** 导入 HTML/URL，生成候选事实。
-4. 在 **Chapter** 触发写作任务并观察事件流。
-5. 在 **Patch Review** 勾选并应用补丁。
-6. 在 **Canon/Proposals** 接受或拒绝提案。
-7. 在 **Context/World** 核对证据与世界状态。
+### 4. Open The Demo Project
 
-### Example curl
+The demo project is `demo_project_001`. It includes:
 
-- Create project
+- a story card,
+- a main character,
+- a world setup,
+- one volume,
+- one chapter,
+- sample techniques,
+- tool skills,
+- canon and evidence examples.
 
-  ```bash
-  curl -X POST http://127.0.0.1:8000/api/projects \
-    -H 'content-type: application/json' \
-    -d '{"title":"My Project"}'
-  ```
+## First Run Checklist
 
-- Run write job
+Open the app, go to **Projects**, and use the **首次启动检查** card.
 
-  ```bash
-  curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/jobs/write \
-    -H 'content-type: application/json' \
-    -d '{"chapter_id":"chapter_001","blueprint_id":"blueprint_001","scene_index":0}'
-  ```
+Recommended order:
 
-- Multi-KB query
+1. Configure an API profile in **Settings**.
+2. Assign writer, critic, editor, and canon extractor profiles.
+3. Fill the novel setup wizard in **Story**.
+4. Add or edit character cards.
+5. Create the first volume and chapter.
+6. Analyze evidence marks for the current chapter.
+7. Generate a chapter only after checking the generation confirmation panel.
 
-  ```bash
-  curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/kb/query_multi \
-    -H 'content-type: application/json' \
-    -d '{"query":"港区 封锁","top_k":12,"kb":[{"kb_id":"kb_style","weight":0.5},{"kb_id":"kb_docs","weight":1.0},{"kb_id":"kb_manuscript","weight":1.2},{"kb_id":"kb_world","weight":1.1}]}'
-  ```
+## Configure API Profiles
 
-## Configuration
+Go to **Settings -> LLM Profiles (Global)**.
 
-- **LLM profiles**：已支持 mock/ollama/llama.cpp/openai-compatible profiles。
-- **Assignments（profile/agent 路由分配）**：即将补齐。
+1. Pick a preset.
+2. Enter a profile id, such as `deepseek_writer`.
+3. Fill model, base URL, API key, timeout, and stream.
+4. Click **Save Profile**.
+5. Check **Profile Health**.
 
-TODO:
+Supported presets include:
 
-- [ ] `docs/CONFIGURATION.md`（planned）
-- [ ] profile assignment examples（planned）
+| Preset | Provider | Example model | Base URL |
+|---|---|---|---|
+| Mock | `mock` | `mock-writer-v1` | empty |
+| Ollama | `ollama` | `qwen2.5:7b` | `http://127.0.0.1:11434` |
+| llama.cpp | `llama_cpp` | `gguf-model` | `http://127.0.0.1:8080` |
+| DeepSeek | `openai_compat` | `deepseek-chat` | `https://api.deepseek.com` |
+| Qwen | `openai_compat` | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode` |
+| Kimi | `openai_compat` | `moonshot-v1-8k` | `https://api.moonshot.cn` |
+| GLM | `openai_compat` | `glm-4-flash` | `https://open.bigmodel.cn/api/paas/v4` |
+| Gemini | `openai_compat` | `gemini-2.0-flash` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Grok | `openai_compat` | `grok-2-latest` | `https://api.x.ai` |
+| Custom | `openai_compat` | user-defined | user-defined |
+
+API keys are saved locally in:
+
+```text
+data/_global/llm_profiles.json
+```
+
+The runtime status API reports `api_key_configured`, but does not return the raw API key.
+
+## Assign Agent Profiles
+
+Go to **Settings -> LLM Assignments (Global)**.
+
+Assign profiles for:
+
+- `writer`
+- `critic`
+- `editor`
+- `canon_extractor`
+
+Routing priority:
+
+```text
+request.llm_profile_id > assignment[module] > project.default_llm_profile_id > mock_default
+```
+
+If a provider call fails, the backend may fall back to `mock_default`, and the job event records the fallback.
+
+## Create A Book
+
+Go to **Story** and use the novel setup wizard.
+
+The core fields include:
+
+- title,
+- genre,
+- keywords,
+- target reader,
+- platform style,
+- banned items,
+- small story outline,
+- theme,
+- main conflict,
+- important scenes,
+- character seeds,
+- open line,
+- hidden line,
+- foreshadowings,
+- chapter plan.
+
+AI generated setup drafts are pending by default. You can accept a full draft, accept parts of it, refresh it, edit it, or reject it.
+
+## Generate A Chapter
+
+1. Go to **Chapter**.
+2. Select the chapter and model profile.
+3. Confirm the profile is `ready`, or knowingly use `mock mode`.
+4. Click **生成本章**.
+5. Review the generation confirmation panel.
+6. Confirm generation.
+7. Review the AI draft.
+8. Edit the manuscript manually if needed.
+9. Save.
+10. Run **Analyze Marks** to verify evidence marks.
+
+Generated chapters appear in:
+
+- the volume/chapter tree,
+- the Projects dashboard recent chapters,
+- the Chapter editor.
+
+Authors can edit generated text before saving.
+
+## Three Agent Workflow
+
+The UI exposes one write action, while the backend emits staged events.
+
+Typical write job events:
+
+| Event | Purpose |
+|---|---|
+| `PRE_REVIEW_PLAN` | Reviewer prepares chapter constraints and risk checklist. |
+| `CONTEXT_MANIFEST` | Records context used, evidence, budget, dropped material, and compression decisions. |
+| `WRITER_DRAFT` | Writer produces chapter draft. |
+| `MARK_EXTRACTION` | Extracts matched characters, techniques, open line, hidden line, foreshadowing, and canon evidence marks. |
+| `CLAIM_VERIFICATION` | Verifies whether claims are supported by quote or line range. |
+| `CRITIC_REVIEW` | Reviewer checks story requirements, character behavior, and technique adherence. |
+| `PROOFREAD_PATCH` | Proofreader proposes language-level fixes only. |
+| `TRUST_REPORT` | Summarizes supported, partial, unsupported, and contradicted marks. |
+
+The proofreader should not add canon facts, new character settings, or hidden explanations.
+
+## Evidence Marks And Trust Reports
+
+Evidence marks are stored in:
+
+```text
+data/{project_id}/meta/evidence_marks/{chapter_id}.jsonl
+```
+
+Trust reports are stored in:
+
+```text
+data/{project_id}/meta/trust_reports/{chapter_id}.json
+```
+
+Every supported mark should include:
+
+- `chapter_id`,
+- target type,
+- target id,
+- line range,
+- quote,
+- confidence,
+- support level,
+- agent trace.
+
+Support levels:
+
+- `supported`
+- `partial`
+- `unsupported`
+- `contradicted`
+
+Author feedback options:
+
+- confirm hit,
+- mark as false positive,
+- ask AI to revise the paragraph,
+- ignore this mark for the current chapter.
+
+If a mark has no real quote, it cannot be shown as a trusted supported hit.
+
+## Backup, Restore, And Export
+
+Project backup:
+
+```text
+GET /api/projects/{project_id}/export.zip
+```
+
+Manuscript Markdown:
+
+```text
+GET /api/projects/{project_id}/export.md
+```
+
+Backup restore:
+
+```text
+POST /api/projects/import.zip
+```
+
+Restore imports the backup as a new project. It does not overwrite the current project.
+
+The UI exposes these actions in **Projects** and **Settings**.
+
+## API Examples
+
+Create a project:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/projects \
+  -H 'content-type: application/json' \
+  -d '{"title":"My Project"}'
+```
+
+Run a write job:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/jobs/write \
+  -H 'content-type: application/json' \
+  -d '{
+    "chapter_id":"chapter_001",
+    "blueprint_id":"blueprint_001",
+    "scene_index":0,
+    "agent_mode":"three_agent",
+    "llm_profile_id":"mock_default",
+    "auto_apply_patch":false,
+    "word_checkpoint_chars":1500
+  }'
+```
+
+Analyze evidence marks:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/projects/demo_project_001/chapters/chapter_001/analyze-marks \
+  -H 'content-type: application/json' \
+  -d '{}'
+```
+
+Read trust report:
+
+```bash
+curl "http://127.0.0.1:8000/api/projects/demo_project_001/trust-report?chapter_id=chapter_001"
+```
 
 ## Verification
 
-- Backend tests
+Backend tests:
 
-  ```bash
-  pytest -q
-  ```
+```bash
+./.venv/bin/python -m pytest -q backend/tests/test_phase2_services.py
+```
 
-- Explicit backend run
+Frontend production build:
 
-  ```bash
-  cd backend && pytest -q
-  ```
+```bash
+cd frontend
+npm run build
+```
 
-- Frontend smoke
+Frontend smoke:
 
-  ```bash
-  ./scripts/smoke_frontend.sh
-  ```
+```bash
+./scripts/smoke_frontend.sh
+```
 
-## FAQ
+Diff whitespace check:
 
-### npm install E403 / 离线环境怎么办？
+```bash
+git diff --check
+```
 
-1. 检查 registry：
+## Troubleshooting
 
-   ```bash
-   npm config get registry
-   ```
+### The UI says `mock mode`
 
-2. 覆盖 registry：
+That means the selected profile or assigned agent is using `mock_default`. Configure a real profile in Settings and assign it to the agent modules.
 
-   ```bash
-   NPM_REGISTRY=https://registry.npmjs.org/ ./start.sh
-   ```
+### The UI says `incomplete`
 
-3. 受限网络中，smoke 可能输出策略性 SKIP（不是业务逻辑失败）。
+Open Settings and check Profile Health. Common missing fields:
 
-### Playwright / 浏览器检查不稳定怎么办？
+- `provider`
+- `model`
+- `base_url`
+- `api_key`
 
-受限运行环境下可能连接失败。建议以 `pytest + smoke` 作为基础验收，浏览器截图作为可选项。
+### I saved a profile but cannot select it in Chapter
 
-## Docs index
+Refresh the page or revisit Settings. The Chapter profile selector merges global profiles and project-local profiles.
+
+### npm install fails with E403
+
+Check npm registry:
+
+```bash
+npm config get registry
+```
+
+Set the public registry if needed:
+
+```bash
+npm config set registry https://registry.npmjs.org/
+```
+
+### Browser automation is unstable
+
+Use backend tests and frontend build as the baseline verification. Browser checks can be affected by local permissions or restricted environments.
+
+## Docs Index
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
@@ -202,7 +428,7 @@ TODO:
 - [Release / Packaging Guide](docs/RELEASE.md)
 - [Repository agent constraints](AGENTS.md)
 
-## Contributing / License
+## Contributing And License
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [LICENSE](LICENSE)

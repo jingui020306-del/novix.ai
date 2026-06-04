@@ -1,5 +1,8 @@
 from pathlib import Path
+import io
+import json
 import sys
+import zipfile
 
 from fastapi.testclient import TestClient
 
@@ -243,6 +246,101 @@ def test_demo_seed_contains_build_fields_and_tool_skills(tmp_path: Path):
     assert tool_skill["type"] == "tool_skill"
     assert tool_skill["payload"]["auto_apply_allowed"] is False
     assert "悬念" in technique["title"]
+
+
+def test_project_export_zip_contains_author_assets(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        resp = client.get('/api/projects/p1/export.zip')
+        assert resp.status_code == 200
+        assert resp.headers['content-disposition'].endswith('p1-novix-backup.zip"')
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            names = set(zf.namelist())
+            assert 'p1/novix_backup_manifest.json' in names
+            assert 'p1/project.yaml' in names
+            assert 'p1/drafts/chapter_001.md' in names
+            assert 'p1/cards/story_001.yaml' in names
+            manifest = json.loads(zf.read('p1/novix_backup_manifest.json').decode('utf-8'))
+            assert manifest['format'] == 'novix_project_backup'
+            assert manifest['project_id'] == 'p1'
+            assert manifest['file_count'] > 0
+    finally:
+        app_main.store = old_store
+
+
+def test_project_import_zip_restores_as_new_project(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        exported = client.get('/api/projects/p1/export.zip')
+        assert exported.status_code == 200
+        imported = client.post('/api/projects/import.zip', files={'file': ('backup.zip', exported.content, 'application/zip')})
+        assert imported.status_code == 200
+        body = imported.json()
+        assert body['project_id'].startswith('restored_p1_')
+        assert body['restored_from_project_id'] == 'p1'
+        restored = store.read_yaml(body['project_id'], 'project.yaml')
+        assert restored['id'] == body['project_id']
+        assert restored['restored_from_project_id'] == 'p1'
+        assert store.read_md(body['project_id'], 'drafts/chapter_001.md')
+        listed_ids = [row['id'] for row in client.get('/api/projects').json()]
+        assert body['project_id'] in listed_ids
+    finally:
+        app_main.store = old_store
+
+
+def test_project_import_zip_rejects_path_traversal(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr('p1/novix_backup_manifest.json', json.dumps({'format': 'novix_project_backup', 'project_id': 'p1'}))
+            zf.writestr('p1/../evil.txt', 'bad')
+        client = TestClient(app_main.app)
+        resp = client.post('/api/projects/import.zip', files={'file': ('bad.zip', buf.getvalue(), 'application/zip')})
+        assert resp.status_code == 400
+        assert not [row for row in client.get('/api/projects').json() if row['id'].startswith('restored_p1_')]
+    finally:
+        app_main.store = old_store
+
+
+def test_project_export_markdown_contains_ordered_manuscript(tmp_path: Path):
+    store = make_store(tmp_path)
+
+    import main as app_main
+
+    old_store = app_main.store
+    app_main.store = store
+    try:
+        client = TestClient(app_main.app)
+        resp = client.get('/api/projects/p1/export.md')
+        assert resp.status_code == 200
+        assert resp.headers['content-disposition'].endswith('p1-manuscript.md"')
+        body = resp.content.decode('utf-8')
+        assert body.startswith('# Demo Novel')
+        assert '## 第一卷' in body
+        assert '### 雨夜来信' in body
+        assert '# Chapter 001' not in body
+        assert '<!-- exported_chapters:' in body
+        assert '临港城' in body or '林秋' in body
+    finally:
+        app_main.store = old_store
 
 
 def test_build_drafts_api_roundtrip(tmp_path: Path):
@@ -577,6 +675,36 @@ def test_llm_config_profiles_assignments_crud(tmp_path: Path):
     assert 'api_key' in deepseek['optional_fields']
     assert deepseek['supports_stream'] is True
 
+    status = client.get('/api/config/llm/status')
+    assert status.status_code == 200
+    status_body = status.json()
+    assert status_body['all_mock'] is True
+    assert status_body['storage']['api_keys_returned_in_status'] is False
+    assert 'profiles_path' in status_body['storage']
+    profile_rows = status_body['profiles']
+    assert [row for row in profile_rows if row['profile_id'] == 'test_profile']
+    assert all('api_key' not in row for row in profile_rows)
+    critic = [row for row in status_body['modules'] if row['module'] == 'critic'][0]
+    assert critic['profile_id'] == 'test_profile'
+    assert 'api_key' not in critic
+
+    client.post('/api/config/llm/profiles', json={
+        'mode': 'upsert',
+        'id': 'needs_key',
+        'profile': {'provider': 'openai_compat', 'model': 'real-model', 'base_url': 'https://example.invalid', 'api_key': ''},
+    })
+    client.post('/api/config/llm/assignments', json={'mode': 'upsert', 'module': 'writer', 'profile_id': 'needs_key'})
+    status2 = client.get('/api/config/llm/status').json()
+    assert status2['all_mock'] is False
+    writer = [row for row in status2['modules'] if row['module'] == 'writer'][0]
+    assert writer['requires_api_key'] is True
+    assert writer['api_key_configured'] is False
+    assert 'api_key' in writer['missing_fields']
+    needs_key_status = [row for row in status2['profiles'] if row['profile_id'] == 'needs_key'][0]
+    assert needs_key_status['api_key_configured'] is False
+    assert 'api_key' in needs_key_status['missing_fields']
+    assert status2['profile_missing_count'] >= 1
+
 
 def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):
     s = make_store(tmp_path)
@@ -606,14 +734,18 @@ def test_assignment_profile_applied_for_module_and_fallback(tmp_path: Path):
         events = []
         async for e in jm.stream(jid):
             events.append(e)
-        return events
+        return jid, events
 
-    events = asyncio.run(_run())
+    jid, events = asyncio.run(_run())
     manifest = [e for e in events if e['event'] == 'CONTEXT_MANIFEST'][0]['data']
     assert manifest['llm']['requested_profile_id'] == 'bad_profile'
     assert any(e['event'] == 'ERROR' and e['data'].get('stage') == 'writer' for e in events)
     wd = [e for e in events if e['event'] == 'WRITER_DRAFT'][0]['data']
     assert wd['provider'] == 'mock' and wd['fallback'] is True
+    job = jm.get_job('p1', jid)
+    assert job['status'] == 'completed'
+    assert job['fallback'] is True
+    assert job['last_error']
 
 
 def test_memory_pack_generated_and_readable(tmp_path: Path):
@@ -673,6 +805,33 @@ def test_evidence_marks_and_trust_report_verify_quotes(tmp_path: Path):
     assert bad['detection']['support_level'] == 'unsupported'
 
 
+def test_evidence_mark_author_feedback_updates_report(tmp_path: Path):
+    import main as app_main
+
+    app_main.store = make_store(tmp_path)
+    app_main.store.write_md('p1', 'drafts/chapter_001.md', '# c1\n\n蓝色车票在桌面上。')
+    svc = EvidenceService(app_main.store)
+    marks = svc.build_marks('p1', 'chapter_001', technique_checklist=[
+        {'technique_id': 'technique_001', 'must_have_signals': ['蓝色车票']},
+        {'technique_id': 'technique_missing', 'must_have_signals': ['不存在的信号']},
+    ])
+    svc.save_marks('p1', 'chapter_001', marks)
+
+    client = TestClient(app_main.app)
+    supported = [m for m in marks if m['detection']['support_level'] == 'supported'][0]
+    res = client.post(f"/api/projects/p1/chapters/chapter_001/evidence-marks/{supported['mark_id']}/feedback", json={'action': 'confirm_hit', 'note': '作者确认'})
+    assert res.status_code == 200
+    assert res.json()['mark']['author_feedback']['action'] == 'confirm_hit'
+    assert res.json()['mark']['detection']['support_level'] == 'supported'
+
+    missing = [m for m in marks if m['target_id'] == 'technique_missing'][0]
+    res2 = client.post(f"/api/projects/p1/chapters/chapter_001/evidence-marks/{missing['mark_id']}/feedback", json={'action': 'ignore_chapter'})
+    assert res2.status_code == 200
+    assert res2.json()['trust_report']['ignored_count'] == 1
+    stored = app_main.store.read_jsonl('p1', 'meta/evidence_marks/chapter_001.jsonl')
+    assert [m for m in stored if m['mark_id'] == missing['mark_id']][0]['detection']['ignored_by_author'] is True
+
+
 def test_canon_append_fact_marks_unverified_quote(tmp_path: Path):
     import main as app_main
 
@@ -729,6 +888,123 @@ def test_write_job_emits_three_agent_trust_events_and_marks(tmp_path: Path):
     assert s.read_json('p1', 'meta/trust_reports/chapter_001.json')['chapter_id'] == 'chapter_001'
     pack = s.read_json('p1', f'meta/memory_packs/chapter_001/{job_id}.json')
     assert 'source_mark_ids' in pack and 'compression_reason' in pack
+    job = jm.get_job('p1', job_id)
+    assert job['status'] == 'completed'
+    assert job['chapter_id'] == 'chapter_001'
+    assert job['stage'] == 'DONE'
+    assert job['event_counts']['WRITER_DRAFT'] == 1
+    assert jm.list_jobs('p1', chapter_id='chapter_001')[0]['job_id'] == job_id
+    reviews = s.read_json('p1', 'meta/chapter_reviews/chapter_001.json')
+    assert reviews[0]['status'] == 'pending_author_review'
+    assert reviews[0]['job_id'] == job_id
+    assert reviews[0]['content_hash']
+    patch_reviews = s.read_json('p1', 'meta/patch_reviews/chapter_001.json')
+    assert patch_reviews[0]['status'] == 'pending_author_review'
+    assert patch_reviews[0]['patch_id'] == f'patch_{job_id}'
+    assert patch_reviews[0]['op_count'] >= 1
+    proofread = [e for e in events if e['event'] == 'PROOFREAD_PATCH'][0]['data']
+    assert proofread['patch_review_id'] == patch_reviews[0]['review_id']
+    meta = s.read_json('p1', 'drafts/chapter_001.meta.json')
+    assert any(v.get('reason') == 'before_ai_draft' for v in meta.get('versions', []))
+
+
+def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
+    store = make_store(tmp_path)
+    kb = KBService(store)
+    ctx = ContextEngine(store, kb)
+    jm = JobManager(store, ctx, LLMGateway())
+
+    import main as app_main
+    import asyncio
+
+    old_store = app_main.store
+    old_kb = app_main.kb_service
+    old_ctx = app_main.context_engine
+    old_jm = app_main.job_manager
+    app_main.store = store
+    app_main.kb_service = kb
+    app_main.context_engine = ctx
+    app_main.job_manager = jm
+    try:
+        async def _run():
+            jid = await jm.run_write_job('p1', {
+                'chapter_id': 'chapter_001',
+                'blueprint_id': 'blueprint_001',
+                'scene_index': 0,
+                'auto_apply_patch': False,
+            })
+            async for _ in jm.stream(jid):
+                pass
+            return jid
+
+        jid = asyncio.run(_run())
+        client = TestClient(app_main.app)
+        listed = client.get('/api/projects/p1/jobs?chapter_id=chapter_001')
+        assert listed.status_code == 200
+        rows = listed.json()
+        assert rows[0]['job_id'] == jid
+        assert rows[0]['status'] == 'completed'
+        assert rows[0]['last_event'] == 'DONE'
+        detail = client.get(f'/api/projects/p1/jobs/{jid}')
+        assert detail.status_code == 200
+        assert detail.json()['event_counts']['TRUST_REPORT'] == 1
+        detail_body = detail.json()
+        assert detail_body['event_total'] >= 8
+        assert any(e['event'] == 'CONTEXT_MANIFEST' for e in detail_body['events'])
+        assert 'context_manifest' in detail_body
+        assert 'trust_report_event' in detail_body
+        reviews = client.get('/api/projects/p1/drafts/chapter_001/reviews')
+        assert reviews.status_code == 200
+        review = reviews.json()[0]
+        assert review['status'] == 'pending_author_review'
+        accepted = client.put(f"/api/projects/p1/drafts/chapter_001/reviews/{review['review_id']}", json={'status': 'accepted', 'author_note': '确认这一版'})
+        assert accepted.status_code == 200
+        assert accepted.json()['confirmed_by'] == 'author'
+        meta = store.read_json('p1', 'drafts/chapter_001.meta.json')
+        assert meta['chapter_status'] == '已保存'
+        assert meta['last_confirmed_review_id'] == review['review_id']
+        bad_status = client.put(f"/api/projects/p1/drafts/chapter_001/reviews/{review['review_id']}", json={'status': 'done'})
+        assert bad_status.status_code == 400
+        patch_reviews = client.get('/api/projects/p1/drafts/chapter_001/patch-reviews')
+        assert patch_reviews.status_code == 200
+        patch_review = patch_reviews.json()[0]
+        assert patch_review['status'] == 'pending_author_review'
+        first_op = patch_review['ops'][0]['op_id']
+        before_bad_apply = store.read_md('p1', 'drafts/chapter_001.md')
+        bad_review_apply = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+            'patch_id': patch_review['patch_id'],
+            'patch_review_id': 'patch_review_missing',
+            'patch_ops': patch_review['ops'],
+            'accept_op_ids': [first_op],
+        })
+        assert bad_review_apply.status_code == 404
+        assert store.read_md('p1', 'drafts/chapter_001.md') == before_bad_apply
+        applied = client.post('/api/projects/p1/drafts/chapter_001/apply-patch', json={
+            'patch_id': patch_review['patch_id'],
+            'patch_review_id': patch_review['review_id'],
+            'patch_ops': patch_review['ops'],
+            'accept_op_ids': [first_op],
+            'selection_range': patch_review.get('selection_range'),
+        })
+        assert applied.status_code == 200
+        updated_patch_review = client.get('/api/projects/p1/drafts/chapter_001/patch-reviews').json()[0]
+        assert updated_patch_review['status'] == 'accepted'
+        assert updated_patch_review['accepted_op_ids'] == [first_op]
+        version_rows = client.get('/api/projects/p1/drafts/chapter_001/versions').json()['versions']
+        assert any(row['label'] == 'AI 生成前' and row['tone'] == 'warn' for row in version_rows)
+        assert any(row['label'] == '应用 Patch 前' and row['tone'] == 'warn' for row in version_rows)
+        rollback_version_id = version_rows[0]['version_id']
+        rollback = client.post('/api/projects/p1/drafts/chapter_001/rollback', json={'version_id': rollback_version_id})
+        assert rollback.status_code == 200
+        after_rollback_rows = client.get('/api/projects/p1/drafts/chapter_001/versions').json()['versions']
+        assert any(row['label'] == '回滚前备份' for row in after_rollback_rows)
+        bad_scope = client.put(f"/api/projects/p1/drafts/chapter_001/patch-reviews/{patch_review['review_id']}", json={'accepted_op_ids': 'all'})
+        assert bad_scope.status_code == 400
+    finally:
+        app_main.store = old_store
+        app_main.kb_service = old_kb
+        app_main.context_engine = old_ctx
+        app_main.job_manager = old_jm
 
 
 def test_kb_query_card_stars_importance_weighting_affects_rank(tmp_path: Path):

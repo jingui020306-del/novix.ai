@@ -13,8 +13,9 @@ from agents.technique_director import TechniqueDirector, derive_technique_adhere
 from services.summary_service import make_summaries
 from services.canon_extractor_service import CanonExtractorService
 from services.evidence_service import EvidenceService
+from services.editing_service import create_chapter_review, create_patch_review, save_snapshot
 from services.llm_config_service import LLMConfigService
-from storage.fs_store import FSStore, apply_patch_ops
+from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
 
 class JobManager:
@@ -41,13 +42,123 @@ class JobManager:
             }
         payload = {"event": event, "data": data}
         self.store.append_jsonl(project_id, "sessions/session_001.jsonl", {"job_id": job_id, **payload})
+        self._record_job_event(project_id, job_id, event, data)
         await self.queues[job_id].put(payload)
 
     async def run_write_job(self, project_id: str, payload: dict[str, Any]) -> str:
-        self._validate_write_payload(project_id, payload)
+        chapter_id, _bp, scene_index = self._validate_write_payload(project_id, payload)
         job_id = f"job_{uuid.uuid4().hex[:10]}"
+        self._write_job_record(project_id, job_id, {
+            "job_id": job_id,
+            "project_id": project_id,
+            "chapter_id": chapter_id,
+            "scene_index": scene_index,
+            "job_type": "write",
+            "agent_mode": "three_agent",
+            "status": "queued",
+            "stage": "queued",
+            "requested_profile_id": payload.get("llm_profile_id") or "",
+            "auto_apply_patch": bool(payload.get("auto_apply_patch", False)),
+            "word_checkpoint_chars": int(payload.get("word_checkpoint_chars") or 1500),
+            "event_counts": {},
+            "last_event": "",
+            "last_error": "",
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "completed_at": "",
+            "input_summary": "作者请求生成本章；后端将自动编排审查、撰写、校对三 Agent。",
+            "output_summary": "",
+        })
         asyncio.create_task(self._pipeline(job_id, project_id, payload))
         return job_id
+
+    def _job_path(self, job_id: str) -> str:
+        return f"meta/jobs/{job_id}.json"
+
+    def _write_job_record(self, project_id: str, job_id: str, rec: dict[str, Any]) -> dict[str, Any]:
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {}
+        merged = {**current, **rec, "updated_at": rec.get("updated_at") or now_iso()}
+        self.store.write_json(project_id, self._job_path(job_id), merged)
+        return merged
+
+    def _record_job_event(self, project_id: str, job_id: str, event: str, data: Any) -> None:
+        if not isinstance(data, dict):
+            data = {}
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {"job_id": job_id, "project_id": project_id, "event_counts": {}}
+        counts = current.get("event_counts") if isinstance(current.get("event_counts"), dict) else {}
+        counts[event] = int(counts.get(event, 0)) + 1
+        next_status = current.get("status") or "running"
+        if event == "ERROR" and data.get("stage") == "pipeline":
+            next_status = "failed"
+        elif event == "ERROR":
+            next_status = "running"
+        elif event == "TRUST_REPORT":
+            next_status = "awaiting_review"
+        elif event in {"CANON_UPDATES", "MERGE_RESULT"} and next_status not in {"failed", "cancelled"}:
+            next_status = "finalizing"
+        elif next_status in {"queued", ""}:
+            next_status = "running"
+
+        patch = {
+            "status": next_status,
+            "stage": data.get("stage", event),
+            "last_event": event,
+            "last_error": data.get("message", current.get("last_error", "")) if event == "ERROR" else current.get("last_error", ""),
+            "provider": data.get("provider", current.get("provider", "")),
+            "model": data.get("model", current.get("model", "")),
+            "fallback": bool(current.get("fallback", False) or data.get("fallback", False)),
+            "input_summary": data.get("input_summary", current.get("input_summary", "")),
+            "output_summary": data.get("output_summary", current.get("output_summary", "")),
+            "event_counts": counts,
+            "updated_at": now_iso(),
+        }
+        self._write_job_record(project_id, job_id, patch)
+
+    def finish_job(self, project_id: str, job_id: str, status: str = "completed") -> dict[str, Any]:
+        current = self.store.read_json(project_id, self._job_path(job_id)) or {"job_id": job_id, "project_id": project_id}
+        if current.get("status") == "failed":
+            status = "failed"
+        return self._write_job_record(project_id, job_id, {
+            "status": status,
+            "stage": "DONE",
+            "last_event": "DONE",
+            "completed_at": now_iso(),
+            "updated_at": now_iso(),
+            "output_summary": current.get("output_summary") or ("写作任务完成" if status == "completed" else current.get("last_error", "")),
+        })
+
+    def get_job(self, project_id: str, job_id: str) -> dict[str, Any]:
+        rec = self.store.read_json(project_id, self._job_path(job_id))
+        if not rec:
+            return rec
+        events = [
+            row for row in self.store.read_jsonl(project_id, "sessions/session_001.jsonl")
+            if row.get("job_id") == job_id
+        ]
+        detail = {**rec, "events": events, "event_total": len(events)}
+        manifest = next((row.get("data") for row in reversed(events) if row.get("event") == "CONTEXT_MANIFEST"), None)
+        trust_report = next((row.get("data") for row in reversed(events) if row.get("event") == "TRUST_REPORT"), None)
+        if manifest is not None:
+            detail["context_manifest"] = manifest
+        if trust_report is not None:
+            detail["trust_report_event"] = trust_report
+        return detail
+
+    def list_jobs(self, project_id: str, status: str | None = None, chapter_id: str | None = None) -> list[dict[str, Any]]:
+        root = self.store._safe_path(project_id, "meta/jobs")
+        rows: list[dict[str, Any]] = []
+        if not root.exists():
+            return rows
+        for path in root.glob("*.json"):
+            row = self.store.read_json(project_id, f"meta/jobs/{path.name}")
+            if not row:
+                continue
+            if status and row.get("status") != status:
+                continue
+            if chapter_id and row.get("chapter_id") != chapter_id:
+                continue
+            rows.append(row)
+        return sorted(rows, key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
 
     def _resolve_profile(self, project_id: str, payload: dict[str, Any], module: str = "writer") -> tuple[str, dict[str, Any], dict[str, Any]]:
         project = self.store.read_yaml(project_id, "project.yaml")
@@ -277,7 +388,11 @@ class JobManager:
             ]
             writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
             draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
+            previous_draft = self.store.read_md(project_id, f"drafts/{chapter_id}.md")
+            if previous_draft:
+                save_snapshot(self.store, project_id, chapter_id, previous_draft, reason="before_ai_draft", patch_id=job_id)
             self.store.write_md(project_id, f"drafts/{chapter_id}.md", draft)
+            review = create_chapter_review(self.store, project_id, chapter_id, draft, job_id=job_id, source="writer_agent")
             self._write_chapter_status(project_id, chapter_id, "待审稿")
             manifest["usage_estimate"] = {
                 "prompt_tokens": max(1, len(str(writer_messages)) // 4),
@@ -287,7 +402,7 @@ class JobManager:
             manifest["writer_checkpoints"] = checkpoints
             if checkpoints:
                 await self.emit(project_id, job_id, "WRITER_CHECKPOINT", {"chapter_id": chapter_id, "checkpoints": checkpoints, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": f"按 {word_checkpoint_chars} 字阈值压缩", "output_summary": f"生成 {len(checkpoints)} 个阶段摘要"})
-            await self.emit(project_id, job_id, "WRITER_DRAFT", {"chapter_id": chapter_id, "text": draft, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": "撰写 Agent 使用 manifest 和审查清单生成正文", "output_summary": f"生成正文 {len(draft)} 字"})
+            await self.emit(project_id, job_id, "WRITER_DRAFT", {"chapter_id": chapter_id, "review_id": review.get("review_id"), "text": draft, "provider": writer_used.get("provider"), "model": writer_used.get("model"), "fallback": writer_used.get("provider") != selected.get("provider"), "input_summary": "撰写 Agent 使用 manifest 和审查清单生成正文", "output_summary": f"生成正文 {len(draft)} 字，进入作者待审"})
 
             tech_issues = derive_technique_adherence_issues(chapter_id, draft, manifest.get("fixed_blocks", {}).get("technique_checklist", []))
             marks = self.evidence_service.build_marks(project_id, chapter_id, job_id=job_id, model=writer_used.get("model", ""), technique_checklist=manifest.get("fixed_blocks", {}).get("technique_checklist", []), issues=tech_issues)
@@ -339,7 +454,18 @@ class JobManager:
                 })
 
             ops = self._clip_ops_to_selection(ops, selection_range)
-            patch_payload = {"patch_id": f"patch_{job_id}", "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range, "input_summary": "基础校对 Agent 只做语言层 patch，不新增事实", "output_summary": f"生成 {len(ops)} 条待审 patch"}
+            patch_review = create_patch_review(
+                self.store,
+                project_id,
+                chapter_id,
+                f"patch_{job_id}",
+                ops,
+                job_id=job_id,
+                selection_range=selection_range,
+                provider=editor_used.get("provider", ""),
+                model=editor_used.get("model", ""),
+            )
+            patch_payload = {"patch_id": f"patch_{job_id}", "patch_review_id": patch_review.get("review_id"), "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range, "input_summary": "基础校对 Agent 只做语言层 patch，不新增事实", "output_summary": f"生成 {len(ops)} 条待审 patch"}
             await self.emit(project_id, job_id, "PROOFREAD_PATCH", patch_payload)
             await self.emit(project_id, job_id, "EDITOR_PATCH", patch_payload)
 
@@ -394,6 +520,7 @@ class JobManager:
         except Exception as exc:
             await self.emit(project_id, job_id, "ERROR", {"stage": "pipeline", "message": str(exc)})
         finally:
+            self.finish_job(project_id, job_id)
             await self.queues[job_id].put({"event": "DONE", "data": {"job_id": job_id}})
 
     def _update_rolling_summary(self, project_id: str, sid: str) -> None:

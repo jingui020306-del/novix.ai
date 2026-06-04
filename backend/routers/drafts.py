@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from services.kb_service import KBService
+from services.editing_service import list_chapter_reviews, list_patch_reviews, update_chapter_review, update_patch_review
 from storage.fs_store import FSStore, apply_patch_ops
 
 
@@ -57,6 +58,32 @@ def _save_snapshot(s: FSStore, project_id: str, chapter_id: str, content: str, r
     meta['current_version'] = version_id
     s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
     return node
+
+
+def _version_label(reason: str) -> tuple[str, str]:
+    if reason == 'manual_save':
+        return '手动保存前', 'default'
+    if reason == 'before_ai_draft':
+        return 'AI 生成前', 'warn'
+    if reason == 'before_apply_patch':
+        return '应用 Patch 前', 'warn'
+    if reason.startswith('rollback_backup:'):
+        return '回滚前备份', 'default'
+    return reason or '版本快照', 'default'
+
+
+def _version_rows(meta: dict) -> list[dict]:
+    rows = []
+    for idx, row in enumerate(meta.get('versions', []) or [], start=1):
+        label, tone = _version_label(str(row.get('reason') or ''))
+        rows.append({
+            **row,
+            'label': label,
+            'tone': tone,
+            'ordinal': idx,
+            'is_current': row.get('version_id') == meta.get('current_version'),
+        })
+    return sorted(rows, key=lambda x: str(x.get('ts') or ''), reverse=True)
 
 
 
@@ -165,7 +192,44 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
 @router.get('/{chapter_id}/versions')
 def get_versions(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
     meta = _chapter_meta(s, project_id, chapter_id)
-    return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": meta.get('versions', [])}
+    return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": _version_rows(meta)}
+
+
+@router.get('/{chapter_id}/reviews')
+def get_chapter_reviews(project_id: str, chapter_id: str, status: str | None = None, s: FSStore = Depends(get_store)):
+    return list_chapter_reviews(s, project_id, chapter_id, status=status)
+
+
+@router.put('/{chapter_id}/reviews/{review_id}')
+def put_chapter_review(project_id: str, chapter_id: str, review_id: str, body: dict, s: FSStore = Depends(get_store)):
+    try:
+        rec = update_chapter_review(s, project_id, chapter_id, review_id, body or {})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='chapter review not found') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if rec.get('status') == 'accepted':
+        meta = _chapter_meta(s, project_id, chapter_id)
+        meta['chapter_status'] = '已保存'
+        meta['last_confirmed_review_id'] = review_id
+        meta['last_confirmed_at'] = rec.get('confirmed_at')
+        s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
+    return rec
+
+
+@router.get('/{chapter_id}/patch-reviews')
+def get_patch_reviews(project_id: str, chapter_id: str, status: str | None = None, s: FSStore = Depends(get_store)):
+    return list_patch_reviews(s, project_id, chapter_id, status=status)
+
+
+@router.put('/{chapter_id}/patch-reviews/{review_id}')
+def put_patch_review(project_id: str, chapter_id: str, review_id: str, body: dict, s: FSStore = Depends(get_store)):
+    try:
+        return update_patch_review(s, project_id, chapter_id, review_id, body or {})
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='patch review not found') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post('/{chapter_id}/rollback')
@@ -207,6 +271,9 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
     accept_ids = set(body.get('accept_op_ids', [o['op_id'] for o in norm]))
     accepted = [o for o in norm if o['op_id'] in accept_ids]
     rejected = [o for o in norm if o['op_id'] not in accept_ids]
+    patch_review_id = body.get('patch_review_id')
+    if patch_review_id and not any(row.get('review_id') == patch_review_id for row in list_patch_reviews(s, project_id, chapter_id)):
+        raise HTTPException(status_code=404, detail='patch review not found')
 
     _validate_selection_bounds(accepted, body.get('selection_range'))
 
@@ -224,6 +291,14 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
         'diff': diff,
     }
     s.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', rec)
+    if patch_review_id:
+        status = 'accepted' if accepted else 'rejected'
+        update_patch_review(s, project_id, chapter_id, patch_review_id, {
+            'status': status,
+            'accepted_op_ids': rec['accepted_op_ids'],
+            'rejected_op_ids': rec['rejected_op_ids'],
+            'diff': diff,
+        })
     s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "PATCH_APPLY_RESULT", "data": {"chapter_id": chapter_id, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}})
     kb.reindex_manuscript_chapter(project_id, chapter_id)
     return {"content": updated, "diff": diff, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}
