@@ -1,0 +1,8 @@
+{
+  "id": "technique_category_character_01",
+  "type": "technique_category",
+  "title": "人物技法/欲望",
+  "tags": ["technique", "category", "micro-group"],
+  "links": ["technique_category_character"],
+  "payload": {"name": "欲望", "parent_id": "technique_category_character", "description": "人物技法·欲望", "sort_order": 1, "tags": ["二级"], "core_techniques": []}
+}

@@ -1,45 +1,45 @@
 {
   "id": "technique_024",
   "type": "technique",
-  "title": "借代",
+  "title": "伪装破裂",
   "tags": [
     "technique",
-    "rhetoric"
+    "character"
   ],
   "links": [
-    "technique_category_rhetoric"
+    "technique_category_character"
   ],
   "payload": {
-    "name": "借代",
-    "category_id": "technique_category_rhetoric",
+    "name": "伪装破裂",
+    "category_id": "technique_category_character",
     "aliases": [
-      "借代"
+      "伪装破裂"
     ],
-    "description": "借代：用于提升段落表达与可检验性。",
-    "usage_layer": "language",
+    "description": "伪装破裂：用于提升段落表达与可检验性。",
+    "usage_layer": "character",
     "apply_steps": [
       "明确段落目标",
-      "在关键句实施借代",
+      "在关键句实施伪装破裂",
       "回读并收束过度使用"
     ],
     "signals": [
-      "出现借代可观察信号",
+      "出现伪装破裂可观察信号",
       "节奏/语义与目标一致"
     ],
     "suitable_scenes": [
-      "关键句",
-      "情绪余韵",
-      "气氛铺垫",
-      "段落收束"
+      "人物选择前",
+      "关系拉扯",
+      "秘密将露未露",
+      "人物弧光节点"
     ],
     "unsuitable_scenes": [
-      "动作高速段",
-      "信息必须清晰的规则说明"
+      "群像快速调度",
+      "纯设定解释"
     ],
     "overuse_risks": [
-      "辞藻堆砌",
-      "语义变虚",
-      "节奏被修辞拖慢"
+      "人物变成谜语人",
+      "动机不清",
+      "情绪重复"
     ],
     "intensity_levels": {
       "low": "点缀",
@@ -65,14 +65,14 @@
       ]
     },
     "examples": [
-      "示例：用借代改写一句场景句。"
+      "示例：用伪装破裂改写一句场景句。"
     ],
     "rewrite_examples": [
       {
         "source": "他走进雨里。",
-        "low": "他走进雨里，借代只在尾句轻轻点到。",
-        "med": "他走进雨里，动作、环境和停顿都服务于借代。",
-        "high": "他走进雨里，整段由借代主导节奏和信息释放。"
+        "low": "他走进雨里，伪装破裂只在尾句轻轻点到。",
+        "med": "他走进雨里，动作、环境和停顿都服务于伪装破裂。",
+        "high": "他走进雨里，整段由伪装破裂主导节奏和信息释放。"
       }
     ]
   }

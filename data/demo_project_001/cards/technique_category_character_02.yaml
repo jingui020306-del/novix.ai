@@ -1,0 +1,8 @@
+{
+  "id": "technique_category_character_02",
+  "type": "technique_category",
+  "title": "人物技法/恐惧",
+  "tags": ["technique", "category", "micro-group"],
+  "links": ["technique_category_character"],
+  "payload": {"name": "恐惧", "parent_id": "technique_category_character", "description": "人物技法·恐惧", "sort_order": 2, "tags": ["二级"], "core_techniques": []}
+}

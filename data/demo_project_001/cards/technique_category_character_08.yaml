@@ -1,0 +1,8 @@
+{
+  "id": "technique_category_character_08",
+  "type": "technique_category",
+  "title": "人物技法/边界",
+  "tags": ["technique", "category", "micro-group"],
+  "links": ["technique_category_character"],
+  "payload": {"name": "边界", "parent_id": "technique_category_character", "description": "人物技法·边界", "sort_order": 8, "tags": ["二级"], "core_techniques": []}
+}
