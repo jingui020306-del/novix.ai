@@ -13,10 +13,10 @@ export default function Layout({ left, center, right, header }: { left: any; cen
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -20, opacity: 0 }}
-            className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'
+            className='col-span-3 rounded-xl border border-border bg-panel/95 shadow-soft panel-scroll'
           >
-            <div className='flex items-center justify-between border-b border-border px-3 py-2'>
-              <div className='flex items-center gap-2 font-semibold text-sm'>
+            <div className='flex items-center justify-between border-b border-border bg-surface/70 px-3 py-2'>
+              <div className='font-display flex items-center gap-2 text-sm font-semibold'>
                 <BookOpen size={16} />
                 Novix 写作台
               </div>
@@ -46,8 +46,8 @@ export default function Layout({ left, center, right, header }: { left: any; cen
         <div className='p-4'>{center}</div>
       </main>
 
-      <section className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'>
-        <div className='flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-semibold'>
+      <section className='col-span-3 rounded-xl border border-border bg-panel/95 shadow-soft panel-scroll'>
+        <div className='font-display flex items-center gap-2 border-b border-border bg-indigo-50/70 px-3 py-2 text-sm font-semibold dark:bg-indigo-950/20'>
           <Bot size={16} />
           AI 助手
         </div>

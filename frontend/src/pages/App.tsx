@@ -2056,7 +2056,7 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className='mt-4 rounded-ui border border-border bg-surface p-2 text-xs'>
+        <div className='module-card module-trust mt-4 rounded-ui border bg-surface p-2 text-xs'>
           <div className='flex items-center justify-between gap-2'>
             <span className='font-medium'>可信检查</span>
             <Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>
@@ -2969,31 +2969,32 @@ export default function App() {
           <Card
             title='写作工作台'
             extra={<Button variant='primary' onClick={() => { setView('chapter'); setActiveActivity('explorer') }}>打开当前章节</Button>}
+            className='module-card module-context'
           >
             <div className='grid grid-cols-1 gap-3 md:grid-cols-5'>
-              <div className='rounded-ui border border-border bg-surface p-3'>
+              <div className='metric-card metric-blue rounded-ui border p-3'>
                 <div className='text-xs text-muted'>生成状态</div>
-                <div className='mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
                 <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || latestJob?.last_event || 'no job event'}</div>
               </div>
-              <div className='rounded-ui border border-border bg-surface p-3'>
+              <div className='metric-card metric-purple rounded-ui border p-3'>
                 <div className='text-xs text-muted'>待审 Patch</div>
-                <div className='mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
               </div>
-              <div className='rounded-ui border border-border bg-surface p-3'>
+              <div className='metric-card metric-green rounded-ui border p-3'>
                 <div className='text-xs text-muted'>待审 AI 草稿</div>
-                <div className='mt-1 text-lg font-semibold'>{pendingChapterReviews.length}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{pendingChapterReviews.length}</div>
                 <div className='text-xs text-muted'>确认后才视为作者稿</div>
               </div>
-              <div className='rounded-ui border border-border bg-surface p-3'>
+              <div className='metric-card metric-amber rounded-ui border p-3'>
                 <div className='text-xs text-muted'>待确认草案</div>
-                <div className='mt-1 text-lg font-semibold'>{pendingBuildDrafts.length}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{pendingBuildDrafts.length}</div>
                 <div className='text-xs text-muted'>建书草案不会自动写入</div>
               </div>
-              <div className='rounded-ui border border-border bg-surface p-3'>
+              <div className='metric-card metric-rose rounded-ui border p-3'>
                 <div className='text-xs text-muted'>风险标记</div>
-                <div className='mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
                 <div className='text-xs text-muted'>unsupported / contradicted</div>
               </div>
             </div>
@@ -3838,16 +3839,17 @@ export default function App() {
           <Card
             title='写作共识'
             extra={<Badge tone={alignmentReady ? 'success' : alignmentUnderstanding.trim() ? 'warn' : 'default'}>{alignmentReady ? '作者已确认' : alignmentUnderstanding.trim() ? '待确认' : '未开始'}</Badge>}
+            className='module-card module-author'
           >
             <div className='mb-3 grid grid-cols-3 gap-2 text-xs'>
               {[
-                ['1', 'Idea', alignmentIdea.trim()],
-                ['2', 'Chat', alignmentMessages.length],
-                ['3', 'AI Cache', alignmentUnderstandingVersions.length],
-              ].map(([num, label, done]: any) => (
-                <div key={label} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
+                ['1', 'Idea', alignmentIdea.trim(), 'module-author'],
+                ['2', 'Chat', alignmentMessages.length, 'module-chat'],
+                ['3', 'AI Cache', alignmentUnderstandingVersions.length, 'module-ai'],
+              ].map(([num, label, done, tone]: any) => (
+                <div key={label} className={`module-card ${tone} rounded-ui border px-2 py-2 ${done ? '' : 'opacity-80'}`}>
                   <div className='text-[11px] text-muted'>第 {num} 步</div>
-                  <div className='font-medium'>{label}</div>
+                  <div className='font-display font-medium'>{label}</div>
                 </div>
               ))}
             </div>
@@ -3856,11 +3858,11 @@ export default function App() {
               <div className='space-y-3'>
                 <div>
                   <div className='mb-1 flex items-center justify-between gap-2'>
-                    <label className='text-sm font-medium'>作者原始想法</label>
+                    <label className='font-display text-sm font-medium'>作者原始想法</label>
                     <Button className='text-xs' onClick={() => saveWritingAlignment({ idea: alignmentIdea, confirmed: false })}>保存想法</Button>
                   </div>
                   <Textarea
-                    className='min-h-[360px] resize-y text-[15px] leading-6'
+                    className='font-writing min-h-[360px] resize-y bg-amber-50/60 text-[15px] leading-7 dark:bg-amber-950/20'
                     value={alignmentIdea}
                     onChange={(e) => { setAlignmentIdea(e.target.value); setAlignmentConfirmed(false) }}
                     placeholder='这里保留作者最原始的想法，不需要完整：这一章想写什么、人物什么感觉、哪里不要太快揭露。'
@@ -3869,10 +3871,10 @@ export default function App() {
               </div>
 
               <div className='space-y-3'>
-                <div className='max-h-48 space-y-2 overflow-auto rounded-ui border border-border bg-surface-2 p-2'>
+                <div className='module-card module-chat max-h-48 space-y-2 overflow-auto rounded-ui border p-2'>
                   {alignmentMessages.map((msg: any, idx: number) => (
-                    <div key={`${msg.created_at || idx}:${idx}`} className={`max-w-[92%] rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'ml-auto border-brand-500 bg-surface' : 'border-border bg-panel'}`}>
-                      <div className='mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
+                    <div key={`${msg.created_at || idx}:${idx}`} className={`max-w-[92%] rounded-ui border p-2 text-xs ${msg.role === 'author' ? 'ml-auto border-amber-300 bg-amber-50 dark:bg-amber-950/20' : 'border-teal-300 bg-teal-50 dark:bg-teal-950/20'}`}>
+                      <div className='font-display mb-1 font-medium'>{msg.role === 'author' ? '作者' : 'AI'}</div>
                       <div className='whitespace-pre-wrap text-muted'>{msg.text}</div>
                     </div>
                   ))}
@@ -3894,14 +3896,14 @@ export default function App() {
 
               <div className='space-y-3'>
                 <div className='flex items-center justify-between gap-2'>
-                  <label className='text-sm font-medium'>AI 理解缓存</label>
+                  <label className='font-display text-sm font-medium'>AI 理解缓存</label>
                   <Button className='text-xs' onClick={generateAlignmentUnderstanding}>新增一版</Button>
                 </div>
-                <div className='max-h-[360px] space-y-2 overflow-auto rounded-ui border border-border bg-surface-2 p-2'>
+                <div className='module-card module-ai max-h-[360px] space-y-2 overflow-auto rounded-ui border p-2'>
                   {alignmentUnderstandingVersions.map((version: any, idx: number) => (
                     <div key={version.version_id || idx} className='rounded-ui border border-border bg-surface p-2 text-xs'>
                       <div className='mb-1 flex items-center justify-between gap-2'>
-                        <span className='font-medium'>AI #{alignmentUnderstandingVersions.length - idx}</span>
+                        <span className='font-display font-medium'>AI #{alignmentUnderstandingVersions.length - idx}</span>
                         <Badge>{version.source || 'AI'}</Badge>
                       </div>
                       <div className='mb-2 whitespace-pre-wrap text-muted line-clamp-6'>{version.text}</div>
@@ -3936,13 +3938,13 @@ export default function App() {
               </div>
             </div>
 
-            <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3'>
+            <div className='module-card module-draft mt-3 rounded-ui border p-3'>
               <div className='mb-1 flex items-center justify-between gap-2'>
-                <label className='text-sm font-medium'>最终确认稿</label>
+                <label className='font-display text-sm font-medium'>最终确认稿</label>
                 <Badge tone={alignmentReady ? 'success' : 'warn'}>{alignmentReady ? '已确认' : '等作者确认'}</Badge>
               </div>
               <Textarea
-                className='min-h-[190px] resize-y whitespace-pre-wrap bg-surface text-[15px] leading-6'
+                className='font-writing min-h-[190px] resize-y whitespace-pre-wrap bg-white/80 text-[15px] leading-7 dark:bg-slate-950/30'
                 value={alignmentAgreedDraft}
                 onChange={(e) => { setAlignmentAgreedDraft(e.target.value); setAlignmentConfirmed(false) }}
                 placeholder='最后一步才改这里：作者从右侧挑一版，或自己重写成最终开写要求。'
@@ -5042,7 +5044,7 @@ export default function App() {
         </div>
       </div>
 
-      <Card title='Techniques' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>}>
+      <Card title='Techniques' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
         <div className='space-y-2 text-xs'>
           {rightPinnedTechniqueRows.map((row: any) => {
             const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
@@ -5078,7 +5080,7 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>}>
+      <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>} className='module-card module-context'>
         <div className='space-y-2 text-xs'>
           <div className='rounded-ui border border-border bg-surface-2 p-2'>
             <div className='font-medium'>{currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
@@ -5115,7 +5117,7 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title='本章要求点亮'>
+      <Card title='本章要求点亮' className='module-card module-draft'>
         <div className='space-y-1'>
           {requirementLights.map((item: any, idx: number) => {
             const level = item.mark?.detection?.support_level || 'unsupported'
@@ -5143,7 +5145,7 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{supportLabel(selectedMark?.detection?.support_level)}</Badge> : undefined}>
+      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{supportLabel(selectedMark?.detection?.support_level)}</Badge> : undefined} className='module-card module-trust'>
         {selectedMark ? (
           <div className='space-y-2 text-xs'>
                 <div className='font-medium'>{requirementTypeLabel(selectedMark.target_type)} · {selectedMark.label || selectedMark.target_id}</div>

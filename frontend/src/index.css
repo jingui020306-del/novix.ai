@@ -25,7 +25,10 @@ html, body, #root { height: 100%; }
 body {
   margin: 0;
   color: rgb(var(--c-text));
-  background: linear-gradient(180deg, rgb(var(--c-surface)) 0%, rgb(var(--c-panel)) 100%);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(20, 184, 166, 0.08), transparent 26rem),
+    radial-gradient(circle at 88% 6%, rgba(79, 70, 229, 0.07), transparent 24rem),
+    linear-gradient(180deg, rgb(var(--c-surface)) 0%, rgb(var(--c-panel)) 100%);
   font-family: Inter, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
   line-height: 1.5;
 }
@@ -41,6 +44,73 @@ body {
 
 .panel-scroll { overflow: auto; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+.font-display { font-family: Inter, 'PingFang SC', 'Microsoft YaHei', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }
+.font-writing { font-family: Georgia, 'Songti SC', 'STSong', 'Noto Serif CJK SC', serif; }
+.font-note { font-family: 'PingFang SC', 'Microsoft YaHei', ui-sans-serif, system-ui, sans-serif; }
+
+.module-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgb(var(--module-bg, var(--c-panel))) 0%, rgb(var(--c-panel)) 76%);
+  border-color: rgb(var(--module-border, var(--c-border)));
+}
+
+.module-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgb(var(--module-accent, 99 102 241));
+}
+
+.module-card > div:first-child {
+  background: linear-gradient(90deg, rgb(var(--module-bg, var(--c-surface))) 0%, transparent 72%);
+}
+
+.module-author { --module-accent: 217 119 6; --module-bg: 255 251 235; --module-border: 252 211 77; }
+.module-chat { --module-accent: 20 184 166; --module-bg: 240 253 250; --module-border: 94 234 212; }
+.module-ai { --module-accent: 79 70 229; --module-bg: 238 242 255; --module-border: 165 180 252; }
+.module-technique { --module-accent: 147 51 234; --module-bg: 250 245 255; --module-border: 216 180 254; }
+.module-context { --module-accent: 2 132 199; --module-bg: 240 249 255; --module-border: 125 211 252; }
+.module-trust { --module-accent: 245 158 11; --module-bg: 255 251 235; --module-border: 252 211 77; }
+.module-risk { --module-accent: 225 29 72; --module-bg: 255 241 242; --module-border: 253 164 175; }
+.module-draft { --module-accent: 22 163 74; --module-bg: 240 253 244; --module-border: 134 239 172; }
+
+.dark .module-author { --module-bg: 69 43 18; --module-border: 146 64 14; }
+.dark .module-chat { --module-bg: 19 78 74; --module-border: 13 148 136; }
+.dark .module-ai { --module-bg: 49 46 129; --module-border: 99 102 241; }
+.dark .module-technique { --module-bg: 88 28 135; --module-border: 147 51 234; }
+.dark .module-context { --module-bg: 12 74 110; --module-border: 14 165 233; }
+.dark .module-trust { --module-bg: 69 43 18; --module-border: 146 64 14; }
+.dark .module-risk { --module-bg: 76 5 25; --module-border: 225 29 72; }
+.dark .module-draft { --module-bg: 20 83 45; --module-border: 22 163 74; }
+
+.metric-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(var(--metric-border, var(--c-border)));
+  background: linear-gradient(180deg, rgb(var(--metric-bg, var(--c-surface))) 0%, rgb(var(--c-panel)) 110%);
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: rgb(var(--metric-accent, 99 102 241));
+}
+
+.metric-blue { --metric-accent: 2 132 199; --metric-bg: 240 249 255; --metric-border: 186 230 253; }
+.metric-purple { --metric-accent: 147 51 234; --metric-bg: 250 245 255; --metric-border: 233 213 255; }
+.metric-green { --metric-accent: 22 163 74; --metric-bg: 240 253 244; --metric-border: 187 247 208; }
+.metric-amber { --metric-accent: 245 158 11; --metric-bg: 255 251 235; --metric-border: 253 230 138; }
+.metric-rose { --metric-accent: 225 29 72; --metric-bg: 255 241 242; --metric-border: 254 205 211; }
+
+.dark .metric-blue { --metric-bg: 12 74 110; --metric-border: 14 116 144; }
+.dark .metric-purple { --metric-bg: 59 7 100; --metric-border: 126 34 206; }
+.dark .metric-green { --metric-bg: 20 83 45; --metric-border: 21 128 61; }
+.dark .metric-amber { --metric-bg: 69 43 18; --metric-border: 180 83 9; }
+.dark .metric-rose { --metric-bg: 76 5 25; --metric-border: 190 18 60; }
 
 html[data-density='compact'] .density-space { gap: 0.35rem; }
 html[data-density='compact'] .density-pad { padding: 0.35rem 0.45rem; }
