@@ -2639,33 +2639,68 @@ export default function App() {
       const readinessMajorDoneCount = readinessGroups.filter((group) => group.items.every((item) => item.done)).length
       const timelineToneClass = (status: string) => {
         if (status === 'confirmed') return 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+        if (status === 'suggesting') return 'border-sky-400 bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-200'
         if (status === 'pending') return 'border-amber-400 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
         if (status === 'risk') return 'border-red-400 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
         return 'border-border bg-surface-2 text-muted'
       }
       const confirmedTimelineIds = new Set<string>(Array.isArray(activeStoryPayload.timeline_confirmed) ? activeStoryPayload.timeline_confirmed : [])
+      const timelineDecisions = activeStoryPayload.timeline_decisions && typeof activeStoryPayload.timeline_decisions === 'object' ? activeStoryPayload.timeline_decisions : {}
       const chapterPlanRows = Array.isArray(activeStoryPayload.chapter_plan) ? activeStoryPayload.chapter_plan : []
       const blastRows = chapterPlanRows.filter((row: any) => /爆点|爆发|高潮|转折|危机/.test(`${row.title || ''}${row.focus || ''}${row.key_events || ''}${row.conflict || ''}`)).slice(0, 6)
+      const pendingDraftKinds = new Set(pendingBuildDrafts.map((draft: any) => draft.kind))
+      const timelineStatus = (id: string, hasMaterial: boolean, draftKind?: string) => {
+        const decision = timelineDecisions[id]?.decision
+        if (decision === 'accepted' || confirmedTimelineIds.has(id)) return 'confirmed'
+        if (unsupportedMarks.length && id === 'context') return 'risk'
+        if (draftKind && pendingDraftKinds.has(draftKind)) return 'suggesting'
+        if (hasMaterial) return 'pending'
+        return 'empty'
+      }
+      const updateTimelineDecision = (node: any, decision: string) => {
+        setStoryForm((prev: any) => {
+          const payload = { ...(prev?.payload || {}) }
+          const currentConfirmed = Array.isArray(payload.timeline_confirmed) ? payload.timeline_confirmed : []
+          const nextConfirmed = decision === 'accepted'
+            ? Array.from(new Set([...currentConfirmed, node.id]))
+            : currentConfirmed.filter((id: string) => id !== node.id)
+          const nextDecisions = {
+            ...(payload.timeline_decisions || {}),
+            [node.id]: {
+              node_id: node.id,
+              label: node.label,
+              decision,
+              suggestion: node.suggestion,
+              decided_by: 'author',
+              decided_at: new Date().toISOString(),
+            },
+          }
+          return normalizeStoryCard({ ...prev, payload: { ...payload, timeline_confirmed: nextConfirmed, timeline_decisions: nextDecisions } })
+        })
+        push(decision === 'accepted' ? `${node.label} 已由作者确认，请保存故事卡` : `${node.label} 已标记为${decision === 'skipped' ? '跳过' : '待修改'}`)
+      }
       const timelineNodes = [
-        { id: 'build', label: '建书', status: hasText(storyForm?.title) && hasText(activeStoryPayload.genre) ? 'confirmed' : 'pending', suggestion: '先确认题材、关键词、目标读者和禁写事项。', run: () => goStoryStep('basics') },
-        { id: 'characters', label: '人物', status: Array.isArray(chars) && chars.length ? 'confirmed' : 'pending', suggestion: 'AI 可以建议人物小传，但正式人物卡由作者确认。', run: () => { setActiveActivity('cards'); setView('characters') } },
-        { id: 'world', label: '世界观', status: hasText(activeStoryPayload.worldview) ? 'confirmed' : 'pending', suggestion: '确认世界规则和重要场景，避免后续章节场景漂移。', run: () => goStoryStep('outline') },
-        { id: 'context', label: '脉络', status: openLineRows.length && hiddenLineRows.length ? 'confirmed' : 'pending', suggestion: '明线、暗线、伏笔归在脉络里，不作为主线大节点。', run: () => goStoryStep('lines') },
+        { id: 'build', label: '建书', status: timelineStatus('build', hasText(storyForm?.title), 'story_overview'), suggestion: '确认这本书的创作目标，再让 AI 辅助拆分结构。', run: () => goStoryStep('basics'), draftKind: 'story_overview' },
+        { id: 'genre_keywords', label: '题材/关键词', status: timelineStatus('genre_keywords', hasText(activeStoryPayload.genre) && hasArrayItems(activeStoryPayload.keywords), 'story_overview'), suggestion: '题材和关键词决定 AI 后续建议的边界，作者确认后才进入正式计划。', run: () => goStoryStep('basics'), draftKind: 'story_overview' },
+        { id: 'characters', label: '人物初设', status: timelineStatus('characters', Array.isArray(chars) && chars.length > 0, 'character_seed'), suggestion: 'AI 可以建议人物小传，但正式人物卡由作者确认。', run: () => { setActiveActivity('cards'); setView('characters') }, draftKind: 'character_seed' },
+        { id: 'world', label: '世界观', status: timelineStatus('world', hasText(activeStoryPayload.worldview), 'story_overview'), suggestion: '确认世界规则和重要场景，避免后续章节场景漂移。', run: () => goStoryStep('outline'), draftKind: 'story_overview' },
+        { id: 'story_core', label: '故事核心', status: timelineStatus('story_core', hasText(activeStoryPayload.logline) && hasText(activeStoryPayload.main_conflict), 'story_overview'), suggestion: '故事核心包括小故事大纲、主题和主冲突，AI 只能给候选，作者决定正式方向。', run: () => goStoryStep('outline'), draftKind: 'story_overview' },
+        { id: 'context', label: '脉络', status: timelineStatus('context', Boolean(openLineRows.length && hiddenLineRows.length), 'lines'), suggestion: '明线、暗线、伏笔、爆点、转折、回收都归在脉络里。伏笔不是主线大节点。', run: () => goStoryStep('lines'), draftKind: 'lines' },
         ...volumeRows.map((volume: any, index: number) => ({
           id: `volume:${volume.id}`,
           label: volume.title || `第${index + 1}卷`,
-          status: confirmedTimelineIds.has(`volume:${volume.id}`) || (volume.chapter_ids || []).length ? 'confirmed' : 'pending',
+          status: timelineStatus(`volume:${volume.id}`, hasText(volume.summary) || Boolean((volume.chapter_ids || []).length)),
           suggestion: volume.summary || 'AI 可以建议本卷目标、卷末转折和风险点，作者确认后进入计划。',
           run: () => { setActiveActivity('explorer'); setView('projects') },
         })),
         ...(blastRows.length ? blastRows : [{ title: '爆点1', focus: activeStoryPayload.main_conflict || '围绕主冲突设计第一个强事件' }]).map((row: any, index: number) => ({
           id: `blast:${row.chapter_id || row.chapter || index}`,
           label: row.title && /爆点|爆发|高潮|转折|危机/.test(row.title) ? row.title : `爆点${index + 1}`,
-          status: confirmedTimelineIds.has(`blast:${row.chapter_id || row.chapter || index}`) || hasText(row.key_events || row.focus) ? 'pending' : 'empty',
+          status: timelineStatus(`blast:${row.chapter_id || row.chapter || index}`, hasText(row.key_events || row.focus)),
           suggestion: row.focus || row.key_events || 'AI 可以给爆点建议，作者决定是否采用。',
           run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') },
         })),
-        { id: 'ending', label: '结局', status: /结局|终局|收束/.test(JSON.stringify(activeStoryPayload)) ? 'pending' : 'empty', suggestion: '结局只保留结构位置，具体收束由作者最终决策。', run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
+        { id: 'ending', label: '结局', status: timelineStatus('ending', /结局|终局|收束/.test(JSON.stringify(activeStoryPayload))), suggestion: '结局只保留结构位置，具体收束由作者最终决策。', run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
       ]
       const selectedTimelineNode = timelineNodes.find((node) => node.id === selectedTimelineNodeId) || timelineNodes[0]
       const renderReadinessGroup = (group: any) => {
@@ -2837,16 +2872,28 @@ export default function App() {
               </div>
             </div>
             <div className='mt-3 rounded-ui border border-border bg-surface p-3'>
-              <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div className='grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.2fr_1fr]'>
                 <div>
-                  <div className='text-sm font-semibold'>{selectedTimelineNode.label}</div>
-                  <div className='mt-1 text-xs text-muted'>{selectedTimelineNode.suggestion}</div>
+                  <div className='text-xs text-muted'>当前状态</div>
+                  <div className='mt-1 flex items-center gap-2'>
+                    <span className='text-sm font-semibold'>{selectedTimelineNode.label}</span>
+                    <Badge tone={selectedTimelineNode.status === 'confirmed' ? 'success' : selectedTimelineNode.status === 'risk' || selectedTimelineNode.status === 'pending' ? 'warn' : 'default'}>
+                      {selectedTimelineNode.status === 'confirmed' ? '作者已确认' : selectedTimelineNode.status === 'suggesting' ? 'AI 建议中' : selectedTimelineNode.status === 'pending' ? '待作者确认' : selectedTimelineNode.status === 'risk' ? '有结构风险' : '未开始'}
+                    </Badge>
+                  </div>
                 </div>
-                <div className='flex gap-2'>
-                  <Badge tone={selectedTimelineNode.status === 'confirmed' ? 'success' : selectedTimelineNode.status === 'risk' ? 'warn' : 'default'}>
-                    {selectedTimelineNode.status === 'confirmed' ? '作者已确认' : selectedTimelineNode.status === 'pending' ? '待作者决策' : '未开始'}
-                  </Badge>
-                  <Button className='text-xs' onClick={selectedTimelineNode.run}>去处理</Button>
+                <div>
+                  <div className='text-xs text-muted'>AI 建议</div>
+                  <div className='mt-1 text-sm'>{selectedTimelineNode.suggestion}</div>
+                </div>
+                <div>
+                  <div className='text-xs text-muted'>作者决策</div>
+                  <div className='mt-1 flex flex-wrap gap-1.5'>
+                    <Button className='text-xs' onClick={() => updateTimelineDecision(selectedTimelineNode, 'accepted')}>接受建议</Button>
+                    <Button className='text-xs' onClick={selectedTimelineNode.run}>修改</Button>
+                    <Button className='text-xs' onClick={() => updateTimelineDecision(selectedTimelineNode, 'skipped')}>跳过</Button>
+                    <Button className='text-xs' onClick={() => selectedTimelineNode.draftKind ? generateBuildDraft(selectedTimelineNode.draftKind) : selectedTimelineNode.run()}>生成备选</Button>
+                  </div>
                 </div>
               </div>
             </div>
