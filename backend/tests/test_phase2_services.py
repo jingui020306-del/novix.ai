@@ -681,6 +681,9 @@ def test_llm_config_profiles_assignments_crud(tmp_path: Path):
     assert status_body['all_mock'] is True
     assert status_body['storage']['api_keys_returned_in_status'] is False
     assert 'profiles_path' in status_body['storage']
+    module_ids = {row['module'] for row in status_body['modules']}
+    for expected_module in {'setup_story', 'setup_character', 'setup_lines', 'outline_research', 'chapter_writer', 'chapter_reviewer', 'proofreader', 'canon_extractor', 'timeline_checker', 'scene_checker', 'foreshadow_tracker', 'recap_reviewer'}:
+        assert expected_module in module_ids
     profile_rows = status_body['profiles']
     assert [row for row in profile_rows if row['profile_id'] == 'test_profile']
     assert all('api_key' not in row for row in profile_rows)

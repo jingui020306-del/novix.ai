@@ -124,6 +124,43 @@ const BUILD_WIZARD_STEPS = [
   { id: 'confirm', label: '确认写入', draftKind: '', checks: ['局部接受', '保存故事卡', '拒绝草案'] },
 ]
 
+const TASK_AI_MODULES = [
+  { id: 'setup_story', label: '建书/题材', group: '设定建设' },
+  { id: 'setup_character', label: '人物初设/小传', group: '设定建设' },
+  { id: 'setup_lines', label: '明暗线/脉络草案', group: '设定建设' },
+  { id: 'outline_research', label: '大纲调研', group: '设定建设' },
+  { id: 'chapter_writer', label: '章节正文生成', group: '章节生成' },
+  { id: 'chapter_reviewer', label: '章节审查', group: '章节生成' },
+  { id: 'proofreader', label: '基础校对', group: '章节生成' },
+  { id: 'canon_extractor', label: '事实抽取', group: '可信检查' },
+  { id: 'timeline_checker', label: '时间线检查', group: '可信检查' },
+  { id: 'scene_checker', label: '场景一致性', group: '可信检查' },
+  { id: 'foreshadow_tracker', label: '脉络/伏笔追踪', group: '可信检查' },
+  { id: 'recap_reviewer', label: '风险检查', group: '可信检查' },
+]
+
+const WRITE_ROUTE_MODULES = ['chapter_writer', 'chapter_reviewer', 'proofreader', 'canon_extractor']
+
+const GENERATION_SCOPE_OPTIONS = [
+  { id: 'chapter', label: '当前章节' },
+  { id: 'beat', label: '当前爆点/情节点' },
+  { id: 'volume', label: '当前卷' },
+  { id: 'book', label: '整本书草案' },
+]
+
+const GENERATION_STOP_OPTIONS = [
+  { id: 'chapter', label: '每章后停止' },
+  { id: 'beat', label: '爆点后停止' },
+  { id: 'volume', label: '每卷后停止' },
+  { id: 'risk', label: '发现风险时停止' },
+]
+
+const GENERATION_CHECK_OPTIONS = [
+  { id: 'marks', label: '生成后分析标记' },
+  { id: 'risks', label: '生成后检查风险' },
+  { id: 'manual', label: '只等待作者确认' },
+]
+
 const cloneJson = (value: any) => JSON.parse(JSON.stringify(value))
 
 const normalizeStoryCard = (card: any) => {
@@ -174,6 +211,12 @@ export default function App() {
   const [selectionStart, setSelectionStart] = useState('')
   const [selectionEnd, setSelectionEnd] = useState('')
   const [pendingWriteJob, setPendingWriteJob] = useState<{ maxTokens: number; range: { start: number; end: number } | null; label: string } | null>(null)
+  const [generationScope, setGenerationScope] = useState('chapter')
+  const [generationStopPoint, setGenerationStopPoint] = useState('chapter')
+  const [generationCheckMode, setGenerationCheckMode] = useState('marks')
+  const [generationUseCards, setGenerationUseCards] = useState(true)
+  const [generationUseTechniques, setGenerationUseTechniques] = useState(true)
+  const [generationUseLines, setGenerationUseLines] = useState(true)
   const [analyzeBusy, setAnalyzeBusy] = useState(false)
   const [analyzeResult, setAnalyzeResult] = useState<any>(null)
   const [factRevisionModal, setFactRevisionModal] = useState<{ open: boolean; fact: any | null; patch: string; reason: string }>({ open: false, fact: null, patch: '{}', reason: '' })
@@ -190,6 +233,7 @@ export default function App() {
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
   const [buildWizardStep, setBuildWizardStep] = useState('basics')
   const [buildDraftHistoryFilter, setBuildDraftHistoryFilter] = useState('all')
+  const [selectedTimelineNodeId, setSelectedTimelineNodeId] = useState('build')
 
   const paletteCacheRef = useRef<PaletteCache>({
     storyCards: [],
@@ -324,8 +368,8 @@ export default function App() {
   const selectedProfileHealth = profileHealthRows.find((row: any) => row.profile_id === llmProfileId)
   const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
   const writeRouteRows = useAgentAssignments
-    ? agentModuleRows
-    : ['writer', 'critic', 'editor', 'canon_extractor'].map((module) => ({
+    ? agentModuleRows.filter((row: any) => WRITE_ROUTE_MODULES.includes(row.module))
+    : WRITE_ROUTE_MODULES.map((module) => ({
       module,
       profile_id: llmProfileId,
       provider: selectedProfileHealth?.provider || profiles[llmProfileId]?.provider || 'missing',
@@ -350,6 +394,21 @@ export default function App() {
     if (!item || typeof item !== 'object') return Boolean(item)
     return Object.values(item).some((entry) => Array.isArray(entry) ? entry.length > 0 : hasText(entry))
   })
+  const traceRowsFor = (targetType: string, candidates: any[]) => {
+    const needles = candidates.map((x) => String(x || '').trim()).filter(Boolean)
+    return evidenceMarkRows.filter((mark: any) => {
+      if (mark.target_type !== targetType) return false
+      const hay = [mark.target_id, mark.label, mark.span?.quote, ...(mark.detection?.matched_signals || [])].map((x) => String(x || ''))
+      return needles.length === 0 || needles.some((needle) => hay.some((h) => h.includes(needle) || needle.includes(h)))
+    })
+  }
+  const traceBadgeTone = (rows: any[]) => rows.some((mark: any) => mark?.detection?.support_level === 'supported' && mark?.span?.quote) ? 'success' : rows.length ? 'warn' : 'default'
+  const traceSummary = (rows: any[]) => {
+    if (!rows.length) return '未使用'
+    const supported = rows.filter((mark: any) => mark?.detection?.support_level === 'supported' && mark?.span?.quote).length
+    const stages = Array.from(new Set(rows.map((mark: any) => mark?.agent_trace?.stage).filter(Boolean)))
+    return `${supported}/${rows.length} 已证实${stages.length ? ` · ${stages.join('/')}` : ''}`
+  }
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
   const importantSceneRows = meaningfulRows(activeStoryPayload.important_scenes, ['scene', 'purpose', 'chapter'])
   const openLineRows = meaningfulRows(activeStoryPayload.open_line, ['event', 'goal', 'conflict', 'result'])
@@ -1244,6 +1303,14 @@ export default function App() {
         llm_profile_id: useAgentAssignments ? undefined : llmProfileId,
         auto_apply_patch: Boolean(autoApplyPatch),
         word_checkpoint_chars: 1500,
+        generation_control: {
+          scope: generationScope,
+          stop_point: generationStopPoint,
+          check_mode: generationCheckMode,
+          include_cards: generationUseCards,
+          include_techniques: generationUseTechniques,
+          include_lines: generationUseLines,
+        },
         constraints: { max_tokens: maxTokens },
         selection_range: range || undefined,
       })
@@ -2570,6 +2637,37 @@ export default function App() {
       const readinessItemCount = readinessGroups.reduce((sum, group) => sum + group.items.length, 0)
       const readinessDoneCount = readinessGroups.reduce((sum, group) => sum + group.items.filter((item) => item.done).length, 0)
       const readinessMajorDoneCount = readinessGroups.filter((group) => group.items.every((item) => item.done)).length
+      const timelineToneClass = (status: string) => {
+        if (status === 'confirmed') return 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+        if (status === 'pending') return 'border-amber-400 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
+        if (status === 'risk') return 'border-red-400 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200'
+        return 'border-border bg-surface-2 text-muted'
+      }
+      const confirmedTimelineIds = new Set<string>(Array.isArray(activeStoryPayload.timeline_confirmed) ? activeStoryPayload.timeline_confirmed : [])
+      const chapterPlanRows = Array.isArray(activeStoryPayload.chapter_plan) ? activeStoryPayload.chapter_plan : []
+      const blastRows = chapterPlanRows.filter((row: any) => /爆点|爆发|高潮|转折|危机/.test(`${row.title || ''}${row.focus || ''}${row.key_events || ''}${row.conflict || ''}`)).slice(0, 6)
+      const timelineNodes = [
+        { id: 'build', label: '建书', status: hasText(storyForm?.title) && hasText(activeStoryPayload.genre) ? 'confirmed' : 'pending', suggestion: '先确认题材、关键词、目标读者和禁写事项。', run: () => goStoryStep('basics') },
+        { id: 'characters', label: '人物', status: Array.isArray(chars) && chars.length ? 'confirmed' : 'pending', suggestion: 'AI 可以建议人物小传，但正式人物卡由作者确认。', run: () => { setActiveActivity('cards'); setView('characters') } },
+        { id: 'world', label: '世界观', status: hasText(activeStoryPayload.worldview) ? 'confirmed' : 'pending', suggestion: '确认世界规则和重要场景，避免后续章节场景漂移。', run: () => goStoryStep('outline') },
+        { id: 'context', label: '脉络', status: openLineRows.length && hiddenLineRows.length ? 'confirmed' : 'pending', suggestion: '明线、暗线、伏笔归在脉络里，不作为主线大节点。', run: () => goStoryStep('lines') },
+        ...volumeRows.map((volume: any, index: number) => ({
+          id: `volume:${volume.id}`,
+          label: volume.title || `第${index + 1}卷`,
+          status: confirmedTimelineIds.has(`volume:${volume.id}`) || (volume.chapter_ids || []).length ? 'confirmed' : 'pending',
+          suggestion: volume.summary || 'AI 可以建议本卷目标、卷末转折和风险点，作者确认后进入计划。',
+          run: () => { setActiveActivity('explorer'); setView('projects') },
+        })),
+        ...(blastRows.length ? blastRows : [{ title: '爆点1', focus: activeStoryPayload.main_conflict || '围绕主冲突设计第一个强事件' }]).map((row: any, index: number) => ({
+          id: `blast:${row.chapter_id || row.chapter || index}`,
+          label: row.title && /爆点|爆发|高潮|转折|危机/.test(row.title) ? row.title : `爆点${index + 1}`,
+          status: confirmedTimelineIds.has(`blast:${row.chapter_id || row.chapter || index}`) || hasText(row.key_events || row.focus) ? 'pending' : 'empty',
+          suggestion: row.focus || row.key_events || 'AI 可以给爆点建议，作者决定是否采用。',
+          run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') },
+        })),
+        { id: 'ending', label: '结局', status: /结局|终局|收束/.test(JSON.stringify(activeStoryPayload)) ? 'pending' : 'empty', suggestion: '结局只保留结构位置，具体收束由作者最终决策。', run: () => { setView('story'); setStoryPlanningTab('Chapter Matrix') } },
+      ]
+      const selectedTimelineNode = timelineNodes.find((node) => node.id === selectedTimelineNodeId) || timelineNodes[0]
       const renderReadinessGroup = (group: any) => {
         const done = group.items.filter((item: any) => item.done).length
         const allDone = done === group.items.length
@@ -2718,6 +2816,38 @@ export default function App() {
               </div>
               <div className='grid flex-1 grid-cols-1 gap-2 xl:grid-cols-2'>
                 {readinessGroups.map(renderReadinessGroup)}
+              </div>
+            </div>
+          </Card>
+
+          <Card title='Book Timeline' extra={<Badge>结构线 · 非章节目录</Badge>}>
+            <div className='overflow-x-auto pb-2'>
+              <div className='flex min-w-max items-center gap-2'>
+                {timelineNodes.map((node, index) => (
+                  <div key={node.id} className='flex items-center gap-2'>
+                    {index > 0 ? <div className='h-px w-8 bg-border' /> : null}
+                    <button
+                      className={`rounded-full border px-3 py-1.5 text-xs ${timelineToneClass(node.status)} ${selectedTimelineNode.id === node.id ? 'ring-2 ring-brand-500' : ''}`}
+                      onClick={() => setSelectedTimelineNodeId(node.id)}
+                    >
+                      {node.label}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className='mt-3 rounded-ui border border-border bg-surface p-3'>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <div>
+                  <div className='text-sm font-semibold'>{selectedTimelineNode.label}</div>
+                  <div className='mt-1 text-xs text-muted'>{selectedTimelineNode.suggestion}</div>
+                </div>
+                <div className='flex gap-2'>
+                  <Badge tone={selectedTimelineNode.status === 'confirmed' ? 'success' : selectedTimelineNode.status === 'risk' ? 'warn' : 'default'}>
+                    {selectedTimelineNode.status === 'confirmed' ? '作者已确认' : selectedTimelineNode.status === 'pending' ? '待作者决策' : '未开始'}
+                  </Badge>
+                  <Button className='text-xs' onClick={selectedTimelineNode.run}>去处理</Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -3215,6 +3345,29 @@ export default function App() {
             onChange={setStoryPlanningTab}
           />
 
+          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Lines' || storyPlanningTab === 'Foreshadowings') && (
+            <Card title='脉络调用痕迹' extra={<Badge>{selectedChapter}</Badge>}>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
+                {[...openLineRows.map((row: any) => ({ type: 'open_line', label: row.event || row.result || row.chapter || '明线节点', candidates: [row.id, row.chapter, row.event, row.result] })),
+                  ...hiddenLineRows.map((row: any) => ({ type: 'hidden_line', label: row.visible_hint || row.truth || row.chapter || '暗线节点', candidates: [row.id, row.chapter, row.visible_hint, row.hidden_meaning, row.truth] })),
+                  ...foreshadowingRows.map((row: any) => ({ type: 'foreshadowing', label: row.content || row.id || '伏笔节点', candidates: [row.id, row.content, row.surface_signal, row.true_meaning] })),
+                ].map((item: any, index: number) => {
+                  const traces = traceRowsFor(item.type, item.candidates)
+                  return (
+                    <div key={`${item.type}-${index}`} className='rounded-ui border border-border bg-surface p-2 text-xs'>
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='font-medium'>{item.label}</span>
+                        <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
+                      </div>
+                      <div className='mt-1 text-muted'>{item.type} · 当前章节 evidence marks</div>
+                    </div>
+                  )
+                })}
+                {!openLineRows.length && !hiddenLineRows.length && !foreshadowingRows.length ? <p className='text-sm text-muted'>暂无明线、暗线或伏笔节点。</p> : null}
+              </div>
+            </Card>
+          )}
+
           {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Stages') && <Card title='阶段性目标 / 冲突 / 结果'>
             {renderStoryRows('stages', storyPayload.stages || [], [
               { key: 'stage', label: '阶段', span: 'col-span-2' },
@@ -3361,8 +3514,23 @@ export default function App() {
           >
             保存角色
           </Button>
-          <Card title='Character Cards'>
-            <pre className='mono text-xs overflow-auto'>{JSON.stringify(chars, null, 2)}</pre>
+          <Card title='Character Cards / 调用痕迹' extra={<Badge>{selectedChapter}</Badge>}>
+            <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+              {(Array.isArray(chars) ? chars : []).map((card: any) => {
+                const traces = traceRowsFor('character', [card.id, card.title, card.payload?.name])
+                return (
+                  <button key={card.id} className='rounded-ui border border-border bg-surface px-3 py-2 text-left hover:bg-surface-2' onClick={() => setCharacterForm(card)}>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='text-sm font-medium'>{card.title || card.id}</span>
+                      <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
+                    </div>
+                    <div className='mt-1 text-xs text-muted'>用于章节: {traces.map((mark: any) => mark.chapter_id).filter(Boolean).join(', ') || 'none'}</div>
+                    <div className='mt-1 text-xs text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div>
+                  </button>
+                )
+              })}
+              {(!Array.isArray(chars) || !chars.length) && <p className='text-sm text-muted'>暂无人物卡。</p>}
+            </div>
           </Card>
         </div>
       )
@@ -3590,6 +3758,37 @@ export default function App() {
                   <input type='checkbox' checked={autoApplyPatch} onChange={(e) => setAutoApplyPatch(e.target.checked)} />
                   auto apply
                 </label>
+              </div>
+            </div>
+            <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <span className='text-sm font-medium'>AI 生成控制</span>
+                <Badge>{GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</Badge>
+              </div>
+              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
+                <div>
+                  <label className='text-xs text-muted'>生成范围</label>
+                  <Select value={generationScope} onChange={(e) => setGenerationScope(e.target.value)}>
+                    {GENERATION_SCOPE_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>停止点</label>
+                  <Select value={generationStopPoint} onChange={(e) => setGenerationStopPoint(e.target.value)}>
+                    {GENERATION_STOP_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <label className='text-xs text-muted'>检查方式</label>
+                  <Select value={generationCheckMode} onChange={(e) => setGenerationCheckMode(e.target.value)}>
+                    {GENERATION_CHECK_OPTIONS.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                  </Select>
+                </div>
+              </div>
+              <div className='mt-2 flex flex-wrap gap-3 text-xs'>
+                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseCards} onChange={(e) => setGenerationUseCards(e.target.checked)} /> 使用人物/世界/文风卡</label>
+                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseTechniques} onChange={(e) => setGenerationUseTechniques(e.target.checked)} /> 使用技法挂载</label>
+                <label className='flex items-center gap-2'><input type='checkbox' checked={generationUseLines} onChange={(e) => setGenerationUseLines(e.target.checked)} /> 使用脉络/明暗线</label>
               </div>
             </div>
             <div className='mt-3 grid grid-cols-12 gap-2'>
@@ -3833,12 +4032,19 @@ export default function App() {
                   <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
                 </div>
                 <div className='max-h-72 overflow-auto space-y-1'>
-                  {rows.map((r: any) => (
-                    <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>
-                      {r.title} <span className='text-muted'>({r.id})</span>
-                      <span className='ml-2 text-muted'>{(r.payload?.signals || []).slice(0, 2).join(' / ')}</span>
-                    </button>
-                  ))}
+                  {rows.map((r: any) => {
+                    const traces = traceRowsFor('technique', [r.id, r.title, r.payload?.name, ...(r.payload?.signals || [])])
+                    return (
+                      <button key={r.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => setTechniqueForm(r)}>
+                        <div className='flex items-center justify-between gap-2'>
+                          <span>{r.title} <span className='text-muted'>({r.id})</span></span>
+                          <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
+                        </div>
+                        <div className='mt-1 text-muted'>{(r.payload?.signals || []).slice(0, 2).join(' / ')}</div>
+                        <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div>
+                      </button>
+                    )
+                  })}
                 </div>
               </Card>
               {techniqueForm && (
@@ -4145,33 +4351,44 @@ export default function App() {
           </Card>
 
           <Card title='LLM Assignments (Global)'>
-            <p className='text-xs text-muted mb-2'>Module {'->'} profile_id mapping. Priority: request.llm_profile_id {'>'} assignment[module] {'>'} project default.</p>
-            <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-2'>
-              {['writer', 'critic', 'editor', 'canon_extractor'].map((module) => {
-                const row = (llmStatus?.modules || []).find((x: any) => x.module === module)
-                const current = assignmentDraft[module] || row?.profile_id || 'mock_default'
-                return (
-                  <div key={module} className='rounded-ui border border-border bg-surface-2 p-2'>
-                    <div className='mb-1 flex items-center justify-between gap-2'>
-                      <label className='text-sm font-medium'>{module}</label>
-                      <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? 'mock' : row?.provider || 'missing'}</Badge>
-                    </div>
-                    <Select
-                      value={current}
-                      onChange={(e) => {
-                        const profileId = e.target.value
-                        setAssignmentDraft((x) => ({ ...x, [module]: profileId }))
-                        saveAgentAssignment(module, profileId)
-                      }}
-                    >
-                      {Object.keys(globalProfiles?.profiles || {}).map((profileId) => (
-                        <option key={profileId} value={profileId}>{profileId}</option>
-                      ))}
-                    </Select>
-                    <div className='mt-1 text-xs text-muted'>{row?.model || 'no model'} · API key {row?.requires_api_key ? (row?.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+            <p className='text-xs text-muted mb-2'>任务类型 {'->'} profile_id mapping. 建书、人物、脉络、章节正文、审查、校对、事实抽取可以分别使用不同模型。</p>
+            <div className='mb-3 space-y-3'>
+              {['设定建设', '章节生成', '可信检查'].map((group) => (
+                <div key={group} className='rounded-ui border border-border bg-surface-2 p-3'>
+                  <div className='mb-2 flex items-center justify-between gap-2'>
+                    <h4 className='text-sm font-semibold'>{group}</h4>
+                    <Badge>{TASK_AI_MODULES.filter((x) => x.group === group).length}</Badge>
                   </div>
-                )
-              })}
+                  <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+                    {TASK_AI_MODULES.filter((x) => x.group === group).map((task) => {
+                      const row = (llmStatus?.modules || []).find((x: any) => x.module === task.id)
+                      const current = assignmentDraft[task.id] || row?.profile_id || 'mock_default'
+                      return (
+                        <div key={task.id} className='rounded-ui border border-border bg-surface p-2'>
+                          <div className='mb-1 flex items-center justify-between gap-2'>
+                            <label className='text-sm font-medium'>{task.label}</label>
+                            <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? 'mock' : row?.provider || 'missing'}</Badge>
+                          </div>
+                          <div className='mb-1 text-[11px] text-muted'>{task.id}</div>
+                          <Select
+                            value={current}
+                            onChange={(e) => {
+                              const profileId = e.target.value
+                              setAssignmentDraft((x) => ({ ...x, [task.id]: profileId }))
+                              saveAgentAssignment(task.id, profileId)
+                            }}
+                          >
+                            {Object.keys(globalProfiles?.profiles || {}).map((profileId) => (
+                              <option key={profileId} value={profileId}>{profileId}</option>
+                            ))}
+                          </Select>
+                          <div className='mt-1 text-xs text-muted'>{row?.model || 'no model'} · API key {row?.requires_api_key ? (row?.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
             <div className='mt-2 flex gap-2'>
@@ -4297,6 +4514,12 @@ export default function App() {
     currentManifest,
     llmProfileId,
     useAgentAssignments,
+    generationScope,
+    generationStopPoint,
+    generationCheckMode,
+    generationUseCards,
+    generationUseTechniques,
+    generationUseLines,
     profiles,
     selectedProfileHealth,
     writeRouteRows,
@@ -4351,6 +4574,7 @@ export default function App() {
     buildDraft,
     buildDraftBusy,
     buildWizardStep,
+    selectedTimelineNodeId,
     activeBuildWizardStep,
     pendingWriteJob,
     storyBuildProgress,
@@ -4753,6 +4977,20 @@ export default function App() {
               <div>Selection: {pendingWriteJob.range ? `L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : 'full chapter'}</div>
               <div>Routing: {useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}</div>
               <div>Auto apply patch: {autoApplyPatch ? 'on' : 'off'}</div>
+            </div>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <span className='font-medium'>生成控制</span>
+                <Badge>{GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</Badge>
+              </div>
+              <div>范围: {GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</div>
+              <div>停止点: {GENERATION_STOP_OPTIONS.find((x) => x.id === generationStopPoint)?.label || generationStopPoint}</div>
+              <div>检查方式: {GENERATION_CHECK_OPTIONS.find((x) => x.id === generationCheckMode)?.label || generationCheckMode}</div>
+              <div className='mt-2 flex flex-wrap gap-1'>
+                <Badge tone={generationUseCards ? 'success' : 'warn'}>{generationUseCards ? 'cards on' : 'cards off'}</Badge>
+                <Badge tone={generationUseTechniques ? 'success' : 'warn'}>{generationUseTechniques ? 'techniques on' : 'techniques off'}</Badge>
+                <Badge tone={generationUseLines ? 'success' : 'warn'}>{generationUseLines ? 'lines on' : 'lines off'}</Badge>
+              </div>
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'>

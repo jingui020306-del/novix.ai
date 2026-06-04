@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from services.llm_config_service import LLMConfigService, PROVIDERS_META
+from services.llm_config_service import LLMConfigService, PROVIDERS_META, TASK_AGENT_MODULES
 
 
 def get_cfg() -> LLMConfigService:
@@ -14,7 +14,7 @@ def get_cfg() -> LLMConfigService:
 router = APIRouter(prefix="/api/config/llm", tags=["config_llm"])
 
 
-AGENT_MODULES = ["writer", "critic", "editor", "canon_extractor"]
+AGENT_MODULES = TASK_AGENT_MODULES
 
 
 def _profile_status(profile_id: str, profile: dict | None) -> dict:
