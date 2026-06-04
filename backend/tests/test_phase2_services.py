@@ -54,6 +54,22 @@ def test_read_yaml_accepts_simple_yaml_cards(tmp_path: Path):
     assert got["payload"]["level"] == 2
 
 
+def test_list_projects_accepts_yaml_project_file(tmp_path: Path):
+    s = make_store(tmp_path)
+    path = s._safe_path("p_yaml", "project.yaml")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "id: p_yaml\n"
+        "title: YAML Project\n"
+        "created_at: '2026-01-01T00:00:00+00:00'\n",
+        encoding="utf-8",
+    )
+
+    rows = s.list_projects()
+
+    assert any(row["id"] == "p_yaml" and row["title"] == "YAML Project" for row in rows)
+
+
 def test_budget_manager_allocation(tmp_path: Path):
     s = make_store(tmp_path)
     cfg = s.read_yaml("p1", "project.yaml")

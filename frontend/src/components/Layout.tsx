@@ -40,7 +40,7 @@ export default function Layout({ left, center, right, header }: { left: any; cen
               )}
               {header}
             </div>
-            <span className='text-xs text-muted'>Product-style IDE shell</span>
+            <span className='text-xs text-muted'>作者工作台</span>
           </div>
         </div>
         <div className='p-4'>{center}</div>
@@ -49,7 +49,7 @@ export default function Layout({ left, center, right, header }: { left: any; cen
       <section className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'>
         <div className='flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-semibold'>
           <Bot size={16} />
-          Agent Console
+          AI 助手
         </div>
         <div className='p-3'>{right}</div>
       </section>

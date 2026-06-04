@@ -2095,8 +2095,6 @@ export default function App() {
       <span className='font-medium capitalize'>{activeActivity}</span>
       <span className='text-muted'>/</span>
       <span className='font-medium capitalize'>{view}</span>
-      <span className='ml-4 text-xs text-muted'>provider:</span>
-      <Badge>{llmProfileId}</Badge>
       <div className='ml-2'>
         <CommandPalette
           items={commandItems.map((it) => ({ ...it, run: () => { it.run(); trackMRU(it) } }))}
@@ -4922,9 +4920,9 @@ export default function App() {
   const latestTechniqueBriefForRight = events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}
   const latestEvent = (name: string) => events.filter((e) => e.event === name).slice(-1)[0]?.data
   const agentSteps = [
-    { name: '审查 Agent', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN'), desc: '人设 / 明线 / 暗线 / 伏笔 / 技法' },
-    { name: '撰写 Agent', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT'), desc: '正文生成 / 模型 / fallback / 字数进度' },
-    { name: '校对 Agent', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH'), desc: '错字 / 标点 / 病句 / 基础 patch' },
+    { name: '审查助手', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN'), desc: '先看人设、脉络、伏笔、技法是否齐' },
+    { name: '撰写助手', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT'), desc: '按作者确认的共识扩展初稿' },
+    { name: '校对助手', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH'), desc: '只处理错字、标点、病句等基础问题' },
   ]
   const markTone = (level?: string) => {
     if (level === 'supported') return 'success'
@@ -4977,14 +4975,7 @@ export default function App() {
 
   const right = (
     <div className='space-y-3 density-space'>
-      <Card
-        title='Runtime'
-        extra={<Badge tone={providerInfo?.fallback ? 'warn' : 'success'}>{providerInfo?.provider || '-'} / {providerInfo?.model || '-'}</Badge>}
-      >
-        <div className='text-xs text-muted'>fallback: {providerInfo?.fallback ? 'yes' : 'no'}</div>
-      </Card>
-
-      <Card title='Three Agent Progress'>
+      <Card title='AI 协作进度'>
         <div className='space-y-2'>
           {agentSteps.map((step) => {
             const done = Boolean(step.data)
@@ -4992,52 +4983,56 @@ export default function App() {
               <div key={step.event} className={`rounded-ui border px-2 py-2 ${done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface'}`}>
                 <div className='flex items-center justify-between gap-2'>
                   <span className='text-sm font-medium'>{step.name}</span>
-                  <Badge tone={done ? 'success' : 'default'}>{done ? 'done' : 'waiting'}</Badge>
+                  <Badge tone={done ? 'success' : 'default'}>{done ? '已完成' : '等待中'}</Badge>
                 </div>
                 <div className='mt-1 text-xs text-muted'>{step.desc}</div>
                 <div className='mt-1 text-xs'>{step.data?.output_summary || '等待本次 job 事件'}</div>
-                {step.data?.provider ? <div className='mt-1 text-[11px] text-muted'>{step.data.provider}/{step.data.model || '-'} {step.data.fallback ? '(fallback)' : ''}</div> : null}
               </div>
             )
           })}
         </div>
       </Card>
 
-      <Card title='Trust Report' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '-'}</Badge>}>
+      <Card title='可信检查' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '-'}</Badge>}>
         <div className='grid grid-cols-4 gap-1 text-center text-xs'>
-          {['supported', 'partial', 'unsupported', 'contradicted'].map((level) => (
+          {[
+            ['supported', '已证实'],
+            ['partial', '部分'],
+            ['unsupported', '未证实'],
+            ['contradicted', '矛盾'],
+          ].map(([level, label]) => (
             <div key={level} className='rounded-ui border border-border bg-surface p-1'>
               <div className='font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
-              <div className='text-[10px] text-muted'>{level}</div>
+              <div className='text-[10px] text-muted'>{label}</div>
             </div>
           ))}
         </div>
         <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>重新分析证据标记</Button>
       </Card>
 
-      <Card title='Current Context' extra={<Badge>{selectedChapter}</Badge>}>
+      <Card title='本章上下文' extra={<Badge>{selectedChapter}</Badge>}>
         <div className='space-y-2 text-xs'>
           <div className='rounded-ui border border-border bg-surface-2 p-2'>
             <div className='font-medium'>{currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
             <div className='text-muted'>{chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
           </div>
           <div>
-            <div className='mb-1 font-medium'>Chapter Plan</div>
+            <div className='mb-1 font-medium'>章节计划</div>
             {(currentStoryLinks.chapterPlan || []).map((row: any, idx: number) => (
               <div key={`plan-${idx}`} className='mb-1 rounded-ui border border-border bg-surface px-2 py-1'>
                 {row.title || row.focus || row.chapter || row.chapter_id}
               </div>
             ))}
-            {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>No linked plan row.</div>}
+            {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>还没有绑定章节计划。</div>}
           </div>
           <div className='grid grid-cols-2 gap-2'>
             <div className='rounded-ui border border-border bg-surface p-2'>
               <div className='font-medium'>明线</div>
-              <div className='text-muted'>{currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : 'none'}</div>
+              <div className='text-muted'>{currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : '未绑定'}</div>
             </div>
             <div className='rounded-ui border border-border bg-surface p-2'>
               <div className='font-medium'>暗线</div>
-              <div className='text-muted'>{currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.truth || x.visible_hint || x.chapter).join(' / ') : 'none'}</div>
+              <div className='text-muted'>{currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.truth || x.visible_hint || x.chapter).join(' / ') : '未绑定'}</div>
             </div>
           </div>
           <div>
@@ -5047,7 +5042,7 @@ export default function App() {
                 {x.content || x.id} <span className='text-muted'>({x.status || '未出现'})</span>
               </div>
             ))}
-            {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>No linked foreshadowing.</div>}
+            {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>还没有绑定伏笔。</div>}
           </div>
         </div>
       </Card>
@@ -5080,7 +5075,7 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title='Evidence Mark' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{selectedMark?.detection?.support_level || '-'}</Badge> : undefined}>
+      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{selectedMark?.detection?.support_level || '-'}</Badge> : undefined}>
         {selectedMark ? (
           <div className='space-y-2 text-xs'>
             <div className='font-medium'>{selectedMark.target_type} · {selectedMark.label || selectedMark.target_id}</div>
@@ -5121,14 +5116,24 @@ export default function App() {
         ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
       </Card>
 
-      <Card title='Pinned Techniques'>
-        <pre className='mono text-xs max-h-40 overflow-auto rounded-ui bg-surface-2 p-2'>{JSON.stringify({
-          techniques: currentChapterMeta?.pinned_techniques || [],
-          categories: currentChapterMeta?.pinned_technique_categories || [],
-        }, null, 2)}</pre>
-      </Card>
+      <details className='rounded-ui border border-border bg-surface'>
+        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>维护记录 <span className='text-xs text-muted'>开源维护 / 调试</span></summary>
+        <div className='space-y-2 border-t border-border p-2'>
+          <Card
+            title='Runtime'
+            extra={<Badge tone={providerInfo?.fallback ? 'warn' : 'success'}>{providerInfo?.provider || '-'} / {providerInfo?.model || '-'}</Badge>}
+          >
+            <div className='text-xs text-muted'>fallback: {providerInfo?.fallback ? 'yes' : 'no'}</div>
+          </Card>
 
-      <details open className='rounded-ui border border-border bg-surface'>
+          <Card title='Pinned Techniques'>
+            <pre className='mono text-xs max-h-40 overflow-auto rounded-ui bg-surface-2 p-2'>{JSON.stringify({
+              techniques: currentChapterMeta?.pinned_techniques || [],
+              categories: currentChapterMeta?.pinned_technique_categories || [],
+            }, null, 2)}</pre>
+          </Card>
+
+      <details className='rounded-ui border border-border bg-surface'>
         <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({reviewPatch?.ops?.length || 0})</span></summary>
         <div className='space-y-2 border-t border-border p-2'>
           {reviewPatch ? (
@@ -5222,6 +5227,8 @@ export default function App() {
           </div>
         </details>
       ))}
+        </div>
+      </details>
 
       {assetViewer.open && (
         <Card title={`Asset Viewer: ${assetViewer.title}`} extra={<Button className='text-xs' onClick={() => navigator.clipboard.writeText(assetViewer.content)}>复制片段</Button>}>
@@ -5250,7 +5257,7 @@ export default function App() {
     { label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行` },
     { label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}` },
     { label: '本章技法', done: confirmPinnedTechniques.length + confirmPinnedCategories.length > 0, detail: `技法 ${confirmPinnedTechniques.length} · 分类 ${confirmPinnedCategories.length}` },
-    { label: 'Agent 路由', done: writeRouteRows.length > 0 && confirmRouteRiskCount === 0, detail: writeRouteRows.length ? `风险 ${confirmRouteRiskCount}` : 'runtime 未加载' },
+    { label: '写作共识', done: Boolean(alignmentConfirmed && alignmentAgreedDraft.trim()), detail: alignmentConfirmed ? '作者已确认' : '还没有确认写法' },
   ]
   const confirmReadyCount = confirmReadinessItems.filter((item) => item.done).length
 
@@ -5267,59 +5274,41 @@ export default function App() {
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <div>
               <h3 className='text-base font-semibold'>生成前确认</h3>
-              <p className='text-xs text-muted'>确认本次 job 的模型状态和当前 UI 已绑定材料，再启动三 Agent 流程。</p>
+              <p className='text-xs text-muted'>确认作者已经同意本章写法、材料和检查项，再让 AI 扩展初稿。</p>
             </div>
-            <Badge tone={!writeRouteRows.length || writeRouteRows.some((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length) ? 'warn' : 'success'}>
-              {useAgentAssignments ? 'agent assignments' : 'manual override'}
-            </Badge>
+            <Badge tone={confirmReadyCount === confirmReadinessItems.length ? 'success' : 'warn'}>{confirmReadyCount}/{confirmReadinessItems.length}</Badge>
           </div>
         </div>
         <div className='max-h-[72vh] overflow-auto p-4'>
           <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
-              <div className='mb-2 font-medium'>Job</div>
-              <div>Action: {pendingWriteJob.label}</div>
-              <div>Chapter: {selectedChapter}</div>
-              <div>Title: {chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
-              <div>Volume: {currentVolume?.title || currentVolume?.id || 'volume_default'}</div>
-              <div>Max tokens: {pendingWriteJob.maxTokens}</div>
-              <div>Selection: {pendingWriteJob.range ? `L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : 'full chapter'}</div>
-              <div>Routing: {useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}</div>
-              <div>Auto apply patch: {autoApplyPatch ? 'on' : 'off'}</div>
+              <div className='mb-2 font-medium'>本次写作</div>
+              <div>动作：{pendingWriteJob.label}</div>
+              <div>章节：{chapterTitleDraft || currentChapterMeta?.chapter_title || selectedChapter}</div>
+              <div>所属卷：{currentVolume?.title || currentVolume?.id || '默认卷'}</div>
+              <div>范围：{pendingWriteJob.range ? `正文 L${pendingWriteJob.range.start}-L${pendingWriteJob.range.end}` : '整章初稿'}</div>
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'>
                 <span className='font-medium'>生成控制</span>
                 <Badge>{GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</Badge>
               </div>
-              <div>范围: {GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</div>
-              <div>停止点: {GENERATION_STOP_OPTIONS.find((x) => x.id === generationStopPoint)?.label || generationStopPoint}</div>
-              <div>检查方式: {GENERATION_CHECK_OPTIONS.find((x) => x.id === generationCheckMode)?.label || generationCheckMode}</div>
+              <div>生成范围：{GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}</div>
+              <div>停止点：{GENERATION_STOP_OPTIONS.find((x) => x.id === generationStopPoint)?.label || generationStopPoint}</div>
+              <div>检查方式：{GENERATION_CHECK_OPTIONS.find((x) => x.id === generationCheckMode)?.label || generationCheckMode}</div>
               <div className='mt-2 flex flex-wrap gap-1'>
-                <Badge tone={generationUseCards ? 'success' : 'warn'}>{generationUseCards ? 'cards on' : 'cards off'}</Badge>
-                <Badge tone={generationUseTechniques ? 'success' : 'warn'}>{generationUseTechniques ? 'techniques on' : 'techniques off'}</Badge>
-                <Badge tone={generationUseLines ? 'success' : 'warn'}>{generationUseLines ? 'lines on' : 'lines off'}</Badge>
+                <Badge tone={generationUseCards ? 'success' : 'warn'}>{generationUseCards ? '使用卡片' : '不使用卡片'}</Badge>
+                <Badge tone={generationUseTechniques ? 'success' : 'warn'}>{generationUseTechniques ? '使用技法' : '不使用技法'}</Badge>
+                <Badge tone={generationUseLines ? 'success' : 'warn'}>{generationUseLines ? '使用脉络' : '不使用脉络'}</Badge>
               </div>
             </div>
-            <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
+            <div className='rounded-ui border border-border bg-surface p-3 text-xs md:col-span-2'>
               <div className='mb-2 flex items-center justify-between gap-2'>
-                <span className='font-medium'>Agent Routing</span>
-                <Badge>{useAgentAssignments ? 'Settings assignments' : `${llmProfileId} override`}</Badge>
+                <span className='font-medium'>作者同意这样写</span>
+                <Badge tone={alignmentConfirmed ? 'success' : 'warn'}>{alignmentConfirmed ? '已确认' : '待确认'}</Badge>
               </div>
-              <div className='space-y-1'>
-                {writeRouteRows.map((row: any) => (
-                  <div key={row.module} className='rounded-ui border border-border bg-surface-2 px-2 py-1'>
-                    <div className='flex items-center justify-between gap-2'>
-                      <span className='font-medium'>{row.module}</span>
-                      <Badge tone={row.is_mock || row.profile_missing || row.missing_fields?.length ? 'warn' : 'success'}>
-                        {row.is_mock ? 'mock' : row.profile_missing ? 'missing' : row.missing_fields?.length ? 'incomplete' : 'ready'}
-                      </Badge>
-                    </div>
-                    <div className='mt-0.5 text-muted'>{row.profile_id} · {row.provider || 'missing'} / {row.model || 'no model'}</div>
-                    {row.missing_fields?.length ? <div className='text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
-                  </div>
-                ))}
-                {!writeRouteRows.length ? <div className='text-muted'>Runtime status not loaded yet.</div> : null}
+              <div className='max-h-36 overflow-auto whitespace-pre-wrap rounded-ui border border-border bg-surface-2 p-2 text-muted'>
+                {alignmentAgreedDraft || '还没有写作共识。请先在章节页上方确认“作者同意这样写”。'}
               </div>
             </div>
           </div>
@@ -5346,41 +5335,54 @@ export default function App() {
               {(currentStoryLinks.chapterPlan || []).slice(0, 4).map((row: any, idx: number) => (
                 <div key={`confirm-plan-${idx}`} className='mb-1 truncate text-muted'>{row.title || row.focus || row.chapter || row.chapter_id}</div>
               ))}
-              {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>No linked plan row.</div>}
+              {!currentStoryLinks.chapterPlan.length && <div className='text-muted'>还没有绑定章节计划。</div>}
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>明线 / 暗线</span><Badge>{currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length}</Badge></div>
-              <div className='text-muted'>明线: {currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : 'none'}</div>
-              <div className='mt-1 text-muted'>暗线: {currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.visible_hint || x.truth || x.chapter).join(' / ') : 'none'}</div>
+              <div className='text-muted'>明线：{currentStoryLinks.openLine.length ? currentStoryLinks.openLine.map((x: any) => x.event || x.result || x.chapter).join(' / ') : '未绑定'}</div>
+              <div className='mt-1 text-muted'>暗线：{currentStoryLinks.hiddenLine.length ? currentStoryLinks.hiddenLine.map((x: any) => x.visible_hint || x.truth || x.chapter).join(' / ') : '未绑定'}</div>
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>伏笔</span><Badge>{currentStoryLinks.foreshadowings.length}</Badge></div>
               {currentStoryLinks.foreshadowings.slice(0, 4).map((x: any) => (
                 <div key={x.id || x.content} className='mb-1 truncate text-muted'>{x.content || x.id} ({x.status || '未出现'})</div>
               ))}
-              {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>No linked foreshadowing.</div>}
+              {!currentStoryLinks.foreshadowings.length && <div className='text-muted'>还没有绑定伏笔。</div>}
             </div>
           </div>
           <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
-              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Pinned Techniques</span><Badge>{(currentChapterMeta?.pinned_techniques || []).length}</Badge></div>
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>本章技法</span><Badge>{(currentChapterMeta?.pinned_techniques || []).length}</Badge></div>
               {(currentChapterMeta?.pinned_techniques || []).slice(0, 6).map((row: any) => {
                 const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
                 return <div key={row.technique_id} className='mb-1 truncate text-muted'>{tech?.title || row.technique_id} · {row.intensity || 'med'}</div>
               })}
-              {!(currentChapterMeta?.pinned_techniques || []).length && <div className='text-muted'>No pinned techniques.</div>}
+              {!(currentChapterMeta?.pinned_techniques || []).length && <div className='text-muted'>还没有挂载技法。</div>}
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
-              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>Memory Packs</span><Badge>{Array.isArray(memoryPacks) ? memoryPacks.length : 0}</Badge></div>
-              {(Array.isArray(memoryPacks) ? memoryPacks : []).slice(0, 4).map((p: any) => (
-                <div key={p.pack_id} className='mb-1 truncate text-muted'>{p.chapter_id} / {p.job_id}</div>
-              ))}
-              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <div className='text-muted'>No memory packs yet.</div> : null}
+              <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>安全规则</span><Badge>{autoApplyPatch ? '需注意' : '默认安全'}</Badge></div>
+              <div className='text-muted'>AI 草稿不会直接覆盖作者正文。</div>
+              <div className='mt-1 text-muted'>校对建议默认进入待确认，作者可以接受或拒绝。</div>
+              <div className='mt-1 text-muted'>没有正文证据的判断不会显示为已命中。</div>
             </div>
           </div>
-          <div className='mt-3 rounded-ui border border-border bg-surface-2 p-3 text-xs text-muted'>
-            这些是当前界面可确认的绑定材料；真正传入模型的材料会在 job 事件的 Context Manifest 中记录。没有证据 quote 的判断不会被显示为已命中。
-          </div>
+          <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
+            <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>维护信息</summary>
+            <div className='space-y-2 border-t border-border p-3'>
+              <div>路由：{useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}；auto apply patch：{autoApplyPatch ? 'on' : 'off'}；max tokens：{pendingWriteJob.maxTokens}</div>
+              <div className='space-y-1'>
+                {writeRouteRows.map((row: any) => (
+                  <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>
+                    <span className='font-medium'>{row.module}</span>
+                    <span className='ml-2'>{row.profile_id} · {row.provider || 'missing'} / {row.model || 'no model'}</span>
+                    {row.is_mock || row.profile_missing || row.missing_fields?.length ? <span className='ml-2 text-amber-700 dark:text-amber-300'>需要检查</span> : null}
+                  </div>
+                ))}
+                {!writeRouteRows.length ? <div>Runtime status not loaded yet.</div> : null}
+              </div>
+              <div>Memory packs：{Array.isArray(memoryPacks) ? memoryPacks.length : 0}</div>
+            </div>
+          </details>
         </div>
         <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
           <Button onClick={() => { setPendingWriteJob(null); setView('settings') }}>去配置 API</Button>

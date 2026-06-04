@@ -196,7 +196,9 @@ class FSStore:
         rows = []
         for p in self.data_dir.iterdir():
             if p.is_dir() and (p / "project.yaml").exists():
-                rows.append(json.loads((p / "project.yaml").read_text(encoding="utf-8")))
+                project = self.read_yaml(p.name, "project.yaml")
+                if project:
+                    rows.append(project)
         return sorted(rows, key=lambda x: x.get("id", ""))
 
     def init_demo_project(self, project_id: str = "demo_project_001") -> None:
