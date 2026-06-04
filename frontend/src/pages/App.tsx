@@ -2057,6 +2057,118 @@ export default function App() {
           </div>
         ) : null}
 
+        {view === 'chapter' ? (
+          <div className='module-card module-trust mt-4 space-y-2 rounded-ui border bg-surface p-2 text-xs'>
+            <div className='flex items-center justify-between gap-2'>
+              <span className='font-medium'>可信检查</span>
+              <Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>
+                {trustReport?.support_rate ?? '--'}
+              </Badge>
+            </div>
+            <div className='grid grid-cols-4 gap-1 text-center'>
+              {[
+                ['supported', 'OK'],
+                ['partial', 'Part'],
+                ['unsupported', 'Miss'],
+                ['contradicted', 'Risk'],
+              ].map(([level, label]) => (
+                <button
+                  key={level}
+                  className='rounded-ui border border-border bg-surface-2 p-1 hover:bg-surface'
+                  onClick={() => setView('chapter')}
+                  title={label}
+                >
+                  <div className='font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
+                  <div className='text-[10px] text-muted'>{label}</div>
+                </button>
+              ))}
+            </div>
+            <Button className='w-full text-xs' onClick={() => { setChapterWorkMode('draft'); analyzeMarks() }}>检查正文</Button>
+
+            <div className='rounded-ui border border-border bg-surface-2 p-2'>
+              <div className='mb-1 flex items-center justify-between gap-2'>
+                <span className='font-medium'>要求点亮</span>
+                <Badge>{requirementLights.length}</Badge>
+              </div>
+              <div className='max-h-52 space-y-1 overflow-auto'>
+                {requirementLights.map((item: any, idx: number) => {
+                  const level = item.mark?.detection?.support_level || 'unsupported'
+                  return (
+                    <button
+                      key={`${item.type}:${item.label}:${idx}`}
+                      className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left hover:bg-surface-2'
+                      onClick={() => {
+                        if (!item.mark) return
+                        setChapterWorkMode('draft')
+                        setSelectedMarkId(item.mark.mark_id)
+                        const start = Number(item.mark?.span?.start_line || 0)
+                        const end = Number(item.mark?.span?.end_line || start)
+                        if (start > 0) setHighlightRange({ start, end })
+                      }}
+                    >
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='truncate'>{requirementTypeLabel(item.type)} · {item.label || '未命名要求'}</span>
+                        <Badge tone={markTone(level) as any}>{item.mark?.span?.quote ? supportLabel(level) : '未证实'}</Badge>
+                      </div>
+                      {item.mark?.span?.quote ? (
+                        <div className='mt-1 truncate text-muted'>第 {item.mark.span.start_line} 行：{item.mark.span.quote}</div>
+                      ) : (
+                        <div className='mt-1 text-muted'>没有正文原句，不能算写到了</div>
+                      )}
+                    </button>
+                  )
+                })}
+                {!requirementLights.length && <p className='text-muted'>还没有绑定可点亮的要求。</p>}
+              </div>
+            </div>
+
+            <details className='rounded-ui border border-border bg-surface-2'>
+              <summary className='cursor-pointer px-2 py-1.5 font-medium'>证据详情</summary>
+              {selectedMark ? (
+                <div className='space-y-2 border-t border-border p-2'>
+                  <div className='flex items-start justify-between gap-2'>
+                    <div>
+                      <div className='font-medium'>{requirementTypeLabel(selectedMark.target_type)} · {selectedMark.label || selectedMark.target_id}</div>
+                      <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
+                    </div>
+                    <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>
+                      {supportLabel(selectedMark?.detection?.support_level)}
+                    </Badge>
+                  </div>
+                  <button
+                    className='w-full rounded-ui border border-border bg-surface p-2 text-left hover:bg-surface-2'
+                    onClick={() => {
+                      const start = Number(selectedMark?.span?.start_line || 0)
+                      const end = Number(selectedMark?.span?.end_line || start)
+                      if (start > 0) setHighlightRange({ start, end })
+                    }}
+                  >
+                    <div>正文第 {selectedMark.span?.start_line || 0}-{selectedMark.span?.end_line || 0} 行</div>
+                    <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '没有正文原句，不能算写到了'}</div>
+                  </button>
+                  <div className='grid grid-cols-2 gap-1'>
+                    <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'confirm_hit')}>确认</Button>
+                    <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'false_positive')}>误判</Button>
+                    <Button
+                      className='text-xs'
+                      onClick={() => {
+                        const start = Number(selectedMark?.span?.start_line || 0)
+                        const end = Number(selectedMark?.span?.end_line || start)
+                        if (start > 0) requestRunJob(1200, { start, end }, '让 AI 改段')
+                        else push('这个标记没有可编辑行号', 'error')
+                      }}
+                    >
+                      改段
+                    </Button>
+                    <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'ignore_chapter')}>忽略</Button>
+                  </div>
+                </div>
+              ) : (
+                <p className='border-t border-border p-2 text-muted'>暂无证据标记。</p>
+              )}
+            </details>
+          </div>
+        ) : (
         <div className='module-card module-trust mt-4 rounded-ui border bg-surface p-2 text-xs'>
           <div className='flex items-center justify-between gap-2'>
             <span className='font-medium'>可信检查</span>
@@ -2084,6 +2196,7 @@ export default function App() {
           </div>
           <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>检查正文</Button>
         </div>
+        )}
       </div>
     </div>
   )
@@ -5064,8 +5177,6 @@ export default function App() {
         </div>
       </div>
 
-      {chapterWorkMode === 'alignment' ? (
-        <>
       <Card title='Techniques' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
         <div className='space-y-2 text-xs'>
           {rightPinnedTechniqueRows.map((row: any) => {
@@ -5102,6 +5213,7 @@ export default function App() {
         </div>
       </Card>
 
+      {chapterWorkMode === 'alignment' ? (
       <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>} className='module-card module-context'>
         <div className='space-y-2 text-xs'>
           <div className='rounded-ui border border-border bg-surface-2 p-2'>
@@ -5138,95 +5250,7 @@ export default function App() {
           </div>
         </div>
       </Card>
-        </>
-      ) : (
-        <>
-      <Card title='风险概览' extra={<Badge tone={(trustReport?.unsupported_count || 0) ? 'warn' : 'success'}>{trustReport?.support_rate ?? '--'}</Badge>} className='module-card module-risk'>
-        <div className='grid grid-cols-4 gap-1 text-center text-xs'>
-          {[
-            ['supported', 'OK'],
-            ['partial', 'Part'],
-            ['unsupported', 'Miss'],
-            ['contradicted', 'Risk'],
-          ].map(([level, label]) => (
-            <div key={level} className='rounded-ui border border-border bg-surface p-1'>
-              <div className='font-display font-medium'>{trustReport?.support_counts?.[level] || 0}</div>
-              <div className='text-[10px] text-muted'>{label}</div>
-            </div>
-          ))}
-        </div>
-        <Button className='mt-2 w-full text-xs' onClick={analyzeMarks}>检查正文</Button>
-      </Card>
-      <Card title='本章要求点亮' className='module-card module-draft'>
-        <div className='space-y-1'>
-          {requirementLights.map((item: any, idx: number) => {
-            const level = item.mark?.detection?.support_level || 'unsupported'
-            return (
-              <button
-                key={`${item.type}:${item.label}:${idx}`}
-                className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
-                onClick={() => {
-                  if (!item.mark) return
-                  setSelectedMarkId(item.mark.mark_id)
-                  const start = Number(item.mark?.span?.start_line || 0)
-                  const end = Number(item.mark?.span?.end_line || start)
-                  if (start > 0) setHighlightRange({ start, end })
-                }}
-              >
-                <div className='flex items-center justify-between gap-2'>
-                  <span>{requirementTypeLabel(item.type)} · {item.label || '未命名要求'}</span>
-                  <Badge tone={markTone(level) as any}>{item.mark?.span?.quote ? supportLabel(level) : '未证实'}</Badge>
-                </div>
-                {item.mark?.span?.quote ? <div className='mt-1 truncate text-muted'>正文第 {item.mark.span.start_line} 行：{item.mark.span.quote}</div> : <div className='mt-1 text-muted'>没有正文原句，不能算写到了</div>}
-              </button>
-            )
-          })}
-          {!requirementLights.length && <p className='text-xs text-muted'>当前章节还没有绑定明线、暗线、伏笔或 pinned 技法。</p>}
-        </div>
-      </Card>
-
-      <Card title='证据详情' extra={selectedMark ? <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>{supportLabel(selectedMark?.detection?.support_level)}</Badge> : undefined} className='module-card module-trust'>
-        {selectedMark ? (
-          <div className='space-y-2 text-xs'>
-                <div className='font-medium'>{requirementTypeLabel(selectedMark.target_type)} · {selectedMark.label || selectedMark.target_id}</div>
-            <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
-            {selectedMark.author_feedback ? (
-              <div className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-muted'>
-                作者反馈: {selectedMark.author_feedback.action} · {selectedMark.author_feedback.ts || ''}
-              </div>
-            ) : null}
-            <button
-              className='w-full rounded-ui border border-border bg-surface-2 p-2 text-left hover:bg-surface'
-              onClick={() => {
-                const start = Number(selectedMark?.span?.start_line || 0)
-                const end = Number(selectedMark?.span?.end_line || start)
-                if (start > 0) setHighlightRange({ start, end })
-              }}
-            >
-              <div>正文第 {selectedMark.span?.start_line || 0}-{selectedMark.span?.end_line || 0} 行</div>
-              <div className='mt-1 whitespace-pre-wrap'>{selectedMark.span?.quote || '没有正文原句，不能算写到了'}</div>
-            </button>
-            <div className='grid grid-cols-2 gap-1'>
-              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'confirm_hit')}>确认命中</Button>
-              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'false_positive')}>标为误判</Button>
-              <Button
-                className='text-xs'
-                onClick={() => {
-                  const start = Number(selectedMark?.span?.start_line || 0)
-                  const end = Number(selectedMark?.span?.end_line || start)
-                  if (start > 0) requestRunJob(1200, { start, end }, '让 AI 改段')
-                  else push('这个标记没有可编辑行号', 'error')
-                }}
-              >
-                让 AI 改段
-              </Button>
-              <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'ignore_chapter')}>忽略本章</Button>
-            </div>
-          </div>
-        ) : <p className='text-xs text-muted'>暂无证据标记。</p>}
-      </Card>
-        </>
-      )}
+      ) : null}
 
       <details className='rounded-ui border border-border bg-surface'>
         <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>维护记录 <span className='text-xs text-muted'>开源维护 / 调试</span></summary>
