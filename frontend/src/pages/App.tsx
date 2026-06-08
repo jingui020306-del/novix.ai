@@ -22,6 +22,7 @@ import { AiJobDetailCard } from '../components/AiJobDetailCard'
 import { BookTimelinePanel } from '../components/BookTimelinePanel'
 import { BuildDraftReviewCards } from '../components/BuildDraftReviewCards'
 import { BuildProgressCard } from '../components/BuildProgressCard'
+import { ChapterMaintainerPanel } from '../components/ChapterMaintainerPanel'
 import { ChapterAlignmentPanel } from '../components/ChapterAlignmentPanel'
 import { ChapterDraftReviewQueue } from '../components/ChapterDraftReviewQueue'
 import { ChapterEditorCard } from '../components/ChapterEditorCard'
@@ -5087,119 +5088,30 @@ export default function App() {
         />
       ) : null}
 
-      {isMaintainerMode ? <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>维护记录 <span className='text-xs text-muted'>开源维护 / 调试</span></summary>
-        <div className='space-y-2 border-t border-border p-2'>
-          <Card
-            title='Runtime'
-            extra={<Badge tone={providerInfo?.fallback ? 'warn' : 'success'}>{providerInfo?.provider || '-'} / {providerInfo?.model || '-'}</Badge>}
-          >
-            <div className='text-xs text-muted'>fallback: {providerInfo?.fallback ? 'yes' : 'no'}</div>
-          </Card>
-
-          <Card title='Pinned Techniques'>
-            <pre className='mono text-xs max-h-40 overflow-auto rounded-ui bg-surface-2 p-2'>{JSON.stringify({
-              techniques: currentChapterMeta?.pinned_techniques || [],
-              categories: currentChapterMeta?.pinned_technique_categories || [],
-            }, null, 2)}</pre>
-          </Card>
-
-      <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Patch Review <span className='text-xs text-muted'>({reviewPatch?.ops?.length || 0})</span></summary>
-        <div className='space-y-2 border-t border-border p-2'>
-          {reviewPatch ? (
-            <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
-              <div className='flex items-center justify-between gap-2'>
-                <span>{reviewPatch.patch_review_id || reviewPatch.review_id || reviewPatch.patch_id}</span>
-                <Badge tone={reviewPatch.status === 'pending_author_review' ? 'warn' : reviewPatch.status === 'accepted' ? 'success' : 'default'}>{reviewPatch.status || 'event_patch'}</Badge>
-              </div>
-              <div className='mt-1 text-muted'>{reviewPatch.source || 'proofread_agent'} · {reviewPatch.provider || '-'} / {reviewPatch.model || '-'}</div>
-            </div>
-          ) : null}
-          {(reviewPatch?.ops || []).map((op: any) => (
-            <div key={op.op_id} className='rounded-ui border border-border bg-surface-2 p-2'>
-              <label className='flex items-center gap-2 text-xs'>
-                <input type='checkbox' checked={selectedOpIds.includes(op.op_id)} onChange={(e) => setSelectedOpIds((x) => (e.target.checked ? [...x, op.op_id] : x.filter((id) => id !== op.op_id)))} />
-                <span className='font-medium'>{op.op_id}</span>
-                <Badge>{op.type}</Badge>
-              </label>
-              <pre className='mono mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-red-50 p-2 text-[11px] dark:bg-red-950/20'>- {op.before || ''}</pre>
-              <pre className='mono mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded-ui bg-emerald-50 p-2 text-[11px] dark:bg-emerald-950/20'>+ {op.after || ''}</pre>
-            </div>
-          ))}
-          {!reviewPatch?.ops?.length && <p className='text-xs text-muted'>No patch generated yet.</p>}
-          <div className='flex gap-2'>
-            <Button className='text-xs' onClick={() => setSelectedOpIds((reviewPatch?.ops || []).map((o: any) => o.op_id))}>全选</Button>
-            <Button className='text-xs' onClick={applySelectedPatch}>应用</Button>
-            <Button className='text-xs' onClick={rejectPatchReview}>拒绝</Button>
-          </div>
-        </div>
-      </details>
-
-      <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>版本时间线 <span className='text-xs text-muted'>({versions?.versions?.length || 0})</span></summary>
-        <div className='space-y-2 border-t border-border p-2'>
-          <div className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
-            <div className='flex items-center justify-between gap-2'>
-              <span className='font-medium'>当前版本</span>
-              <Badge>{versions?.current_version || '未记录'}</Badge>
-            </div>
-            <div className='mt-1 text-muted'>回滚会先保存“回滚前备份”，不会直接丢掉当前正文。</div>
-          </div>
-          {(versions?.versions || []).map((v: any) => (
-            <div key={v.version_id} className='rounded-ui border border-border bg-surface-2 px-2 py-2 text-xs'>
-              <div className='flex items-start justify-between gap-2'>
-                <div className='min-w-0'>
-                  <div className='flex flex-wrap items-center gap-1'>
-                    <span className='font-medium'>{v.label || v.reason || '版本快照'}</span>
-                    <Badge tone={v.tone === 'warn' ? 'warn' : v.is_current ? 'success' : 'default'}>{v.is_current ? '当前' : v.version_id}</Badge>
-                  </div>
-                  <div className='mt-1 text-muted'>{v.ts || 'no timestamp'}</div>
-                  {v.patch_id ? <div className='mt-1 truncate text-muted'>关联: {v.patch_id}</div> : null}
-                </div>
-                <Button className='shrink-0 text-xs' disabled={v.is_current} onClick={() => rollbackVersion(v.version_id)}>回滚</Button>
-              </div>
-            </div>
-          ))}
-          {(!versions?.versions || versions.versions.length === 0) && <p className='text-xs text-muted'>No versions yet.</p>}
-        </div>
-      </details>
-
-      <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Technique Brief</summary>
-        <pre className='mono max-h-60 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-2 text-xs'>{JSON.stringify(latestTechniqueBriefForRight, null, 2)}</pre>
-      </details>
-
-      <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Memory Packs <span className='text-xs text-muted'>({Array.isArray(memoryPacks) ? memoryPacks.length : 0})</span></summary>
-        <div className='space-y-1 border-t border-border p-2'>
-          {(Array.isArray(memoryPacks) ? memoryPacks : []).slice(0, 6).map((p: any) => (
-            <button key={p.pack_id} className='w-full rounded-ui border border-border bg-surface-2 px-2 py-1 text-left text-xs hover:bg-surface' onClick={() => { setSelectedMemoryPackId(p.pack_id); setView('context') }}>
-              {p.chapter_id} / {p.job_id}
-              {p.summary?.compression_reason ? <div className='text-[11px] text-muted'>{p.summary.compression_reason}</div> : null}
-            </button>
-          ))}
-          {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-xs text-muted'>No memory packs yet.</p> : null}
-        </div>
-      </details>
-
-      <details className='rounded-ui border border-border bg-surface'>
-        <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>Context Manifest</summary>
-        <pre className='mono max-h-60 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-2 text-xs'>{JSON.stringify(currentManifest || {}, null, 2)}</pre>
-      </details>
-
-      {Object.entries(eventGroups).map(([group, rows]) => (
-        <details key={group} className='rounded-ui border border-border bg-surface'>
-          <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>{group} <span className='text-xs text-muted'>({rows.length})</span></summary>
-          <div className='border-t border-border p-2'>
-            <pre className={`mono text-xs ${settings.evidenceWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'} overflow-auto max-h-60 rounded-ui bg-surface-2 p-2`}>
-              {rows.map((e) => `${e.event}\n${JSON.stringify(e.data, null, 2)}`).join('\n\n') || 'No events'}
-            </pre>
-          </div>
-        </details>
-      ))}
-        </div>
-      </details> : null}
+      {isMaintainerMode ? (
+        <ChapterMaintainerPanel
+          currentManifest={currentManifest || {}}
+          eventGroups={eventGroups}
+          evidenceWrap={settings.evidenceWrap}
+          memoryPacks={Array.isArray(memoryPacks) ? memoryPacks : []}
+          pinnedTechniqueCategories={currentChapterMeta?.pinned_technique_categories || []}
+          pinnedTechniques={currentChapterMeta?.pinned_techniques || []}
+          providerInfo={providerInfo}
+          reviewPatch={reviewPatch}
+          selectedOpIds={selectedOpIds}
+          techniqueBrief={latestTechniqueBriefForRight}
+          versions={versions}
+          onApplyPatch={applySelectedPatch}
+          onOpenMemoryPack={(packId) => {
+            setSelectedMemoryPackId(packId)
+            setView('context')
+          }}
+          onRejectPatch={rejectPatchReview}
+          onRollbackVersion={rollbackVersion}
+          onSelectAllPatchOps={setSelectedOpIds}
+          onTogglePatchOp={(opId, checked) => setSelectedOpIds((ids) => (checked ? [...ids, opId] : ids.filter((id) => id !== opId)))}
+        />
+      ) : null}
 
       {assetViewer.open && (
         <Card title={`Asset Viewer: ${assetViewer.title}`} extra={<Button className='text-xs' onClick={() => navigator.clipboard.writeText(assetViewer.content)}>复制片段</Button>}>
