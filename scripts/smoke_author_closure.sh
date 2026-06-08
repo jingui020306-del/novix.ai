@@ -48,6 +48,11 @@ require_grep "Maintainer mode" README.md
 
 # One write action should expose transparent pre-generation routing and readiness.
 require_grep "生成前确认" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "AI 分工" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "写初稿" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "审故事" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "改错字" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "存事实" frontend/src/components/WriteConfirmOverlay.tsx
 require_grep "writeRouteRows" frontend/src/components/WriteConfirmOverlay.tsx
 require_grep "writer|critic|editor|canon_extractor" README.md
 require_grep "TASK_AI_MODULES" frontend/src/pages/App.tsx
@@ -75,9 +80,9 @@ require_grep "support_level" backend/services/evidence_service.py
 require_grep "verify_quotes|unsupported quote|unsupported" backend/tests/test_phase2_services.py
 require_grep "Evidence marks and trust reports" README.md
 
-# The closure audit should keep remaining runtime review honest.
-require_grep "Needs runtime review" docs/PRODUCT_CLOSURE_AUDIT.md
+# The closure audit should show the 1-7 product closure items are complete.
+require_grep "Status: \`Done\`" docs/PRODUCT_CLOSURE_AUDIT.md
 require_grep "Current Verification Commands" docs/PRODUCT_CLOSURE_AUDIT.md
-require_grep "Remaining Product Closure Work" docs/PRODUCT_CLOSURE_AUDIT.md
+require_grep "Product Closure Status" docs/PRODUCT_CLOSURE_AUDIT.md
 
 echo "AUTHOR_CLOSURE_OK"

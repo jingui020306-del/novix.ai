@@ -74,6 +74,18 @@ export function WriteConfirmOverlay({
 }: WriteConfirmOverlayProps) {
   const readyCount = readinessItems.filter((item) => item.done).length
   const allReady = readyCount === readinessItems.length
+  const routeLabels: Record<string, { label: string; purpose: string }> = {
+    chapter_writer: { label: '写初稿', purpose: '扩展正文' },
+    chapter_reviewer: { label: '审故事', purpose: '检查人设/脉络/技法' },
+    proofreader: { label: '改错字', purpose: '只做基础校对' },
+    canon_extractor: { label: '存事实', purpose: '提取待确认事实' },
+  }
+  const orderedRouteRows = ['chapter_writer', 'chapter_reviewer', 'proofreader', 'canon_extractor'].map((module) => {
+    const row = writeRouteRows.find((item: any) => item.module === module)
+    return row || { module, profile_id: '未读取', provider: '', model: '', profile_missing: true, missing_fields: ['profile'] }
+  })
+  const routeReady = (row: any) => Boolean(row && !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
+  const readyRoutes = orderedRouteRows.filter(routeReady).length
 
   return (
     <div className='fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 py-10 backdrop-blur-[1px]' onMouseDown={onCancel}>
@@ -199,6 +211,35 @@ export function WriteConfirmOverlay({
               <div className='text-muted'>AI 草稿不会直接覆盖作者正文。</div>
               <div className='mt-1 text-muted'>校对建议默认进入待确认，作者可以接受或拒绝。</div>
               <div className='mt-1 text-muted'>没有正文证据的判断不会显示为已命中。</div>
+            </div>
+          </div>
+
+          <div className='mt-3 rounded-ui border border-border bg-surface p-3 text-xs'>
+            <div className='mb-2 flex items-center justify-between gap-2'>
+              <span className='font-medium'>AI 分工</span>
+              <Badge tone={readyRoutes === orderedRouteRows.length ? 'success' : 'warn'}>{readyRoutes}/{orderedRouteRows.length} ready</Badge>
+            </div>
+            <div className='grid grid-cols-1 gap-1.5 md:grid-cols-4'>
+              {orderedRouteRows.map((row: any) => {
+                const meta = routeLabels[row.module] || { label: row.module, purpose: '本次写作' }
+                const ready = routeReady(row)
+                const profileLabel = row.profile_missing ? '缺 profile' : row.profile_id || '未选择'
+                const modelLabel = row.model || (row.provider ? '缺 model' : '未配置')
+                return (
+                  <div key={row.module} className={`rounded-ui border px-2 py-2 ${ready ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-amber-300 bg-amber-50 dark:bg-amber-950/20'}`}>
+                    <div className='flex items-center justify-between gap-2'>
+                      <span className='font-medium'>{meta.label}</span>
+                      <Badge tone={ready ? 'success' : 'warn'}>{ready ? '可用' : '待配置'}</Badge>
+                    </div>
+                    <div className='mt-1 text-muted'>{meta.purpose}</div>
+                    <div className='mt-1 truncate text-muted'>{profileLabel}</div>
+                    <div className='mt-1 truncate text-muted'>{row.provider || 'provider'} · {modelLabel}</div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className='mt-2 text-muted'>
+              {useAgentAssignments ? 'Settings 里的任务分工会决定本次调用。' : `当前使用 ${llmProfileId} 覆盖全部分工。`}
             </div>
           </div>
 

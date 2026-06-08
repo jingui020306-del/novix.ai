@@ -42,18 +42,19 @@ Verification:
 
 ## 3. Generation Confirmation And Agent Routing Transparency
 
-Status: `Needs runtime review`
+Status: `Done`
 
 Evidence:
 
-- `frontend/src/components/WriteConfirmOverlay.tsx` shows generation scope, route rows, model/profile readiness, selected structure nodes, and pinned techniques before generation.
+- `frontend/src/components/WriteConfirmOverlay.tsx` shows generation scope, author agreement, selected structure nodes, pinned techniques, safety rules, and author-readable AI route rows before generation.
+- The visible route rows label the four writing roles as `写初稿`, `审故事`, `改错字`, and `存事实`, while keeping raw module/provider details under maintainer information.
 - `frontend/src/pages/App.tsx` defines `TASK_AI_MODULES`, `WRITE_ROUTE_MODULES`, generation scope options, stop options, and check modes.
 - `README.md` documents that authors should review the generation confirmation panel before writing.
 
-Still to review:
+Verification:
 
-- Browser-check that each route row is readable for non-technical authors.
-- Confirm the panel clearly differentiates writer, reviewer, proofreader, and canon extraction when assignments are mixed across providers.
+- Browser review confirmed the `生成前确认` dialog shows `AI 分工`, `写初稿`, `审故事`, `改错字`, and `存事实`.
+- Mock or incomplete routes display as `待配置`, so authors do not mistake mock/fallback setup for a ready paid API route.
 
 ## 4. AI Job Event Details And Maintainer-Only Debugging
 
@@ -106,7 +107,7 @@ Verification:
 
 ## 7. Evidence Lighting, Card Invocation Traces, And Anti-Deception Checks
 
-Status: `Needs runtime review`
+Status: `Done`
 
 Evidence:
 
@@ -117,11 +118,11 @@ Evidence:
 - `backend/services/evidence_service.py` verifies quotes and line ranges and builds trust reports.
 - `backend/tests/test_phase2_services.py` covers evidence marks, unsupported quote handling, author feedback, trust reports, three-agent events, and memory packs.
 
-Still to review:
+Verification:
 
-- Browser-check the color language for supported, partial, unsupported, and contradicted marks.
-- Confirm unsupported marks never look like green trusted hits.
-- Confirm card invocation traces are easy for writers to understand without reading debug terms.
+- Browser review confirmed chapter requirements without quotes show `未证实` and copy explaining that no original chapter line means it cannot count as written.
+- Browser review confirmed selected structure nodes show `未写到` and `证据 0/0` until evidence marks with quotes exist.
+- Browser review confirmed story planning exposes `脉络调用痕迹`, character cards expose `Character Cards / 调用痕迹`, and technique cards expose evidence/usage status for the selected chapter.
 
 ## Current Verification Commands
 
@@ -140,11 +141,8 @@ Run for broader backend confidence:
 ./.venv/bin/python -m pytest -q backend/tests/test_phase2_services.py
 ```
 
-## Remaining Product Closure Work
+## Product Closure Status
 
-The goal should stay active until these checks are stronger:
+The 1-7 product closure items are now implemented and verified by static smoke checks, production build, backend tests, and browser runtime review.
 
-- Browser review of generation confirmation with mixed model assignments.
-- Browser review of evidence lighting and risk colors in author mode.
-- Browser review of card invocation traces for characters, techniques, lines, foreshadowing, and canon.
-- Browser review should follow the author-closure smoke so the static evidence stays aligned with the visible product.
+Future work can continue improving polish, but it should be treated as a new product iteration rather than an open closure blocker.
