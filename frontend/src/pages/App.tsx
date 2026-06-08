@@ -18,6 +18,7 @@ import {
   List,
 } from 'lucide-react'
 import Layout from '../components/Layout'
+import { AiJobDetailCard } from '../components/AiJobDetailCard'
 import { BookTimelinePanel } from '../components/BookTimelinePanel'
 import { BuildDraftReviewCards } from '../components/BuildDraftReviewCards'
 import { BuildProgressCard } from '../components/BuildProgressCard'
@@ -3768,60 +3769,18 @@ export default function App() {
           />
 
           {selectedJobSummary && isMaintainerMode ? (
-            <Card
-              title='AI 任务详情'
-              extra={<Badge tone={selectedJobSummary.status === 'completed' ? 'success' : selectedJobSummary.status === 'failed' ? 'warn' : 'default'}>{selectedJobSummary.status || 'unknown'}</Badge>}
-            >
-              <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
-                <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
-                  <div className='mb-2 font-medium'>{selectedJobSummary.job_id}</div>
-                  <div>Chapter: {selectedJobSummary.chapter_id || '-'}</div>
-                  <div>Stage: {selectedJobSummary.stage || selectedJobSummary.last_event || '-'}</div>
-                  <div>Provider: {selectedJobSummary.provider || '-'}</div>
-                  <div>Model: {selectedJobSummary.model || '-'}</div>
-                  <div>Fallback: {selectedJobSummary.fallback ? 'yes' : 'no'}</div>
-                  <div>Created: {selectedJobSummary.created_at || '-'}</div>
-                  <div>Updated: {selectedJobSummary.updated_at || '-'}</div>
-                  <div className='mt-2 flex flex-wrap gap-1'>
-                    <Button className='text-xs' onClick={() => mutateSelectedJobDetail()}>刷新详情</Button>
-                    <Button className='text-xs' onClick={() => { if (selectedJobSummary.chapter_id) setSelectedChapter(selectedJobSummary.chapter_id); setView('chapter'); setActiveActivity('explorer') }}>打开章节</Button>
-                  </div>
-                </div>
-                <div className='rounded-ui border border-border bg-surface p-3 text-xs lg:col-span-2'>
-                  <div className='mb-2 flex items-center justify-between gap-2'>
-                    <span className='font-medium'>Stage 历史</span>
-                    <Badge>{selectedJobEvents.length || selectedJobSummary.event_total || 0}</Badge>
-                  </div>
-                  <div className='max-h-72 space-y-1 overflow-auto'>
-                    {selectedJobEvents.map((evt: any, index: number) => {
-                      const data = evt.data || {}
-                      return (
-                        <div key={`${evt.event}-${index}`} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5'>
-                          <div className='flex flex-wrap items-center justify-between gap-2'>
-                            <span className='font-medium'>{evt.event}</span>
-                            <Badge tone={data.fallback ? 'warn' : 'default'}>{data.stage || evt.event}</Badge>
-                          </div>
-                          <div className='mt-1 text-muted'>{data.provider || 'system'} / {data.model || '-'} {data.fallback ? '(fallback)' : ''}</div>
-                          {data.input_summary ? <div className='mt-1'>Input: {data.input_summary}</div> : null}
-                          {data.output_summary ? <div className='mt-1'>Output: {data.output_summary}</div> : null}
-                        </div>
-                      )
-                    })}
-                    {!selectedJobEvents.length ? <p className='text-muted'>选择任务后会显示每个 stage 的输入摘要、输出摘要、provider/model 和 fallback。</p> : null}
-                  </div>
-                </div>
-              </div>
-              <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>
-                <details className='rounded-ui border border-border bg-surface'>
-                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Context Manifest</summary>
-                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobManifest || {}, null, 2)}</pre>
-                </details>
-                <details className='rounded-ui border border-border bg-surface'>
-                  <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>Trust Report</summary>
-                  <pre className='mono max-h-80 overflow-auto whitespace-pre-wrap border-t border-border bg-surface-2 p-3 text-xs'>{JSON.stringify(selectedJobTrust || {}, null, 2)}</pre>
-                </details>
-              </div>
-            </Card>
+            <AiJobDetailCard
+              summary={selectedJobSummary}
+              events={selectedJobEvents}
+              manifest={selectedJobManifest}
+              trustReport={selectedJobTrust}
+              onRefresh={() => mutateSelectedJobDetail()}
+              onOpenChapter={(chapterId) => {
+                setSelectedChapter(chapterId)
+                setView('chapter')
+                setActiveActivity('explorer')
+              }}
+            />
           ) : null}
 
           <WorkspaceTrustCards
