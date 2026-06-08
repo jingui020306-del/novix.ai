@@ -37,6 +37,7 @@ import { RightAgentProgress } from '../components/RightAgentProgress'
 import { RightChapterContextPanel } from '../components/RightChapterContextPanel'
 import { RightTechniquePanel } from '../components/RightTechniquePanel'
 import { StoryCanvasPanel, StoryCanvasNode } from '../components/StoryCanvasPanel'
+import { StoryBuildWizardPanel } from '../components/StoryBuildWizardPanel'
 import { WriteConfirmOverlay } from '../components/WriteConfirmOverlay'
 import { WorkspaceTrustCards } from '../components/WorkspaceTrustCards'
 import { WritingPrepMap } from '../components/WritingPrepMap'
@@ -3802,150 +3803,28 @@ export default function App() {
     if (view === 'story') {
       return (
         <div className='space-y-3 density-space'>
-          <Card
-            title='小说建设向导 / 待确认草案'
-            extra={<Badge>单环节生成 · 可刷新 · 可编辑 · 确认后写入</Badge>}
-          >
-            <div className='grid grid-cols-12 gap-3'>
-              <div className='col-span-5 space-y-2'>
-                <div className='grid grid-cols-2 gap-2'>
-                  {storyBuildProgress.map((step) => (
-                    <button
-                      key={step.id}
-                      className={`rounded-ui border px-3 py-2 text-left ${buildWizardStep === step.id ? 'border-brand-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}
-                      onClick={() => setBuildWizardStep(step.id)}
-                    >
-                      <div className='flex items-center justify-between gap-2'>
-                        <span className='text-sm font-medium'>{step.label}</span>
-                        <Badge tone={step.done ? 'success' : 'warn'}>{step.done ? '已完成' : '待补'}</Badge>
-                      </div>
-                      <div className='mt-1 text-xs text-muted'>{step.detail}</div>
-                    </button>
-                  ))}
-                </div>
-                <div className='rounded-ui border border-border bg-surface p-2'>
-                  <div className='flex items-center justify-between gap-2'>
-                    <div>
-                      <div className='text-xs font-medium'>{activeBuildWizardStep.label || '建设步骤'}</div>
-                      <div className='mt-1 flex flex-wrap gap-1'>
-                        {(activeBuildWizardStep.checks || []).map((check) => <Badge key={check}>{check}</Badge>)}
-                      </div>
-                    </div>
-                    {activeBuildWizardStep.draftKind ? (
-                      <div className='flex flex-col gap-1'>
-                        <Button
-                          className='text-xs'
-                          disabled={buildDraftBusy}
-                          onClick={() => generateBuildDraft(activeBuildWizardStep.draftKind || 'story_overview')}
-                        >
-                          {buildDraftBusy ? '生成中...' : '生成此步草案'}
-                        </Button>
-                        {buildWizardStep === 'lines' && <Button className='text-xs' disabled={buildDraftBusy} onClick={() => generateBuildDraft('foreshadowing')}>生成伏笔草案</Button>}
-                      </div>
-                    ) : (
-                      <Button className='text-xs' onClick={saveStoryCard}>保存故事卡</Button>
-                    )}
-                  </div>
-                </div>
-                <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
-                  草案不会自动覆盖卡片。你可以按步骤生成、在右侧结构化修改，也可以局部确认某几条内容。
-                </div>
-                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
-                  <div className='flex items-center justify-between gap-2'>
-                    <span className='text-xs font-medium'>待确认队列</span>
-                    <Badge>{pendingBuildDrafts.length}</Badge>
-                  </div>
-                  <div className='max-h-36 space-y-1 overflow-auto'>
-                    {pendingBuildDrafts.slice(0, 6).map((rec: any) => (
-                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
-                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
-                          <span className='font-medium'>{rec.title || rec.kind}</span>
-                          <span className='ml-2 text-muted'>rev {rec.revision || 1}</span>
-                        </button>
-                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
-                        <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
-                          <span>{rec.source || 'unknown'} · {rec.selected_chapter || 'no chapter'}</span>
-                          <div className='flex gap-1'>
-                            <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
-                            <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
-                          </div>
-                        </div>
-                        {rec.source_node?.label ? (
-                          <div className='mt-1 text-[11px] text-muted'>来源节点：{rec.source_node.label}</div>
-                        ) : null}
-                      </div>
-                    ))}
-                    {!pendingBuildDrafts.length && <div className='text-xs text-muted'>暂无待确认草案。</div>}
-                  </div>
-                </div>
-                <div className='space-y-1 rounded-ui border border-border bg-surface p-2'>
-                  <div className='flex items-center justify-between gap-2'>
-                    <span className='text-xs font-medium'>已处理草案</span>
-                    <Badge>{buildDraftHistoryRows.length}/{processedBuildDrafts.length}</Badge>
-                  </div>
-                  <div className='flex flex-wrap gap-1'>
-                    {[
-                      ['all', '全部'],
-                      ['accepted', '已接受'],
-                      ['partially_accepted', '局部'],
-                      ['rejected', '已拒绝'],
-                    ].map(([key, label]) => (
-                      <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
-                        {label} {(buildDraftHistoryCounts as any)[key] || 0}
-                      </Button>
-                    ))}
-                  </div>
-                  <div className='max-h-36 space-y-1 overflow-auto'>
-                    {buildDraftHistoryRows.slice(0, 6).map((rec: any) => (
-                      <div key={rec.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
-                        <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
-                          <span className='font-medium'>{rec.title || rec.kind}</span>
-                          <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
-                        </button>
-                        <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
-                        <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
-                          {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
-                          {rec.accepted_target ? <span>target: {rec.accepted_target}</span> : null}
-                          {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
-                        </div>
-                        <div className='mt-1 flex gap-1'>
-                          <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
-                          <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
-                        </div>
-                      </div>
-                    ))}
-                    {!buildDraftHistoryRows.length && <div className='text-xs text-muted'>没有符合筛选的已处理草案。</div>}
-                  </div>
-                </div>
-              </div>
-              <div className='col-span-7'>
-                {buildDraft ? (
-                  <div className='space-y-2'>
-                    <div className='flex items-center justify-between gap-2'>
-                      <div className='text-sm font-medium'>{buildDraft.title} <span className='text-xs text-muted'>rev {buildDraft.revision}</span></div>
-                      <div className='flex gap-2'>
-                        <Button className='text-xs' disabled={buildDraftBusy} onClick={() => generateBuildDraft(buildDraft.kind, buildDraft.source_node || null)}>{buildDraftBusy ? '生成中...' : '刷新这一环节'}</Button>
-                        <Button className='text-xs' variant='primary' onClick={acceptBuildDraft}>确认写入</Button>
-                      </div>
-                    </div>
-                    <div className='flex flex-wrap gap-2 text-xs text-muted'>
-                      <Badge>{buildDraft.status || 'pending'}</Badge>
-                      <Badge>{buildDraft.source || 'local'}</Badge>
-                      {acceptedScopeLabels(buildDraft).length ? <Badge tone='success'>已接受: {acceptedScopeLabels(buildDraft).join(', ')}</Badge> : null}
-                      {buildDraft.accepted_target ? <Badge>写入: {buildDraft.accepted_target}</Badge> : null}
-                      {buildDraft.rejection_reason ? <Badge tone='warn'>拒绝: {buildDraft.rejection_reason}</Badge> : null}
-                      {buildDraft.source_node?.label ? <Badge>来源节点: {buildDraft.source_node.label}</Badge> : null}
-                      {buildDraft.draft_id ? <span>{buildDraft.draft_id}</span> : <span>未落盘 fallback</span>}
-                    </div>
-                    {buildDraft.generation_reason ? <div className='text-xs text-muted'>{buildDraft.generation_reason}</div> : null}
-                    {renderBuildDraftEditor()}
-                  </div>
-                ) : (
-                  renderBuildDraftEditor()
-                )}
-              </div>
-            </div>
-          </Card>
+          <StoryBuildWizardPanel
+            steps={storyBuildProgress}
+            activeStepId={buildWizardStep}
+            activeStep={activeBuildWizardStep}
+            busy={buildDraftBusy}
+            selectedDraft={buildDraft}
+            pendingDrafts={pendingBuildDrafts}
+            processedDrafts={processedBuildDrafts}
+            historyRows={buildDraftHistoryRows}
+            historyFilter={buildDraftHistoryFilter}
+            historyCounts={buildDraftHistoryCounts as Record<string, number>}
+            draftEditor={renderBuildDraftEditor()}
+            onSelectStep={setBuildWizardStep}
+            onGenerateDraft={generateBuildDraft}
+            onSaveStory={saveStoryCard}
+            onOpenDraft={openBuildDraft}
+            onRejectDraft={rejectBuildDraft}
+            onRestoreDraft={restoreBuildDraft}
+            onChangeHistoryFilter={setBuildDraftHistoryFilter}
+            onAcceptDraft={acceptBuildDraft}
+            getAcceptedScopeLabels={acceptedScopeLabels}
+          />
           <Card
             title='故事卡 / Story Control'
             extra={
