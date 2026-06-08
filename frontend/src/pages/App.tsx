@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { BookTimelinePanel } from '../components/BookTimelinePanel'
+import { BuildDraftReviewCards } from '../components/BuildDraftReviewCards'
 import { BuildProgressCard } from '../components/BuildProgressCard'
 import { ChapterAlignmentPanel } from '../components/ChapterAlignmentPanel'
 import { ChapterDraftReviewQueue } from '../components/ChapterDraftReviewQueue'
@@ -27,12 +28,16 @@ import { ChapterPrewriteCard } from '../components/ChapterPrewriteCard'
 import { ChapterStructureLights } from '../components/ChapterStructureLights'
 import { ChapterWorkflowChecklist } from '../components/ChapterWorkflowChecklist'
 import { FirstRunChecklist } from '../components/FirstRunChecklist'
+import { PendingPatchCard } from '../components/PendingPatchCard'
+import { ProjectSwitcherCard } from '../components/ProjectSwitcherCard'
+import { RecentAiJobsCard } from '../components/RecentAiJobsCard'
 import { RecentChaptersCard } from '../components/RecentChaptersCard'
 import { RightAgentProgress } from '../components/RightAgentProgress'
 import { RightChapterContextPanel } from '../components/RightChapterContextPanel'
 import { RightTechniquePanel } from '../components/RightTechniquePanel'
 import { StoryCanvasPanel, StoryCanvasNode } from '../components/StoryCanvasPanel'
 import { WriteConfirmOverlay } from '../components/WriteConfirmOverlay'
+import { WorkspaceTrustCards } from '../components/WorkspaceTrustCards'
 import { WritingPrepMap } from '../components/WritingPrepMap'
 import { SchemaForm } from '../components/SchemaForm'
 import { api } from '../api/client'
@@ -3723,117 +3728,44 @@ export default function App() {
             }}
           />
 
-          <Card title='项目'>
-            <div className='space-y-2'>
-              {(projects || []).map((p: any) => (
-                <button key={p.id} onClick={() => setProject(p.id)} className={`w-full rounded-ui border px-3 py-2 text-left ${project === p.id ? 'border-brand-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border bg-surface hover:bg-surface-2'}`}>
-                  <div className='text-sm font-medium'>{p.id}</div>
-                  <div className='text-xs text-muted'>{p.title}</div>
-                </button>
-              ))}
-              <div className='flex flex-wrap gap-2'>
-                <Button variant='primary' onClick={async () => { const r = await api.post('/api/projects', { title: '新项目' }); setProject(r.project_id); mutateProjects() }}>Create</Button>
-                <Button onClick={downloadProjectBackup}>导出备份</Button>
-                <Button onClick={downloadManuscriptMarkdown}>导出正文</Button>
-                <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
-              </div>
-              <input ref={backupImportInputRef} className='hidden' type='file' accept='.zip,application/zip' onChange={importProjectBackup} />
-              <div className='text-xs text-muted'>备份用于恢复全项目；正文 Markdown 用于投稿、迁移和直接阅读。</div>
-            </div>
-          </Card>
+          <ProjectSwitcherCard
+            projects={projects || []}
+            selectedProjectId={project}
+            importInputRef={backupImportInputRef}
+            onSelectProject={setProject}
+            onCreateProject={async () => {
+              const response = await api.post('/api/projects', { title: '新项目' })
+              setProject(response.project_id)
+              mutateProjects()
+            }}
+            onDownloadBackup={downloadProjectBackup}
+            onDownloadManuscript={downloadManuscriptMarkdown}
+            onImportBackup={importProjectBackup}
+          />
 
           <div className='grid grid-cols-3 gap-3'>
-            <Card title='待确认建书草案'>
-              <div className='space-y-1'>
-                {pendingBuildDrafts.slice(0, 5).map((rec: any) => (
-                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
-                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
-                      <span className='font-medium'>{rec.title || rec.kind}</span>
-                      <span className='ml-2 text-muted'>rev {rec.revision || 1} · {rec.source || 'unknown'}</span>
-                    </button>
-                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
-                    <div className='mt-1 flex gap-2'>
-                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
-                      <Button className='text-xs' onClick={() => rejectBuildDraft(rec)}>拒绝</Button>
-                    </div>
-                    {rec.source_node?.label ? (
-                      <div className='mt-1 text-[11px] text-muted'>来源节点：{rec.source_node.label}</div>
-                    ) : null}
-                  </div>
-                ))}
-                {!pendingBuildDrafts.length && <p className='text-sm text-muted'>没有待确认建书草案。</p>}
-              </div>
-            </Card>
-            <Card title='建书草案历史'>
-              <div className='space-y-1'>
-                <div className='flex flex-wrap gap-1 pb-1'>
-                  {[
-                    ['all', '全部'],
-                    ['accepted', '已接受'],
-                    ['partially_accepted', '局部'],
-                    ['rejected', '已拒绝'],
-                  ].map(([key, label]) => (
-                    <Button key={key} className='text-xs' variant={buildDraftHistoryFilter === key ? 'primary' : 'secondary'} onClick={() => setBuildDraftHistoryFilter(key)}>
-                      {label} {(buildDraftHistoryCounts as any)[key] || 0}
-                    </Button>
-                  ))}
-                </div>
-                {buildDraftHistoryRows.slice(0, 5).map((rec: any) => (
-                  <div key={rec.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
-                    <button className='w-full text-left hover:underline' onClick={() => openBuildDraft(rec)}>
-                      <span className='font-medium'>{rec.title || rec.kind}</span>
-                      <span className='ml-2 text-muted'>{rec.status || 'processed'}</span>
-                    </button>
-                    <div className='mt-1 text-muted'>{rec.updated_at || rec.created_at || 'no timestamp'}</div>
-                    <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
-                      {acceptedScopeLabels(rec).length ? <Badge tone='success'>{acceptedScopeLabels(rec).join(', ')}</Badge> : null}
-                      {rec.rejection_reason ? <span>{rec.rejection_reason}</span> : null}
-                    </div>
-                    <div className='mt-1 flex gap-1'>
-                      <Button className='text-xs' onClick={() => openBuildDraft(rec)}>打开</Button>
-                      <Button className='text-xs' onClick={() => restoreBuildDraft(rec)}>恢复待确认</Button>
-                    </div>
-                  </div>
-                ))}
-                {!buildDraftHistoryRows.length && <p className='text-sm text-muted'>没有符合筛选的已处理草案。</p>}
-              </div>
-            </Card>
-            <Card title='待审 AI Patch'>
-              <div className='space-y-1'>
-                {(reviewPatch?.ops || []).slice(0, 5).map((op: any) => (
-                  <button key={op.op_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => setView('chapter')}>
-                    {op.op_id} · {op.rationale || op.type}
-                  </button>
-                ))}
-                {!reviewPatch?.ops?.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
-              </div>
-            </Card>
+            <BuildDraftReviewCards
+              pendingDrafts={pendingBuildDrafts}
+              historyRows={buildDraftHistoryRows}
+              historyFilter={buildDraftHistoryFilter}
+              historyCounts={buildDraftHistoryCounts as Record<string, number>}
+              onChangeHistoryFilter={setBuildDraftHistoryFilter}
+              onOpenDraft={openBuildDraft}
+              onRejectDraft={rejectBuildDraft}
+              onRestoreDraft={restoreBuildDraft}
+              getAcceptedScopeLabels={acceptedScopeLabels}
+            />
+            <PendingPatchCard operations={reviewPatch?.ops || []} onOpenPatchReview={() => setView('chapter')} />
           </div>
 
-          <Card title='最近 AI 任务'>
-            <div className='grid grid-cols-2 gap-2'>
-              {jobList.slice(0, 6).map((job: any) => (
-                <button
-                  key={job.job_id}
-                  className={`rounded-ui border px-3 py-2 text-left hover:bg-surface-2 ${selectedJobId === job.job_id ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface'}`}
-                  onClick={() => {
-                    if (job.chapter_id) setSelectedChapter(job.chapter_id)
-                    setSelectedJobId(job.job_id)
-                  }}
-                >
-                  <div className='flex items-center justify-between gap-2'>
-                    <span className='truncate text-sm font-medium'>{job.chapter_id || job.job_id}</span>
-                    <Badge tone={job.status === 'completed' ? 'success' : job.status === 'failed' || job.status === 'awaiting_review' ? 'warn' : 'default'}>
-                      {job.status || 'unknown'}
-                    </Badge>
-                  </div>
-                  <div className='mt-1 text-xs text-muted'>{job.last_event || job.stage || 'no event'} · {job.model || 'model pending'}</div>
-                  <div className='mt-1 text-xs text-muted'>{job.output_summary || job.input_summary || job.updated_at}</div>
-                </button>
-              ))}
-              {!jobList.length && <p className='text-sm text-muted'>还没有生成任务。生成本章后，这里会保留任务状态。</p>}
-            </div>
-          </Card>
+          <RecentAiJobsCard
+            jobs={jobList}
+            selectedJobId={selectedJobId}
+            onSelectJob={(job) => {
+              if (job.chapter_id) setSelectedChapter(job.chapter_id)
+              setSelectedJobId(job.job_id)
+            }}
+          />
 
           {selectedJobSummary && isMaintainerMode ? (
             <Card
@@ -3892,28 +3824,18 @@ export default function App() {
             </Card>
           ) : null}
 
-          <div className='grid grid-cols-2 gap-3'>
-            <Card title='待确认 Canon'>
-              <div className='space-y-1'>
-                {(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').slice(-5).reverse().map((p: any) => (
-                  <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
-                    {p.name || p.proposal_id || p.id}
-                  </button>
-                ))}
-                {!(proposals || []).filter((p: any) => (p.status || 'pending') === 'pending').length && <p className='text-sm text-muted'>没有待确认 canon proposal。</p>}
-              </div>
-            </Card>
-            <Card title='可信风险'>
-              <div className='space-y-1'>
-                {unsupportedMarks.slice(0, 5).map((mark: any) => (
-                  <button key={mark.mark_id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedMarkId(mark.mark_id); setView('chapter') }}>
-                    {mark.target_type} · {mark.label || mark.target_id}
-                  </button>
-                ))}
-                {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有未证实风险。</p>}
-              </div>
-            </Card>
-          </div>
+          <WorkspaceTrustCards
+            proposals={proposals || []}
+            unsupportedMarks={unsupportedMarks}
+            onOpenProposal={(proposalId) => {
+              setSelectedProposalId(proposalId)
+              setView('canon')
+            }}
+            onOpenMark={(markId) => {
+              setSelectedMarkId(markId)
+              setView('chapter')
+            }}
+          />
         </div>
       )
     }
