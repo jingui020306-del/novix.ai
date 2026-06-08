@@ -425,6 +425,12 @@ curl "http://127.0.0.1:8000/api/projects/demo_project_001/trust-report?chapter_i
 
 ## Verification
 
+Product closure audit:
+
+```text
+docs/PRODUCT_CLOSURE_AUDIT.md
+```
+
 Backend tests:
 
 ```bash
