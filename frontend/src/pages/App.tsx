@@ -38,6 +38,7 @@ import { RightChapterContextPanel } from '../components/RightChapterContextPanel
 import { RightTechniquePanel } from '../components/RightTechniquePanel'
 import { StoryCanvasPanel, StoryCanvasNode } from '../components/StoryCanvasPanel'
 import { StoryBuildWizardPanel } from '../components/StoryBuildWizardPanel'
+import { StoryControlCard } from '../components/StoryControlCard'
 import { WriteConfirmOverlay } from '../components/WriteConfirmOverlay'
 import { WorkspaceTrustCards } from '../components/WorkspaceTrustCards'
 import { WritingPrepMap } from '../components/WritingPrepMap'
@@ -3825,102 +3826,19 @@ export default function App() {
             onAcceptDraft={acceptBuildDraft}
             getAcceptedScopeLabels={acceptedScopeLabels}
           />
-          <Card
-            title='故事卡 / Story Control'
-            extra={
-              <div className='flex gap-2'>
-                <Button onClick={() => setStoryForm(normalizeStoryCard(null))}>新建故事卡</Button>
-                <Button variant='primary' onClick={saveStoryCard}>保存故事卡</Button>
-              </div>
-            }
-          >
-            <div className='grid grid-cols-12 gap-3'>
-              <div className='col-span-3'>
-                <label className='text-xs text-muted'>ID</label>
-                <Input value={storyForm?.id || ''} onChange={(e) => updateStoryRoot('id', e.target.value)} />
-              </div>
-              <div className='col-span-4'>
-                <label className='text-xs text-muted'>标题</label>
-                <Input value={storyForm?.title || ''} onChange={(e) => updateStoryRoot('title', e.target.value)} />
-              </div>
-              <div className='col-span-3'>
-                <label className='text-xs text-muted'>类型/题材</label>
-                <Input value={storyPayload.genre || ''} onChange={(e) => updateStoryPayload('genre', e.target.value)} />
-              </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>Tags</label>
-                <Input value={(storyForm?.tags || []).join(',')} onChange={(e) => updateStoryRoot('tags', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
-              </div>
-              <div className='col-span-4'>
-                <label className='text-xs text-muted'>关键词</label>
-                <Input value={(storyPayload.keywords || []).join(',')} onChange={(e) => updateStoryPayload('keywords', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} />
-              </div>
-              <div className='col-span-4'>
-                <label className='text-xs text-muted'>目标读者</label>
-                <Input value={storyPayload.target_reader || ''} onChange={(e) => updateStoryPayload('target_reader', e.target.value)} />
-              </div>
-              <div className='col-span-4'>
-                <label className='text-xs text-muted'>平台风格</label>
-                <Input value={storyPayload.platform_style || ''} onChange={(e) => updateStoryPayload('platform_style', e.target.value)} />
-              </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>一句话故事</label>
-                <Textarea className='h-20' value={storyPayload.logline || ''} onChange={(e) => updateStoryPayload('logline', e.target.value)} />
-              </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>主题</label>
-                <Textarea className='h-20' value={storyPayload.theme || ''} onChange={(e) => updateStoryPayload('theme', e.target.value)} />
-              </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>世界/背景</label>
-                <Textarea className='h-24' value={storyPayload.worldview || ''} onChange={(e) => updateStoryPayload('worldview', e.target.value)} />
-              </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>总冲突</label>
-                <Textarea className='h-24' value={storyPayload.main_conflict || ''} onChange={(e) => updateStoryPayload('main_conflict', e.target.value)} />
-              </div>
-              <div className='col-span-6'>
-                <label className='text-xs text-muted'>禁写事项</label>
-                <Textarea className='h-24' value={(storyPayload.banned_items || []).join('\n')} onChange={(e) => updateStoryPayload('banned_items', e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))} />
-              </div>
-              <div className='col-span-6 space-y-2'>
-                <div className='flex items-center justify-between gap-2'>
-                  <label className='text-xs text-muted'>重要场景</label>
-                  <Button className='text-xs' onClick={() => addStoryArrayItem('important_scenes', STORY_PAYLOAD_TEMPLATE.important_scenes[0])}>新增场景</Button>
-                </div>
-                {(storyPayload.important_scenes || []).map((row: any, index: number) => (
-                  <div key={`story-scene-${index}`} className='rounded-ui border border-border bg-surface p-2'>
-                    <div className='grid grid-cols-12 gap-2'>
-                      <div className='col-span-4'>
-                        <label className='text-xs text-muted'>场景</label>
-                        <Input value={row.scene || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'scene', e.target.value)} />
-                      </div>
-                      <div className='col-span-5'>
-                        <label className='text-xs text-muted'>作用</label>
-                        <Input value={row.purpose || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'purpose', e.target.value)} />
-                      </div>
-                      <div className='col-span-3'>
-                        <label className='text-xs text-muted'>章节</label>
-                        <Input value={row.chapter || ''} onChange={(e) => updateStoryArrayItem('important_scenes', index, 'chapter', e.target.value)} />
-                      </div>
-                    </div>
-                    <div className='mt-2 flex justify-end'>
-                      <Button className='text-xs' onClick={() => removeStoryArrayItem('important_scenes', index)}>删除</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
-          <Card title='已有故事卡'>
-            <div className='flex flex-wrap gap-2'>
-              {(storyCards || []).map((card: any) => (
-                <Button key={card.id} onClick={() => setStoryForm(normalizeStoryCard(card))}>{card.title || card.id}</Button>
-              ))}
-              {(!storyCards || storyCards.length === 0) && <p className='text-sm text-muted'>暂无故事卡，保存后会出现在这里。</p>}
-            </div>
-          </Card>
+          <StoryControlCard
+            storyForm={storyForm}
+            storyPayload={storyPayload}
+            storyCards={storyCards || []}
+            onNewStory={() => setStoryForm(normalizeStoryCard(null))}
+            onSaveStory={saveStoryCard}
+            onSelectStory={(card) => setStoryForm(normalizeStoryCard(card))}
+            onUpdateRoot={updateStoryRoot}
+            onUpdatePayload={updateStoryPayload}
+            onAddImportantScene={() => addStoryArrayItem('important_scenes', STORY_PAYLOAD_TEMPLATE.important_scenes[0])}
+            onUpdateImportantScene={(index, key, value) => updateStoryArrayItem('important_scenes', index, key, value)}
+            onRemoveImportantScene={(index) => removeStoryArrayItem('important_scenes', index)}
+          />
 
           <Tabs
             items={['Overview', 'Canvas', 'Stages', 'Lines', 'Foreshadowings', 'Chapter Matrix']}
