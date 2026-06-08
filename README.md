@@ -448,6 +448,7 @@ Frontend smoke:
 
 ```bash
 ./scripts/smoke_frontend.sh
+./scripts/smoke_author_closure.sh
 ```
 
 Diff whitespace check:

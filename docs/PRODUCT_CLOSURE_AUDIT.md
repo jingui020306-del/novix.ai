@@ -130,6 +130,7 @@ Run after each product slice:
 ```bash
 npm --prefix frontend run build
 ./.venv/bin/python -m pytest backend/tests/test_phase2_services.py::test_build_drafts_api_roundtrip
+./scripts/smoke_author_closure.sh
 git diff --check
 ```
 
@@ -146,4 +147,4 @@ The goal should stay active until these checks are stronger:
 - Browser review of generation confirmation with mixed model assignments.
 - Browser review of evidence lighting and risk colors in author mode.
 - Browser review of card invocation traces for characters, techniques, lines, foreshadowing, and canon.
-- Optional: add focused frontend smoke tests for first-run checklist, generation confirmation, and evidence lighting.
+- Browser review should follow the author-closure smoke so the static evidence stays aligned with the visible product.

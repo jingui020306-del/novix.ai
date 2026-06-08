@@ -16,3 +16,7 @@ jobs:
         run: |
           chmod +x scripts/smoke_frontend.sh
           ./scripts/smoke_frontend.sh
+      - name: Run author closure smoke
+        run: |
+          chmod +x scripts/smoke_author_closure.sh
+          ./scripts/smoke_author_closure.sh
