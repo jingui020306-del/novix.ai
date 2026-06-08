@@ -39,6 +39,7 @@ import { RightTechniquePanel } from '../components/RightTechniquePanel'
 import { StoryCanvasPanel, StoryCanvasNode } from '../components/StoryCanvasPanel'
 import { StoryBuildWizardPanel } from '../components/StoryBuildWizardPanel'
 import { StoryControlCard } from '../components/StoryControlCard'
+import { StoryPlanningPanel } from '../components/StoryPlanningPanel'
 import { WriteConfirmOverlay } from '../components/WriteConfirmOverlay'
 import { WorkspaceTrustCards } from '../components/WorkspaceTrustCards'
 import { WritingPrepMap } from '../components/WritingPrepMap'
@@ -3237,30 +3238,6 @@ export default function App() {
         onUpdateNode={updateCanvasNode}
       />
     )
-    const renderStoryRows = (section: string, rows: any[], fields: Array<{ key: string; label: string; span?: string }>, template: any) => (
-      <div className='space-y-2'>
-        {rows.map((row: any, index: number) => (
-          <div key={`${section}-${index}`} className='rounded-ui border border-border bg-surface p-3'>
-            <div className='grid grid-cols-12 gap-2'>
-              {fields.map((field) => (
-                <div key={field.key} className={field.span || 'col-span-6'}>
-                  <label className='text-xs text-muted'>{field.label}</label>
-                  <Input
-                    value={row?.[field.key] || ''}
-                    onChange={(e) => updateStoryArrayItem(section, index, field.key, e.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className='mt-2 flex justify-end'>
-              <Button className='text-xs' onClick={() => removeStoryArrayItem(section, index)}>删除</Button>
-            </div>
-          </div>
-        ))}
-        <Button onClick={() => addStoryArrayItem(section, template)}>新增</Button>
-      </div>
-    )
-
     const renderBuildDraftJsonDebug = () => (
       <details className='rounded-ui border border-border bg-surface-2 p-2'>
         <summary className='cursor-pointer text-xs text-muted'>JSON debug / 原始草案</summary>
@@ -3840,105 +3817,25 @@ export default function App() {
             onRemoveImportantScene={(index) => removeStoryArrayItem('important_scenes', index)}
           />
 
-          <Tabs
-            items={['Overview', 'Canvas', 'Stages', 'Lines', 'Foreshadowings', 'Chapter Matrix']}
-            active={storyPlanningTab}
-            onChange={setStoryPlanningTab}
+          <StoryPlanningPanel
+            activeTab={storyPlanningTab}
+            payload={storyPayload}
+            template={STORY_PAYLOAD_TEMPLATE}
+            canvasPanel={renderNarrativeCanvas()}
+            selectedChapter={selectedChapter}
+            openLineRows={openLineRows}
+            hiddenLineRows={hiddenLineRows}
+            foreshadowingRows={foreshadowingRows}
+            storyCardPreview={normalizeStoryCard(storyForm)}
+            showJsonPreview={isMaintainerMode}
+            onChangeTab={setStoryPlanningTab}
+            onUpdateRow={updateStoryArrayItem}
+            onAddRow={addStoryArrayItem}
+            onRemoveRow={removeStoryArrayItem}
+            getTraceRows={traceRowsFor}
+            getTraceTone={traceBadgeTone}
+            getTraceSummary={traceSummary}
           />
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Canvas') && renderNarrativeCanvas()}
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Lines' || storyPlanningTab === 'Foreshadowings') && (
-            <Card title='脉络调用痕迹' extra={<Badge>{selectedChapter}</Badge>}>
-              <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
-                {[...openLineRows.map((row: any) => ({ type: 'open_line', label: row.event || row.result || row.chapter || '明线节点', candidates: [row.id, row.chapter, row.event, row.result] })),
-                  ...hiddenLineRows.map((row: any) => ({ type: 'hidden_line', label: row.visible_hint || row.truth || row.chapter || '暗线节点', candidates: [row.id, row.chapter, row.visible_hint, row.hidden_meaning, row.truth] })),
-                  ...foreshadowingRows.map((row: any) => ({ type: 'foreshadowing', label: row.content || row.id || '伏笔节点', candidates: [row.id, row.content, row.surface_signal, row.true_meaning] })),
-                ].map((item: any, index: number) => {
-                  const traces = traceRowsFor(item.type, item.candidates)
-                  return (
-                    <div key={`${item.type}-${index}`} className='rounded-ui border border-border bg-surface p-2 text-xs'>
-                      <div className='flex items-center justify-between gap-2'>
-                        <span className='font-medium'>{item.label}</span>
-                        <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
-                      </div>
-                      <div className='mt-1 text-muted'>{item.type} · 当前章节 evidence marks</div>
-                    </div>
-                  )
-                })}
-                {!openLineRows.length && !hiddenLineRows.length && !foreshadowingRows.length ? <p className='text-sm text-muted'>暂无明线、暗线或伏笔节点。</p> : null}
-              </div>
-            </Card>
-          )}
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Stages') && <Card title='阶段性目标 / 冲突 / 结果'>
-            {renderStoryRows('stages', storyPayload.stages || [], [
-              { key: 'stage', label: '阶段', span: 'col-span-2' },
-              { key: 'goal', label: '阶段目标', span: 'col-span-3' },
-              { key: 'conflict', label: '阶段冲突', span: 'col-span-3' },
-              { key: 'result', label: '阶段结果', span: 'col-span-2' },
-              { key: 'turning_point', label: '转折点', span: 'col-span-2' },
-            ], STORY_PAYLOAD_TEMPLATE.stages[0])}
-          </Card>}
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Lines') && (
-            <>
-              <Card title='明线'>
-                {renderStoryRows('open_line', storyPayload.open_line || [], [
-                  { key: 'chapter', label: '章节', span: 'col-span-2' },
-                  { key: 'event', label: '表面事件', span: 'col-span-3' },
-                  { key: 'goal', label: '角色目标', span: 'col-span-3' },
-                  { key: 'conflict', label: '阻碍/冲突', span: 'col-span-2' },
-                  { key: 'result', label: '结果', span: 'col-span-2' },
-                ], STORY_PAYLOAD_TEMPLATE.open_line[0])}
-              </Card>
-
-              <Card title='暗线'>
-                {renderStoryRows('hidden_line', storyPayload.hidden_line || [], [
-                  { key: 'chapter', label: '章节', span: 'col-span-2' },
-                  { key: 'truth', label: '真实发生的事', span: 'col-span-3' },
-                  { key: 'visible_hint', label: '可见提示', span: 'col-span-3' },
-                  { key: 'hidden_meaning', label: '隐藏含义', span: 'col-span-2' },
-                  { key: 'reveal_timing', label: '揭示时机', span: 'col-span-2' },
-                ], STORY_PAYLOAD_TEMPLATE.hidden_line[0])}
-              </Card>
-            </>
-          )}
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Foreshadowings') && <Card title='伏笔追踪表'>
-            {renderStoryRows('foreshadowings', storyPayload.foreshadowings || [], [
-              { key: 'id', label: '伏笔ID', span: 'col-span-2' },
-              { key: 'status', label: '状态', span: 'col-span-2' },
-              { key: 'content', label: '伏笔内容', span: 'col-span-4' },
-              { key: 'first_chapter', label: '首次出现', span: 'col-span-2' },
-              { key: 'surface_signal', label: '显示方式', span: 'col-span-3' },
-              { key: 'reader_feeling', label: '读者感受', span: 'col-span-3' },
-              { key: 'true_meaning', label: '真实意义', span: 'col-span-4' },
-              { key: 'payoff_chapter', label: '回收章节', span: 'col-span-2' },
-              { key: 'payoff', label: '回收方式', span: 'col-span-4' },
-              { key: 'emphasis', label: '强调方式', span: 'col-span-6' },
-            ], STORY_PAYLOAD_TEMPLATE.foreshadowings[0])}
-          </Card>}
-
-          {(storyPlanningTab === 'Overview' || storyPlanningTab === 'Chapter Matrix') && <Card title='章节矩阵'>
-            {renderStoryRows('chapter_plan', storyPayload.chapter_plan || [], [
-              { key: 'chapter', label: '计划编号', span: 'col-span-2' },
-              { key: 'chapter_id', label: '绑定章节', span: 'col-span-2' },
-              { key: 'title', label: '章节标题', span: 'col-span-2' },
-              { key: 'focus', label: '本章重点', span: 'col-span-3' },
-              { key: 'key_events', label: '发生的事', span: 'col-span-4' },
-              { key: 'conflict', label: '冲突', span: 'col-span-3' },
-              { key: 'result', label: '结果', span: 'col-span-3' },
-              { key: 'stage_result', label: '阶段性结果', span: 'col-span-3' },
-              { key: 'open_line', label: '明线推进', span: 'col-span-3' },
-              { key: 'hidden_line', label: '暗线推进', span: 'col-span-3' },
-              { key: 'foreshadowing', label: '伏笔/回收', span: 'col-span-3' },
-            ], STORY_PAYLOAD_TEMPLATE.chapter_plan[0])}
-          </Card>}
-
-          <Card title='JSON Preview'>
-            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(normalizeStoryCard(storyForm), null, 2)}</pre>
-          </Card>
         </div>
       )
     }
