@@ -14,6 +14,8 @@ It keeps detailed literary planning assets such as story control, characters, wo
 - Novel setup wizard: title, genre, keywords, small outline, character seeds, important scenes, main conflict, banned items.
 - Volume and chapter tree: generated chapters appear in the workspace and can be edited before saving.
 - Story planning views: stages, open line, hidden line, foreshadowing, chapter matrix.
+- Narrative Canvas: build, character, world, thread, volume, beat, and ending nodes with author decisions.
+- Chapter prewrite card: choose the chapter goal, structure nodes, techniques, and generation scope before writing.
 - Skill Library: narrative technique cards and AI tool skill cards such as problem checking, character biography, outline research, timeline check, scene consistency, and foreshadowing tracking.
 - Single write API: `POST /api/projects/{project_id}/jobs/write`.
 - Three Agent workflow: reviewer, writer, proofreader, plus canon extraction support.
@@ -131,8 +133,10 @@ Recommended order:
 3. Fill the novel setup wizard in **Story**.
 4. Add or edit character cards.
 5. Create the first volume and chapter.
-6. Analyze evidence marks for the current chapter.
-7. Generate a chapter only after checking the generation confirmation panel.
+6. Open **Story -> Canvas** and confirm the main structure nodes.
+7. Open **Chapter** and use the **开写前卡片** to choose this chapter's structure nodes.
+8. Generate a chapter only after checking the generation confirmation panel.
+9. Analyze evidence marks for the current chapter.
 
 ## Configure API Profiles
 
@@ -210,18 +214,59 @@ The core fields include:
 
 AI generated setup drafts are pending by default. You can accept a full draft, accept parts of it, refresh it, edit it, or reject it.
 
+## Use The Narrative Canvas
+
+Go to **Story -> Canvas**.
+
+The canvas is a novel structure view, not a branching game editor. It focuses on:
+
+- build,
+- characters,
+- world rules,
+- main thread,
+- open line,
+- hidden line,
+- foreshadowing,
+- volumes,
+- beats,
+- ending.
+
+Click a node to edit:
+
+- what the node should accomplish,
+- AI suggestion,
+- author decision.
+
+Canvas node actions:
+
+- **确认** marks the node as author-confirmed.
+- **生成草案** creates a pending setup draft linked to that node.
+- **写回表格** writes the node into the matching Story field, such as open line, hidden line, foreshadowing, important scenes, worldview, main conflict, or logline.
+- **标记风险** marks the node as structurally risky.
+
+Accepted drafts keep their source:
+
+- `source_draft_id`
+- `source_node_id`
+- `source_node_label`
+- `source_node_type`
+
+This makes it possible to trace a Story row back to the canvas node that produced it.
+
 ## Generate A Chapter
 
 1. Go to **Chapter**.
-2. Select the chapter and model profile.
-3. Confirm the profile is `ready`, or knowingly use `mock mode`.
-4. Click **生成本章**.
-5. Review the generation confirmation panel.
-6. Confirm generation.
-7. Review the AI draft.
-8. Edit the manuscript manually if needed.
-9. Save.
-10. Run **Analyze Marks** to verify evidence marks.
+2. Confirm the writing agreement at the top of the chapter page.
+3. Use **开写前卡片** to choose the structure nodes this chapter must write.
+4. Save the structure-node selection.
+5. Select generation scope and optional material switches if needed.
+6. Click **按共识生成**.
+7. Review the generation confirmation panel.
+8. Confirm generation.
+9. Review the AI draft.
+10. Edit the manuscript manually if needed.
+11. Save.
+12. Run **检查要求 / Analyze Marks** to verify evidence marks.
 
 Generated chapters appear in:
 
@@ -230,6 +275,29 @@ Generated chapters appear in:
 - the Chapter editor.
 
 Authors can edit generated text before saving.
+
+## Structure Lighting
+
+When a write job emits `MARK_EXTRACTION`, or when the author runs **Analyze Marks**, the UI checks selected canvas nodes against evidence marks.
+
+Structure-node statuses include:
+
+- `已写入正文`
+- `待证据确认`
+- `本章未写到`
+- `作者已确认`
+- `有结构风险`
+
+A node is only treated as written when evidence marks include a supported quote or line range. Unsupported AI claims do not become trusted green hits.
+
+## Author Mode And Maintainer Mode
+
+Settings include **Experience Mode**:
+
+- **Author** is the default. It hides provider, manifest, raw JSON, job event internals, and maintenance records.
+- **Maintainer** shows runtime safety, provider/model routing, context manifests, trust report JSON, patch internals, and debugging records.
+
+Use Author mode for normal writing. Use Maintainer mode when developing the open-source project or diagnosing model/provider behavior.
 
 ## Three Agent Workflow
 

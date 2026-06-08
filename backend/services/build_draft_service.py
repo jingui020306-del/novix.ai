@@ -54,6 +54,8 @@ class BuildDraftService:
         revision = int(body.get("revision") or 1)
         story_card = body.get("story_card") if isinstance(body.get("story_card"), dict) else {}
         selected_chapter = str(body.get("selected_chapter") or "chapter_001")
+        source_node = body.get("source_node") if isinstance(body.get("source_node"), dict) else {}
+        generation_reason = str(body.get("generation_reason") or "")
         payload = self._story_payload(story_card)
         title = str(story_card.get("title") or "未命名小说") if story_card else "未命名小说"
 
@@ -66,6 +68,8 @@ class BuildDraftService:
             "revision": revision,
             "status": "pending",
             "source": "api_template",
+            "source_node": source_node,
+            "generation_reason": generation_reason,
             "selected_chapter": selected_chapter,
             "body": json.dumps(content, ensure_ascii=False, indent=2),
             "created_at": now_iso(),
@@ -74,6 +78,8 @@ class BuildDraftService:
                 "story_id": story_card.get("id") if story_card else "",
                 "story_title": title,
                 "keywords": payload.get("keywords", []),
+                "source_node_id": source_node.get("id") or source_node.get("node_id") or "",
+                "source_node_label": source_node.get("label") or "",
             },
             "review_policy": "作者可编辑草案；确认后才写入卡片或事实库。",
         }

@@ -381,6 +381,8 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
         "revision": 2,
         "selected_chapter": "chapter_001",
         "story_card": story,
+        "source_node": {"id": "beat:1", "label": "爆点1", "type": "beat"},
+        "generation_reason": "画布节点请求待确认草案",
     })
     assert created.status_code == 200
     body = created.json()
@@ -391,10 +393,14 @@ def test_build_drafts_api_roundtrip(tmp_path: Path):
     assert "keywords" in body["body"]
     assert "main_conflict" in body["body"]
     assert "worldview" in body["body"]
+    assert body["source_node"]["id"] == "beat:1"
+    assert body["source_node"]["label"] == "爆点1"
+    assert body["generation_reason"] == "画布节点请求待确认草案"
+    assert body["input_summary"]["source_node_label"] == "爆点1"
 
     listed = client.get("/api/projects/p1/build-drafts?kind=story_overview")
     assert listed.status_code == 200
-    assert any(x["draft_id"] == body["draft_id"] for x in listed.json())
+    assert any(x["draft_id"] == body["draft_id"] and x["source_node"]["id"] == "beat:1" for x in listed.json())
 
     pending = client.get("/api/projects/p1/build-drafts?status=pending")
     assert pending.status_code == 200

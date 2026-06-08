@@ -1,11 +1,13 @@
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type DensityMode = 'comfortable' | 'compact'
 export type EditorSize = 'small' | 'medium' | 'large'
+export type ExperienceMode = 'author' | 'maintainer'
 
 export type AppSettings = {
   theme: ThemeMode
   density: DensityMode
   editorSize: EditorSize
+  experienceMode: ExperienceMode
   defaultAutoApplyPatch: boolean
   evidenceWrap: boolean
   defaultLlmProfileId: string
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   density: 'comfortable',
   editorSize: 'medium',
+  experienceMode: 'author',
   defaultAutoApplyPatch: false,
   evidenceWrap: true,
   defaultLlmProfileId: 'mock_default',
@@ -43,4 +46,5 @@ export function applySettingsToDom(settings: AppSettings) {
   html.classList.toggle('dark', dark)
   html.dataset.density = settings.density
   html.dataset.editorSize = settings.editorSize
+  html.dataset.experienceMode = settings.experienceMode
 }
