@@ -44,24 +44,58 @@ function labelForStage(stage?: string) {
   return '等待下一步'
 }
 
+const jobSteps = [
+  { id: 'plan', label: '读要求' },
+  { id: 'draft', label: '写正文' },
+  { id: 'proof', label: '校对' },
+  { id: 'trust', label: '查证据' },
+]
+
+function stepIndexForJob(stage?: string, status?: string) {
+  if (status === 'completed') return jobSteps.length - 1
+  const raw = stage || ''
+  if (raw.includes('PRE_REVIEW') || raw.includes('MANIFEST')) return 0
+  if (raw.includes('WRITER') || raw.includes('DRAFT')) return 1
+  if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return 2
+  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return 3
+  return -1
+}
+
+function cleanSummary(job: AiJobSummary) {
+  const text = job.output_summary || job.input_summary || ''
+  if (!text || text.trim().startsWith('{') || text.trim().startsWith('[')) return ''
+  return text
+}
+
 export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJobsCardProps) {
   return (
-    <Card title='AI 写作进度'>
-      <div className='grid grid-cols-2 gap-2'>
-        {jobs.slice(0, 6).map((job) => (
-          <button
-            key={job.job_id}
-            className={`rounded-ui border px-3 py-2 text-left hover:bg-surface-2 ${selectedJobId === job.job_id ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface'}`}
-            onClick={() => onSelectJob(job)}
-          >
-            <div className='flex items-center justify-between gap-2'>
-              <span className='truncate text-sm font-medium'>{job.chapter_id || job.job_id}</span>
-              <Badge tone={toneForJob(job.status)}>{labelForStatus(job.status)}</Badge>
-            </div>
-            <div className='mt-1 text-xs text-muted'>{labelForStage(job.last_event || job.stage)}</div>
-            <div className='mt-1 text-xs text-muted'>{job.output_summary || job.input_summary || job.updated_at}</div>
-          </button>
-        ))}
+    <Card title='写作进度'>
+      <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+        {jobs.slice(0, 6).map((job) => {
+          const currentStep = stepIndexForJob(job.last_event || job.stage, job.status)
+          const summary = cleanSummary(job)
+          return (
+            <button
+              key={job.job_id}
+              className={`rounded-ui border px-3 py-2 text-left hover:bg-surface-2 ${selectedJobId === job.job_id ? 'border-brand-500 bg-surface-2' : 'border-border bg-surface'}`}
+              onClick={() => onSelectJob(job)}
+            >
+              <div className='flex items-center justify-between gap-2'>
+                <span className='truncate text-sm font-medium'>{job.chapter_id || '本章写作'}</span>
+                <Badge tone={toneForJob(job.status)}>{labelForStatus(job.status)}</Badge>
+              </div>
+              <div className='mt-2 grid grid-cols-4 gap-1 text-[11px]'>
+                {jobSteps.map((step, idx) => (
+                  <div key={step.id} className={`rounded-ui border px-1.5 py-1 text-center ${idx <= currentStep ? 'border-brand-500 bg-indigo-50 text-foreground dark:bg-indigo-900/20' : 'border-border bg-surface-2 text-muted'}`}>
+                    {step.label}
+                  </div>
+                ))}
+              </div>
+              <div className='mt-2 text-xs text-muted'>{labelForStage(job.last_event || job.stage)}</div>
+              <div className='mt-1 truncate text-xs text-muted'>{summary || (job.updated_at ? `最近更新：${job.updated_at}` : '等待下一次写作动作')}</div>
+            </button>
+          )
+        })}
         {!jobs.length && <p className='text-sm text-muted'>还没有写作记录。生成本章后，这里会显示当前进度。</p>}
       </div>
     </Card>
