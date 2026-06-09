@@ -17,7 +17,7 @@ type CanvasNode = {
 }
 
 type ChapterPrewriteCardProps = {
-  alignmentReady: boolean
+  canGenerate: boolean
   canvasConstraintRows: CanvasNode[]
   generationScopeLabel: string
   nodeTypeLabels: Record<string, string>
@@ -31,7 +31,7 @@ type ChapterPrewriteCardProps = {
 }
 
 export function ChapterPrewriteCard({
-  alignmentReady,
+  canGenerate,
   canvasConstraintRows,
   generationScopeLabel,
   nodeTypeLabels,
@@ -43,12 +43,10 @@ export function ChapterPrewriteCard({
   selectedNodeIds,
   targetText,
 }: ChapterPrewriteCardProps) {
-  const allReady = readyItems.every((item) => item.done)
-
   return (
     <Card
       title='开写前卡片'
-      extra={<Badge tone={allReady ? 'success' : 'warn'}>{generationScopeLabel}</Badge>}
+      extra={<Badge tone={canGenerate ? 'success' : 'warn'}>{generationScopeLabel}</Badge>}
       className='module-card module-draft'
     >
       <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1.2fr]'>
@@ -71,7 +69,7 @@ export function ChapterPrewriteCard({
           <div className='flex flex-wrap gap-2'>
             <Button onClick={onSaveStructure}>保存结构点</Button>
             <Button onClick={onOpenCanvas}>打开画布</Button>
-            <Button variant='primary' onClick={onGenerate} disabled={!allReady}>按共识生成</Button>
+            <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识生成</Button>
           </div>
         </div>
         <div className='rounded-ui border border-border bg-surface p-3'>

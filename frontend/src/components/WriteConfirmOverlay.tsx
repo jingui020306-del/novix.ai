@@ -152,7 +152,7 @@ export function WriteConfirmOverlay({
                 {selectedCanvasConstraints.map((node: any) => (
                   <Badge key={node.id}>{node.label}</Badge>
                 ))}
-                {!selectedCanvasConstraints.length ? <span className='text-muted'>还没有选择结构点。可以继续生成，但 AI 不会知道这一章明确要写哪个脉络/爆点。</span> : null}
+                {!selectedCanvasConstraints.length ? <span className='text-muted'>还没有选择结构点。补齐后才能正式生成。</span> : null}
               </div>
             </div>
           </div>
@@ -264,7 +264,7 @@ export function WriteConfirmOverlay({
         <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
           <Button onClick={onGoSettings}>去配置 API</Button>
           <Button onClick={onCancel}>取消</Button>
-          <Button variant='primary' onClick={onConfirm}>确认生成</Button>
+          <Button variant='primary' onClick={onConfirm} disabled={!allReady}>确认生成</Button>
         </div>
       </div>
     </div>

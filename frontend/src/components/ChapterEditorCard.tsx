@@ -31,10 +31,10 @@ type HighlightRange = {
 }
 
 type ChapterEditorCardProps = {
-  alignmentReady: boolean
   analyzeBusy: boolean
   analyzeResult?: any
   autoApplyPatch: boolean
+  canGenerate: boolean
   canvasConstraintRows: CanvasNode[]
   chapterEditorText: string
   chapterSaving: boolean
@@ -94,10 +94,10 @@ type ChapterEditorCardProps = {
 }
 
 export function ChapterEditorCard({
-  alignmentReady,
   analyzeBusy,
   analyzeResult,
   autoApplyPatch,
+  canGenerate,
   canvasConstraintRows,
   chapterEditorText,
   chapterSaving,
@@ -179,7 +179,7 @@ export function ChapterEditorCard({
         <div className='flex flex-wrap gap-2'>
           <Button onClick={onSave} disabled={chapterSaving}>{chapterSaving ? '保存中...' : '保存正文'}</Button>
           <Button onClick={onAnalyze} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? '检查中...' : '检查要求'}</Button>
-          <Button variant='primary' onClick={onGenerate} disabled={!alignmentReady}>按共识生成</Button>
+          <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识生成</Button>
         </div>
       }
     >

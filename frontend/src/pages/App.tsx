@@ -1840,9 +1840,31 @@ export default function App() {
     await saveWritingAlignment({ agreed_draft: agreed, confirmed: true })
   }
 
+  const getWriteReadinessItems = () => {
+    const pinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
+    const pinnedCategories = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories : []
+    return [
+      { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
+      { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
+      { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
+      { label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张` },
+      { label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行` },
+      { label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}` },
+      { label: '本章技法', done: pinnedTechniques.length + pinnedCategories.length > 0, detail: `技法 ${pinnedTechniques.length} · 分类 ${pinnedCategories.length}` },
+      { label: '写作共识', done: Boolean(alignmentConfirmed && alignmentAgreedDraft.trim()), detail: alignmentConfirmed ? '作者已确认' : '还没有确认写法' },
+    ]
+  }
+
+  const canStartWriting = () => getWriteReadinessItems().every((item) => item.done)
+
   const requestRunJobWithAgreement = async () => {
     if (!alignmentConfirmed) {
       push('请先确认“作者同意这样写”，再按共识生成初稿', 'error')
+      return
+    }
+    const missing = getWriteReadinessItems().filter((item) => !item.done)
+    if (missing.length) {
+      push(`请先补齐开写检查：${missing.slice(0, 3).map((item) => item.label).join('、')}`, 'error')
       return
     }
     await saveWritingAlignment({ confirmed: true })
@@ -4082,6 +4104,7 @@ export default function App() {
         return acc
       }, {})
       const alignmentReady = Boolean(alignmentConfirmed && alignmentAgreedDraft.trim())
+      const generationReady = canStartWriting()
       const preWriteReadyItems = [
         { id: 'agreement', label: '写法', done: alignmentReady, detail: alignmentReady ? '作者已确认' : '先确认写作共识' },
         { id: 'structure', label: '结构点', done: selectedCanvasConstraints.length > 0, detail: selectedCanvasConstraints.length ? `${selectedCanvasConstraints.length} 个` : '未选择' },
@@ -4135,7 +4158,7 @@ export default function App() {
           />
 
           <ChapterPrewriteCard
-            alignmentReady={alignmentReady}
+            canGenerate={generationReady}
             canvasConstraintRows={canvasConstraintRows}
             generationScopeLabel={GENERATION_SCOPE_OPTIONS.find((x) => x.id === generationScope)?.label || generationScope}
             nodeTypeLabels={CANVAS_TYPE_LABELS}
@@ -4168,10 +4191,10 @@ export default function App() {
           <ChapterWorkflowChecklist steps={chapterWorkflowSteps} />
 
           <ChapterEditorCard
-            alignmentReady={alignmentReady}
             analyzeBusy={analyzeBusy}
             analyzeResult={analyzeResult}
             autoApplyPatch={autoApplyPatch}
+            canGenerate={generationReady}
             canvasConstraintRows={canvasConstraintRows}
             chapterEditorText={chapterEditorText}
             chapterSaving={chapterSaving}
@@ -5229,18 +5252,7 @@ export default function App() {
   )
 
   const confirmRouteRiskCount = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length).length
-  const confirmPinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
-  const confirmPinnedCategories = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories : []
-  const confirmReadinessItems = [
-    { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
-    { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
-    { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
-    { label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张` },
-    { label: '绑定章节计划', done: currentStoryLinks.chapterPlan.length > 0, detail: `${currentStoryLinks.chapterPlan.length} 行` },
-    { label: '本章明暗伏', done: currentStoryLinks.openLine.length + currentStoryLinks.hiddenLine.length + currentStoryLinks.foreshadowings.length > 0, detail: `明 ${currentStoryLinks.openLine.length} · 暗 ${currentStoryLinks.hiddenLine.length} · 伏 ${currentStoryLinks.foreshadowings.length}` },
-    { label: '本章技法', done: confirmPinnedTechniques.length + confirmPinnedCategories.length > 0, detail: `技法 ${confirmPinnedTechniques.length} · 分类 ${confirmPinnedCategories.length}` },
-    { label: '写作共识', done: Boolean(alignmentConfirmed && alignmentAgreedDraft.trim()), detail: alignmentConfirmed ? '作者已确认' : '还没有确认写法' },
-  ]
+  const confirmReadinessItems = getWriteReadinessItems()
   const writeConfirmOverlay = pendingWriteJob ? (
     <WriteConfirmOverlay
       agreedDraft={alignmentAgreedDraft}
@@ -5266,6 +5278,11 @@ export default function App() {
       writeRouteRows={writeRouteRows}
       onCancel={() => setPendingWriteJob(null)}
       onConfirm={() => {
+        const missing = getWriteReadinessItems().filter((item) => !item.done)
+        if (missing.length) {
+          push(`请先补齐开写检查：${missing.slice(0, 3).map((item) => item.label).join('、')}`, 'error')
+          return
+        }
         const job = pendingWriteJob
         setPendingWriteJob(null)
         if (job) runJob(job.maxTokens, job.range, job.techniqueAction || null)
