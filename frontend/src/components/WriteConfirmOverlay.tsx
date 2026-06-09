@@ -223,8 +223,6 @@ export function WriteConfirmOverlay({
               {orderedRouteRows.map((row: any) => {
                 const meta = routeLabels[row.module] || { label: row.module, purpose: '本次写作' }
                 const ready = routeReady(row)
-                const profileLabel = row.profile_missing ? '缺少配置' : row.profile_id || '未选择'
-                const modelLabel = row.model || (row.provider ? '缺少模型' : '未配置')
                 return (
                   <div key={row.module} className={`rounded-ui border px-2 py-2 ${ready ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-amber-300 bg-amber-50 dark:bg-amber-950/20'}`}>
                     <div className='flex items-center justify-between gap-2'>
@@ -232,32 +230,31 @@ export function WriteConfirmOverlay({
                       <Badge tone={ready ? 'success' : 'warn'}>{ready ? '可用' : '待配置'}</Badge>
                     </div>
                     <div className='mt-1 text-muted'>{meta.purpose}</div>
-                    <div className='mt-1 truncate text-muted'>{profileLabel}</div>
-                    <div className='mt-1 truncate text-muted'>{row.provider || '服务商未填'} · {modelLabel}</div>
                   </div>
                 )
               })}
             </div>
             <div className='mt-2 text-muted'>
-              {useAgentAssignments ? '设置里的写作分工会决定本次调用。' : `当前使用 ${llmProfileId} 覆盖全部分工。`}
+              {useAgentAssignments ? '每个角色会按设置里的写作分工执行。' : '当前使用同一个模型完成全部分工。'}
+              <span className='ml-2'>模型细节已收起，作者只需要确认四个分工都可用。</span>
             </div>
           </div>
 
           <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
             <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>维护信息</summary>
             <div className='space-y-2 border-t border-border p-3'>
-              <div>路由：{useAgentAssignments ? 'settings assignments' : `${llmProfileId} overrides all agents`}；auto apply patch：{autoApplyPatch ? 'on' : 'off'}；max tokens：{pendingWriteJob.maxTokens}</div>
+              <div>模型路由：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 覆盖全部分工`}；自动应用校对：{autoApplyPatch ? '开启' : '关闭'}；最大生成量：{pendingWriteJob.maxTokens}</div>
               <div className='space-y-1'>
                 {writeRouteRows.map((row: any) => (
                   <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>
                     <span className='font-medium'>{row.module}</span>
-                    <span className='ml-2'>{row.profile_id} · {row.provider || 'missing'} / {row.model || 'no model'}</span>
+                    <span className='ml-2'>{row.profile_id} · {row.provider || '未填写服务商'} / {row.model || '未填写模型'}</span>
                     {row.is_mock || row.profile_missing || row.missing_fields?.length ? <span className='ml-2 text-amber-700 dark:text-amber-300'>需要检查</span> : null}
                   </div>
                 ))}
-                {!writeRouteRows.length ? <div>Runtime status not loaded yet.</div> : null}
+                {!writeRouteRows.length ? <div>模型状态还没有读取完成。</div> : null}
               </div>
-              <div>Memory packs：{memoryPackCount}</div>
+              <div>本章记忆包：{memoryPackCount}</div>
             </div>
           </details>
         </div>
