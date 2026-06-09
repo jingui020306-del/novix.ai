@@ -16,11 +16,11 @@ export type CommandItem = {
 export function baseHelpCommands(onClose: () => void): CommandItem[] {
   return [
     { id: 'help-shortcuts', title: '快捷键帮助', subtitle: '⌘K/Ctrl+K 打开，Esc 关闭，↑/↓ 导航，Enter 执行', group: 'Help', icon: Bolt, run: onClose },
-    { id: 'help-prefix-actions', title: '前缀 > 仅显示 Actions', group: 'Help', icon: Bolt, run: onClose },
-    { id: 'help-prefix-char', title: '前缀 @ 仅显示 Characters', group: 'Help', icon: UserRound, run: onClose },
-    { id: 'help-prefix-chapter', title: '前缀 # 仅显示 Chapters', group: 'Help', icon: FileText, run: onClose },
+    { id: 'help-prefix-actions', title: '前缀 > 仅显示动作', group: 'Help', icon: Bolt, run: onClose },
+    { id: 'help-prefix-char', title: '前缀 @ 仅显示人物', group: 'Help', icon: UserRound, run: onClose },
+    { id: 'help-prefix-chapter', title: '前缀 # 仅显示章节', group: 'Help', icon: FileText, run: onClose },
     { id: 'help-prefix-help', title: '前缀 ? 显示帮助', group: 'Help', icon: Settings, run: onClose },
-    { id: 'help-prefix-create', title: '前缀 + 或 create 进入创建模式', subtitle: '+ character Alice --tag 主角', group: 'Help', icon: Bolt, run: onClose },
+    { id: 'help-prefix-create', title: '前缀 + 进入创建模式', subtitle: '+ character 林秋 --tag 主角', group: 'Help', icon: Bolt, run: onClose },
   ]
 }
 

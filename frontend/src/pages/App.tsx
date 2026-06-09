@@ -1992,20 +1992,20 @@ export default function App() {
     const cache = paletteCacheRef.current
 
     const staticNav: CommandItem[] = [
-      { id: 'nav-story', title: 'Go to Story', subtitle: 'Open story control card', group: 'Navigate', icon: BookOpen, run: () => { setActiveActivity('story'); setView('story') } },
-      { id: 'nav-story-canvas', title: 'Go to Narrative Canvas', subtitle: 'Open story structure nodes', group: 'Navigate', icon: Waypoints, keywords: ['canvas', 'narrative canvas', '脉络画布', '结构线', '爆点'], run: () => { setActiveActivity('story'); setStoryPlanningTab('Canvas'); setView('story') } },
-      { id: 'nav-characters', title: 'Go to Characters', subtitle: 'Open characters panel', group: 'Navigate', icon: UserRound, run: () => { setActiveActivity('cards'); setView('characters') } },
-      { id: 'nav-settings', title: 'Settings', subtitle: 'Open settings panel', group: 'Navigate', icon: Settings, run: () => { setActiveActivity('settings'); setView('settings') } },
-      { id: 'nav-chapter', title: 'Go to Chapter Editor', group: 'Navigate', icon: FilePenLine, run: () => { setActiveActivity('explorer'); setView('chapter') } },
-      { id: 'nav-canon', title: 'Go to Canon / Proposals', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('canon'); setView('canon') } },
-      { id: 'nav-world', title: 'Go to World panel', group: 'Navigate', icon: Globe, run: () => { setActiveActivity('cards'); setView('world') } },
+      { id: 'nav-story', title: '打开故事总控', subtitle: '设定主题、冲突、明线暗线和章节计划', group: 'Navigate', icon: BookOpen, run: () => { setActiveActivity('story'); setView('story') } },
+      { id: 'nav-story-canvas', title: '打开脉络画布', subtitle: '查看结构点、卷、爆点和结局位置', group: 'Navigate', icon: Waypoints, keywords: ['canvas', 'narrative canvas', '脉络画布', '结构线', '爆点'], run: () => { setActiveActivity('story'); setStoryPlanningTab('Canvas'); setView('story') } },
+      { id: 'nav-characters', title: '打开人物卡', subtitle: '编辑人物设定和本章使用情况', group: 'Navigate', icon: UserRound, run: () => { setActiveActivity('cards'); setView('characters') } },
+      { id: 'nav-settings', title: '打开设置', subtitle: '配置 API、模型分工和作者/维护模式', group: 'Navigate', icon: Settings, run: () => { setActiveActivity('settings'); setView('settings') } },
+      { id: 'nav-chapter', title: '打开正文编辑器', group: 'Navigate', icon: FilePenLine, run: () => { setActiveActivity('explorer'); setView('chapter') } },
+      { id: 'nav-canon', title: '打开作品事实', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('canon'); setView('canon') } },
+      { id: 'nav-world', title: '打开世界观查询', group: 'Navigate', icon: Globe, run: () => { setActiveActivity('cards'); setView('world') } },
       { id: 'nav-techniques', title: '打开技法库', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('techniques'); setView('techniques') } },
     ]
 
     const navData: CommandItem[] = [
       ...cache.storyCards.map((s: any) => ({
         id: `story-${s.id}`,
-        title: `Open Story: ${s.title || s.id}`,
+        title: `打开故事：${s.title || s.id}`,
         subtitle: s.id,
         group: 'Navigate' as const,
         icon: BookOpen,
@@ -2018,7 +2018,7 @@ export default function App() {
       })),
       ...cache.characters.map((c: any) => ({
         id: `char-${c.id}`,
-        title: `Open Character: ${c.title || c.id}`,
+        title: `打开人物：${c.title || c.id}`,
         subtitle: c.id,
         group: 'Navigate' as const,
         icon: iconForKind('character'),
@@ -2031,7 +2031,7 @@ export default function App() {
       })),
       ...cache.blueprints.map((bp: any) => ({
         id: `bp-${bp.id}`,
-        title: `Open Blueprint: ${bp.title || bp.id}`,
+        title: `打开上下文方案：${bp.title || bp.id}`,
         subtitle: bp.id,
         group: 'Navigate' as const,
         icon: iconForKind('style'),
@@ -2046,7 +2046,7 @@ export default function App() {
         const chapterId = typeof ch === 'string' ? ch : ch.chapter_id
         return ({
         id: `chapter-${chapterId}`,
-        title: `Open Chapter: ${ch.chapter_title || ch.title || chapterId}`,
+        title: `打开章节：${ch.chapter_title || ch.title || chapterId}`,
         subtitle: `${chapterId}${ch.volume_id ? ` · ${ch.volume_id}` : ''}`,
         group: 'Navigate' as const,
         icon: iconForKind('chapter'),
@@ -2060,7 +2060,7 @@ export default function App() {
       })}),
       ...cache.worldCards.map((w: any) => ({
         id: `world-${w.id}`,
-        title: `Open World Card: ${w.title || w.id}`,
+        title: `打开世界观：${w.title || w.id}`,
         subtitle: w.id,
         group: 'Navigate' as const,
         icon: iconForKind('world'),
@@ -2073,7 +2073,7 @@ export default function App() {
       })),
       ...(cache.toolSkills || []).map((t: any) => ({
         id: `tool-skill-${t.id}`,
-        title: `Open Tool Skill: ${t.title || t.id}`,
+        title: `打开写作工具：${t.title || t.id}`,
         subtitle: t.payload?.category || t.id,
         group: 'Navigate' as const,
         icon: Sparkles,
@@ -2087,7 +2087,7 @@ export default function App() {
       })),
       ...cache.proposals.map((p: any) => ({
         id: `proposal-${p.proposal_id || p.id}`,
-        title: `Open Proposal: ${p.proposal_id || p.id}`,
+        title: `打开待确认事实：${p.name || p.proposal_id || p.id}`,
         subtitle: p.status || 'pending',
         group: 'Navigate' as const,
         icon: Sparkles,
@@ -2103,28 +2103,28 @@ export default function App() {
     const actionItems: CommandItem[] = [
       {
         id: 'act-theme-light',
-        title: 'Toggle Theme: Light',
+        title: '切换明亮主题',
         group: 'Actions',
         icon: Sun,
         run: () => applySettings({ ...settings, theme: settings.theme === 'light' ? 'dark' : 'light' }),
       },
       {
         id: 'act-theme-system',
-        title: 'Toggle Theme: System',
+        title: '跟随系统主题',
         group: 'Actions',
         icon: Monitor,
         run: () => applySettings({ ...settings, theme: 'system' }),
       },
       {
         id: 'act-density',
-        title: `Toggle Density (${settings.density})`,
+        title: `切换界面密度（${settings.density === 'comfortable' ? '舒适' : '紧凑'}）`,
         group: 'Actions',
         icon: List,
         run: () => applySettings({ ...settings, density: settings.density === 'comfortable' ? 'compact' : 'comfortable' }),
       },
       {
         id: 'act-auto-apply',
-        title: `Toggle Auto-Apply Patch (${autoApplyPatch ? 'On' : 'Off'})`,
+        title: `切换自动应用校对建议（${autoApplyPatch ? '开' : '关'}）`,
         group: 'Actions',
         icon: Moon,
         run: () => {
@@ -2135,15 +2135,15 @@ export default function App() {
       },
       {
         id: 'act-refresh-data',
-        title: 'Refresh Data',
-        subtitle: 'Clear palette cache and refetch',
+        title: '刷新素材',
+        subtitle: '重新读取章节、卡片和技法',
         group: 'Actions',
         icon: RefreshCw,
         run: refreshPaletteData,
       },
       {
         id: 'act-save-chapter',
-        title: 'Save Chapter',
+        title: '保存当前章节',
         subtitle: selectedChapter,
         group: 'Actions',
         icon: FilePenLine,
@@ -2151,7 +2151,7 @@ export default function App() {
       },
       {
         id: 'act-analyze-chapter',
-        title: 'Analyze Chapter',
+        title: '分析当前章节',
         subtitle: selectedChapter,
         group: 'Actions',
         icon: Sparkles,
@@ -2159,12 +2159,12 @@ export default function App() {
       },
     ]
 
-    const mruItems: CommandItem[] = mru.map((x) => ({ id: `mru-${x.id}`, title: `[Recent] ${x.title}`, subtitle: x.subtitle, group: 'Navigate', icon: BookOpen, run: () => {} }))
+    const mruItems: CommandItem[] = mru.map((x) => ({ id: `mru-${x.id}`, title: `最近：${x.title}`, subtitle: x.subtitle, group: 'Navigate', icon: BookOpen, run: () => {} }))
 
     const all = [...staticNav, ...navData, ...actionItems, ...baseHelpCommands(() => {})]
     const resolvedMRU = mruItems.map((m) => {
       const target = all.find((x) => x.id === m.id.replace('mru-', ''))
-      return target ? { ...target, title: `[Recent] ${target.title}` } : null
+      return target ? { ...target, title: `最近：${target.title}` } : null
     }).filter(Boolean) as CommandItem[]
 
     return [...resolvedMRU, ...all]
@@ -2239,6 +2239,10 @@ export default function App() {
               title={item.label}
               onClick={() => {
                 setActiveActivity(item.id)
+                if (item.id === 'story') setView('story')
+                if (item.id === 'cards') setView('characters')
+                if (item.id === 'techniques') setView('techniques')
+                if (item.id === 'canon') setView('canon')
                 if (item.id === 'settings') setView('settings')
                 if (item.id === 'wiki') setView('wiki')
               }}
@@ -4283,56 +4287,62 @@ export default function App() {
     if (view === 'canon') {
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Canon Facts (Revisions)'>
+          <Card title='作品事实'>
             <div className='space-y-2'>
-              {(canonFacts || []).slice(-20).reverse().map((f: any, i: number) => (
-                <div key={`${f.id || 'fact'}:${i}`} className='rounded-ui border border-border bg-surface p-2'>
-                  <div className='flex items-center gap-2 text-sm'>
-                    <Badge>{f.scope || 'fact'}</Badge>
-                    <span className='font-medium'>{f.id || `fact_${i}`}</span>
-                    {f._revised ? <span className='text-xs text-muted'>(revised x{(f._revisions || []).length})</span> : null}
+              {(canonFacts || []).slice(-20).reverse().map((f: any, i: number) => {
+                const scopeLabel = f.scope === 'world_state' ? '世界状态' : f.scope === 'chapter' ? '章节事实' : f.scope === 'character' ? '人物事实' : f.scope === 'style' ? '文风规则' : f.scope || '事实'
+                return (
+                  <div key={`${f.id || 'fact'}:${i}`} className='rounded-ui border border-border bg-surface p-2'>
+                    <div className='flex items-center gap-2 text-sm'>
+                      <Badge>{scopeLabel}</Badge>
+                      <span className='font-medium'>{String(f.value || (f._original || f).value || f.id || `事实 ${i + 1}`)}</span>
+                      {f._revised ? <span className='text-xs text-muted'>已修订 {(f._revisions || []).length} 次</span> : null}
+                    </div>
+                    <div className='mt-1 text-xs text-muted'>
+                      {f._revised ? <div>原内容：{String((f._original || f).value || '')}</div> : null}
+                      {isMaintainerMode ? <div>fact_id: {f.id || `fact_${i}`}</div> : null}
+                    </div>
+                    <div className='mt-2'>
+                      <Button className='text-xs' onClick={() => setFactRevisionModal({ open: true, fact: f, patch: JSON.stringify({ value: f.value || '' }, null, 2), reason: '' })}>编辑/修订</Button>
+                    </div>
                   </div>
-                  <div className='mt-1 text-xs text-muted'>
-                    <div>Original: {String((f._original || f).value || '')}</div>
-                    <div>Revised: {String(f.value || '')}</div>
-                  </div>
-                  <div className='mt-2'>
-                    <Button className='text-xs' onClick={() => setFactRevisionModal({ open: true, fact: f, patch: JSON.stringify({ value: f.value || '' }, null, 2), reason: '' })}>编辑/修订</Button>
-                  </div>
-                </div>
-              ))}
-              {(!canonFacts || canonFacts.length === 0) && <p className='text-sm text-muted'>No facts yet.</p>}
+                )
+              })}
+              {(!canonFacts || canonFacts.length === 0) && <p className='text-sm text-muted'>还没有正式事实。AI 提取的内容会先进入待确认。</p>}
             </div>
           </Card>
 
-          <Card title='Canon / Proposals'>
+          <Card title='待确认事实'>
             <div className='space-y-2'>
-              {(proposals || []).slice(-20).reverse().map((p: any, i: number) => (
-                <div key={i} className={`rounded-ui border bg-surface p-2 ${selectedProposalId && selectedProposalId === (p.proposal_id || p.id) ? 'border-brand-500' : 'border-border'}`}>
-                  <div className='flex items-center gap-2 text-sm'>
-                    <Badge>{p.entity_type || p.event || 'proposal'}</Badge>
-                    <span>{p.name || p.proposal_id}</span>
-                    <span className='text-xs text-muted'>({p.status || 'pending'})</span>
+              {(proposals || []).slice(-20).reverse().map((p: any, i: number) => {
+                const proposalType = p.entity_type === 'world_state' ? '世界状态' : p.entity_type === 'character' ? '人物' : p.entity_type === 'event' ? '事件' : p.event ? '事件' : '建议'
+                return (
+                  <div key={i} className={`rounded-ui border bg-surface p-2 ${selectedProposalId && selectedProposalId === (p.proposal_id || p.id) ? 'border-brand-500' : 'border-border'}`}>
+                    <div className='flex items-center gap-2 text-sm'>
+                      <Badge>{proposalType}</Badge>
+                      <span>{p.name || p.value || p.proposal_id}</span>
+                      <span className='text-xs text-muted'>{p.status === 'accepted' ? '已确认' : p.status === 'rejected' ? '已拒绝' : '待确认'}</span>
+                    </div>
+                    <div className='mt-2 flex gap-2'>
+                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('Proposal accepted') }}>确认</Button>
+                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('Proposal rejected') }}>拒绝</Button>
+                    </div>
                   </div>
-                  <div className='mt-2 flex gap-2'>
-                    <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('Proposal accepted') }}>Accept</Button>
-                    <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('Proposal rejected') }}>Reject</Button>
-                  </div>
-                </div>
-              ))}
-              {(!proposals || proposals.length === 0) && <p className='text-sm text-muted'>No proposals yet.</p>}
+                )
+              })}
+              {(!proposals || proposals.length === 0) && <p className='text-sm text-muted'>还没有待确认事实。</p>}
             </div>
           </Card>
 
           {factRevisionModal.open ? (
-            <Card title='Revise Fact (Append-only)'>
+            <Card title='修订事实'>
               <div className='space-y-2'>
-                <div className='text-xs text-muted'>fact_id: {factRevisionModal.fact?.id}</div>
-                <Textarea className='h-28 mono' value={factRevisionModal.patch} onChange={(e) => setFactRevisionModal((x) => ({ ...x, patch: e.target.value }))} />
-                <Input value={factRevisionModal.reason} onChange={(e) => setFactRevisionModal((x) => ({ ...x, reason: e.target.value }))} placeholder='reason (required)' />
+                {isMaintainerMode ? <div className='text-xs text-muted'>fact_id: {factRevisionModal.fact?.id}</div> : null}
+                <Textarea className='h-28 mono' value={factRevisionModal.patch} onChange={(e) => setFactRevisionModal((x) => ({ ...x, patch: e.target.value }))} placeholder='填写修订后的事实内容' />
+                <Input value={factRevisionModal.reason} onChange={(e) => setFactRevisionModal((x) => ({ ...x, reason: e.target.value }))} placeholder='修订原因（必填）' />
                 <div className='flex gap-2'>
-                  <Button variant='primary' onClick={reviseCanonFact}>Save Revision</Button>
-                  <Button onClick={() => setFactRevisionModal({ open: false, fact: null, patch: '{}', reason: '' })}>Cancel</Button>
+                  <Button variant='primary' onClick={reviseCanonFact}>保存修订</Button>
+                  <Button onClick={() => setFactRevisionModal({ open: false, fact: null, patch: '{}', reason: '' })}>取消</Button>
                 </div>
               </div>
             </Card>
@@ -4516,24 +4526,26 @@ export default function App() {
     if (view === 'sessions') {
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Session Message Versions'>
+          <Card title='对话草稿版本'>
             <div className='space-y-2'>
-              <Input value={sessionMessageId} onChange={(e) => setSessionMessageId(e.target.value)} placeholder='message_id' />
-              <Textarea className='h-20' value={sessionMessageText} onChange={(e) => setSessionMessageText(e.target.value)} />
+              <Input value={sessionMessageId} onChange={(e) => setSessionMessageId(e.target.value)} placeholder='消息编号，例如 writer_msg_001' />
+              <Textarea className='h-20' value={sessionMessageText} onChange={(e) => setSessionMessageText(e.target.value)} placeholder='记录这轮对话中想保留的版本。' />
               <div className='flex gap-2'>
                 <Button onClick={addMessageVersion}>新增消息版本</Button>
-                <Button onClick={doUndo}>Undo</Button>
-                <Button onClick={doRedo}>Redo</Button>
+                <Button onClick={doUndo}>撤销</Button>
+                <Button onClick={doRedo}>恢复</Button>
               </div>
             </div>
           </Card>
-          <Card title='Session Meta'>
-            <pre className='mono text-xs overflow-auto'>{JSON.stringify(sessionMeta, null, 2)}</pre>
-          </Card>
-          <Card title='Activate Message Version'>
+          {isMaintainerMode ? (
+            <Card title='对话原始数据'>
+              <pre className='mono text-xs overflow-auto'>{JSON.stringify(sessionMeta, null, 2)}</pre>
+            </Card>
+          ) : null}
+          <Card title='切换消息版本'>
             {Object.entries(sessionMeta?.messages || {}).map(([mid, m]: any) => (
               <div key={mid} className='mb-3 rounded-ui border border-border bg-surface p-2'>
-                <div className='text-sm'><b>{mid}</b> active={m.active_version}</div>
+                <div className='text-sm'><b>{mid}</b> <span className='text-xs text-muted'>当前版本：{m.active_version}</span></div>
                 <div className='mt-1 flex flex-wrap gap-2'>
                   {(m.versions || []).map((v: any) => (
                     <Button key={v.version_id} className='text-xs' onClick={() => activateVersion(mid, v.version_id)}>{v.version_id}</Button>
@@ -4541,6 +4553,7 @@ export default function App() {
                 </div>
               </div>
             ))}
+            {!Object.keys(sessionMeta?.messages || {}).length ? <p className='text-sm text-muted'>还没有保存过对话版本。</p> : null}
           </Card>
         </div>
       )

@@ -13,6 +13,12 @@ export function CommandPalette({
   onOpen?: () => Promise<void> | void
   resolveCreateCommand?: (query: string) => { item?: CommandItem; error?: string } | null
 }) {
+  const groupLabel: Record<string, string> = {
+    Navigate: '打开',
+    Actions: '动作',
+    Create: '新建',
+    Help: '帮助',
+  }
   const {
     open,
     setOpen,
@@ -65,7 +71,7 @@ export function CommandPalette({
       <button
         onClick={requestOpen}
         className='rounded-ui border border-border bg-surface px-2 py-1 text-xs text-muted hover:bg-surface-2'
-        title='Open command palette'
+        title='打开快捷入口'
       >
         ⌘K / Ctrl+K
       </button>
@@ -85,7 +91,7 @@ export function CommandPalette({
               ref={panelRef}
               role='dialog'
               aria-modal='true'
-              aria-label='Command Palette'
+              aria-label='快捷入口'
               initial={{ y: 12, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 8, opacity: 0 }}
@@ -101,7 +107,7 @@ export function CommandPalette({
                   onKeyDown={(e) => onKeyDown(e, mergedItems)}
                   onCompositionStart={() => setIsComposing(true)}
                   onCompositionEnd={() => setIsComposing(false)}
-                  placeholder='Search commands…  (>, @, #, ?, + create)'
+                  placeholder='搜索或输入命令…  例如 + character 林秋'
                   className='focus-ring w-full bg-transparent text-sm outline-none'
                   aria-activedescendant={mergedItems[activeIndex]?.id}
                 />
@@ -116,7 +122,7 @@ export function CommandPalette({
               )}
 
               <div className='max-h-[56vh] overflow-auto p-2'>
-                {!mergedItems.length && <div className='rounded-ui px-3 py-8 text-center text-sm text-muted'>No matching commands.</div>}
+                {!mergedItems.length && <div className='rounded-ui px-3 py-8 text-center text-sm text-muted'>没有匹配的入口。</div>}
                 {mergedItems.map((item, i) => {
                   const Icon = item.icon
                   const active = i === activeIndex
@@ -134,7 +140,7 @@ export function CommandPalette({
                       <div className='flex items-center gap-2 text-sm'>
                         {Icon && <Icon size={15} className='text-muted' />}
                         <span className='font-medium'>{item.title}</span>
-                        <span className='ml-auto text-[10px] uppercase tracking-wide text-muted'>{item.group}</span>
+                        <span className='ml-auto text-[10px] uppercase tracking-wide text-muted'>{groupLabel[item.group] || item.group}</span>
                       </div>
                       {item.subtitle && <div className='ml-7 text-xs text-muted'>{item.subtitle}</div>}
                     </button>
