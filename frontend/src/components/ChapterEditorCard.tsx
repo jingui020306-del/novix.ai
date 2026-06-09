@@ -156,6 +156,21 @@ export function ChapterEditorCard({
   supportClass,
 }: ChapterEditorCardProps) {
   const generationScopeLabel = generationScopeOptions.find((x) => x.id === generationScope)?.label || generationScope
+  const markTypeLabel: Record<string, string> = {
+    character: '人物',
+    technique: '技法',
+    open_line: '明线',
+    hidden_line: '暗线',
+    foreshadowing: '伏笔',
+    canon_fact: '事实',
+    style_rule: '文风',
+  }
+  const supportLabel: Record<string, string> = {
+    supported: '已证实',
+    partial: '部分证实',
+    unsupported: '未证实',
+    contradicted: '有矛盾',
+  }
 
   return (
     <Card
@@ -254,7 +269,7 @@ export function ChapterEditorCard({
                 <div className='text-[11px] text-muted'>只勾这一章真的要写到的脉络、卷、爆点或结局方向。</div>
               </div>
               <div className='flex gap-2'>
-                <Badge>{selectedCanvasConstraintIds.length} selected</Badge>
+                <Badge>{selectedCanvasConstraintIds.length} 个已选</Badge>
                 <Button className='text-xs' onClick={onSaveCanvasConstraints}>保存选择</Button>
               </div>
             </div>
@@ -309,7 +324,7 @@ export function ChapterEditorCard({
       {analyzeResult ? <p className='mt-1 text-xs text-muted'>检查结果：新增 {analyzeResult.new_facts_count || 0} 条事实，{analyzeResult.new_proposals_count || 0} 条待确认建议。</p> : null}
       {highlightRange ? (
         <div className='mt-3 rounded-ui border border-border bg-surface-2 p-2'>
-          <div className='mb-1 text-xs font-medium'>Evidence: {selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
+          <div className='mb-1 text-xs font-medium'>证据定位：{selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
           <pre className='editor-text mono max-h-40 overflow-auto whitespace-pre-wrap text-xs'>{highlighted || '暂无正文'}</pre>
         </div>
       ) : null}
@@ -323,7 +338,7 @@ export function ChapterEditorCard({
           <div className='max-h-[560px] space-y-2 overflow-auto'>
             {Object.entries(marksByLine).map(([line, marks]) => (
               <div key={line} className='rounded-ui border border-border bg-panel p-2'>
-                <div className='mb-1 text-[11px] text-muted'>{line === '未证实' ? '未证实' : `L${line}`}</div>
+                <div className='mb-1 text-[11px] text-muted'>{line === '未证实' ? '没有正文定位' : `第 ${line} 行`}</div>
                 <div className='space-y-1'>
                   {marks.map((mark: any) => {
                     const level = mark?.detection?.support_level || 'unsupported'
@@ -333,15 +348,15 @@ export function ChapterEditorCard({
                         className={`w-full rounded-ui border px-2 py-1 text-left text-[11px] ${supportClass(level)}`}
                         onClick={() => onSelectMark(mark)}
                       >
-                        <div className='font-medium'>{mark.target_type} · {mark.label || mark.target_id}</div>
-                        <div>{level}</div>
+                        <div className='font-medium'>{markTypeLabel[mark.target_type] || '要求'} · {mark.label || mark.target_id}</div>
+                        <div>{supportLabel[level] || '待确认'}</div>
                       </button>
                     )
                   })}
                 </div>
               </div>
             ))}
-            {!evidenceMarkCount && <p className='text-xs text-muted'>运行生成或 Analyze Marks 后显示人物、技法、明线、暗线、伏笔命中。</p>}
+            {!evidenceMarkCount && <p className='text-xs text-muted'>运行生成或“检查要求”后显示人物、技法、明线、暗线、伏笔是否真的写到。</p>}
           </div>
         </div>
         <Textarea

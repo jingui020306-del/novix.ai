@@ -26,12 +26,18 @@ type ChapterStructureLightsProps = {
 }
 
 export function ChapterStructureLights({ nodes, getTracesForNode, onSelectEvidence }: ChapterStructureLightsProps) {
+  const totalSupported = nodes.reduce((sum, node) => {
+    const traces = getTracesForNode(node)
+    return sum + (traces.some((mark) => mark?.detection?.support_level === 'supported' && mark?.span?.quote) ? 1 : 0)
+  }, 0)
+
   return (
-    <Card title='本章结构点亮' extra={<Badge>{nodes.length} 个结构点</Badge>} className='module-card module-trust'>
+    <Card title='本章结构点亮' extra={<Badge tone={nodes.length && totalSupported === nodes.length ? 'success' : totalSupported ? 'warn' : 'default'}>{totalSupported}/{nodes.length}</Badge>} className='module-card module-trust'>
       <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
         {nodes.map((node) => {
           const traces = getTracesForNode(node)
           const supported = traces.filter((mark) => mark?.detection?.support_level === 'supported' && mark?.span?.quote).length
+          const quoted = traces.filter((mark) => mark?.span?.quote).length
           return (
             <button
               key={node.id}
@@ -48,7 +54,9 @@ export function ChapterStructureLights({ nodes, getTracesForNode, onSelectEviden
                 </Badge>
               </div>
               <div className='mt-1 line-clamp-2 text-xs text-muted'>{node.description || '暂无节点说明'}</div>
-              <div className='mt-1 text-[11px] text-muted'>证据 {supported}/{traces.length}</div>
+              <div className='mt-1 text-[11px] text-muted'>
+                已证实 {supported} · 有文本 {quoted} · 待确认 {Math.max(traces.length - supported, 0)}
+              </div>
             </button>
           )
         })}

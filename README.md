@@ -126,10 +126,12 @@ The demo project is `demo_project_001`. It includes:
 
 Open the app, go to **Projects**, and use the **首次启动检查** card.
 
-Recommended order:
+This checklist is a launch gate, not a marketing tour. You can open every page freely, but formal generation should only begin after the required book, model, character, chapter, and evidence-prep items are complete.
 
-1. Configure an API profile in **Settings**.
-2. Assign writer, critic, editor, and canon extractor profiles.
+Recommended completion order:
+
+1. Configure an API profile in **Settings -> 模型配置**.
+2. Assign writer, critic, editor, and canon extractor profiles in **Settings -> 写作分工**.
 3. Fill the novel setup wizard in **Story**.
 4. Add or edit character cards.
 5. Create the first volume and chapter.
@@ -140,23 +142,23 @@ Recommended order:
 
 ## Configure API Profiles
 
-Go to **Settings -> LLM Profiles (Global)**.
+Go to **Settings -> 模型配置**.
 
 1. Pick a preset.
-2. Enter a profile id, such as `deepseek_writer`.
+2. Enter a local profile name, such as `deepseek_writer`.
 3. Fill model, base URL, API key, timeout, and stream.
-4. Click **Save Profile**.
-5. Check **Profile Health**.
+4. Click **保存配置**.
+5. Check **配置检查**.
 
 Supported presets include:
 
-| Preset | Provider | Example model | Base URL |
+| Service | Provider | Example model | Base URL |
 |---|---|---|---|
 | Mock | `mock` | `mock-writer-v1` | empty |
 | Ollama | `ollama` | `qwen2.5:7b` | `http://127.0.0.1:11434` |
 | llama.cpp | `llama_cpp` | `gguf-model` | `http://127.0.0.1:8080` |
 | DeepSeek | `openai_compat` | `deepseek-chat` | `https://api.deepseek.com` |
-| Qwen | `openai_compat` | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode` |
+| Qwen | `openai_compat` | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | Kimi | `openai_compat` | `moonshot-v1-8k` | `https://api.moonshot.cn` |
 | GLM | `openai_compat` | `glm-4-flash` | `https://open.bigmodel.cn/api/paas/v4` |
 | Gemini | `openai_compat` | `gemini-2.0-flash` | `https://generativelanguage.googleapis.com/v1beta/openai` |
@@ -171,16 +173,43 @@ data/_global/llm_profiles.json
 
 The runtime status API reports `api_key_configured`, but does not return the raw API key.
 
+Example local profile file:
+
+```json
+{
+  "deepseek_writer": {
+    "provider": "openai_compat",
+    "model": "deepseek-chat",
+    "base_url": "https://api.deepseek.com",
+    "api_key": "YOUR_API_KEY",
+    "timeout_s": 60,
+    "stream": true
+  },
+  "ollama_local": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b",
+    "base_url": "http://127.0.0.1:11434",
+    "timeout_s": 120,
+    "stream": true
+  }
+}
+```
+
+Do not commit real API keys.
+
 ## Assign Agent Profiles
 
-Go to **Settings -> LLM Assignments (Global)**.
+Go to **Settings -> 写作分工**.
 
 Assign profiles for:
 
-- `writer`
-- `critic`
-- `editor`
-- `canon_extractor`
+- writing setup drafts,
+- character biography drafts,
+- outline and thread drafts,
+- chapter writer,
+- chapter reviewer,
+- proofreader,
+- canon extractor.
 
 Routing priority:
 
@@ -276,6 +305,12 @@ Generated chapters appear in:
 
 Authors can edit generated text before saving.
 
+The chapter page is intentionally author-first:
+
+- common actions stay visible: save, check requirements, generate by agreement;
+- model routing and auto-apply settings are folded under advanced settings;
+- patch details, version history, raw manifests, provider/model traces, and event JSON are visible in Maintainer mode.
+
 ## Structure Lighting
 
 When a write job emits `MARK_EXTRACTION`, or when the author runs **Analyze Marks**, the UI checks selected canvas nodes against evidence marks.
@@ -289,6 +324,33 @@ Structure-node statuses include:
 - `有结构风险`
 
 A node is only treated as written when evidence marks include a supported quote or line range. Unsupported AI claims do not become trusted green hits.
+
+Chapter-side evidence labels are author-facing:
+
+- `人物`: character requirement,
+- `技法`: technique requirement,
+- `明线`: open-line progress,
+- `暗线`: hidden-line progress,
+- `伏笔`: setup or payoff,
+- `事实`: canon fact,
+- `文风`: style rule.
+
+Support labels are shown as `已证实`, `部分证实`, `未证实`, or `有矛盾`.
+
+## Technique Library
+
+The technique library is meant to behave like a writer's tool shelf, not a static glossary. Technique cards can include:
+
+- when to use the technique,
+- when not to use it,
+- application steps,
+- visible signals that prove the technique appeared in the text,
+- overuse risks,
+- do/don't rules,
+- intensity levels,
+- rewrite examples.
+
+On the Chapter page, pinned techniques show their suitable scenes, checking signals, writing tips, overuse risks, and evidence status. A technique is not marked as truly used unless the chapter has a supported evidence quote.
 
 ## Author Mode And Maintainer Mode
 

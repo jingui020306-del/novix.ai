@@ -217,14 +217,14 @@ export function WriteConfirmOverlay({
           <div className='mt-3 rounded-ui border border-border bg-surface p-3 text-xs'>
             <div className='mb-2 flex items-center justify-between gap-2'>
               <span className='font-medium'>AI 分工</span>
-              <Badge tone={readyRoutes === orderedRouteRows.length ? 'success' : 'warn'}>{readyRoutes}/{orderedRouteRows.length} ready</Badge>
+              <Badge tone={readyRoutes === orderedRouteRows.length ? 'success' : 'warn'}>{readyRoutes}/{orderedRouteRows.length} 可用</Badge>
             </div>
             <div className='grid grid-cols-1 gap-1.5 md:grid-cols-4'>
               {orderedRouteRows.map((row: any) => {
                 const meta = routeLabels[row.module] || { label: row.module, purpose: '本次写作' }
                 const ready = routeReady(row)
-                const profileLabel = row.profile_missing ? '缺 profile' : row.profile_id || '未选择'
-                const modelLabel = row.model || (row.provider ? '缺 model' : '未配置')
+                const profileLabel = row.profile_missing ? '缺少配置' : row.profile_id || '未选择'
+                const modelLabel = row.model || (row.provider ? '缺少模型' : '未配置')
                 return (
                   <div key={row.module} className={`rounded-ui border px-2 py-2 ${ready ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-amber-300 bg-amber-50 dark:bg-amber-950/20'}`}>
                     <div className='flex items-center justify-between gap-2'>
@@ -233,7 +233,7 @@ export function WriteConfirmOverlay({
                     </div>
                     <div className='mt-1 text-muted'>{meta.purpose}</div>
                     <div className='mt-1 truncate text-muted'>{profileLabel}</div>
-                    <div className='mt-1 truncate text-muted'>{row.provider || 'provider'} · {modelLabel}</div>
+                    <div className='mt-1 truncate text-muted'>{row.provider || '服务商未填'} · {modelLabel}</div>
                   </div>
                 )
               })}
@@ -246,7 +246,7 @@ export function WriteConfirmOverlay({
           <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
             <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>维护信息</summary>
             <div className='space-y-2 border-t border-border p-3'>
-              <div>路由：{useAgentAssignments ? 'Settings agent assignments' : `${llmProfileId} overrides all agents`}；auto apply patch：{autoApplyPatch ? 'on' : 'off'}；max tokens：{pendingWriteJob.maxTokens}</div>
+              <div>路由：{useAgentAssignments ? 'settings assignments' : `${llmProfileId} overrides all agents`}；auto apply patch：{autoApplyPatch ? 'on' : 'off'}；max tokens：{pendingWriteJob.maxTokens}</div>
               <div className='space-y-1'>
                 {writeRouteRows.map((row: any) => (
                   <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>

@@ -26,6 +26,7 @@ type WritingPrepMapProps = {
 }
 
 export function WritingPrepMap({ groups, itemCount, doneCount, majorDoneCount, onStartChapter }: WritingPrepMapProps) {
+  const allReady = doneCount === itemCount
   const renderGroup = (group: ReadinessGroup) => {
     const done = group.items.filter((item) => item.done).length
     const allDone = done === group.items.length
@@ -71,13 +72,14 @@ export function WritingPrepMap({ groups, itemCount, doneCount, majorDoneCount, o
             <div className='text-xs text-muted'>大重要节点已亮起</div>
             <Button
               className='mt-3 w-full'
-              variant={majorDoneCount >= 4 ? 'primary' : 'secondary'}
+              variant={allReady ? 'primary' : 'secondary'}
+              disabled={!allReady}
               onClick={onStartChapter}
             >
-              开始写当前章
+              {allReady ? '开始写当前章' : '全部完成后开写'}
             </Button>
             <div className='mt-2 text-xs text-muted'>
-              点击下面任意小节点，会跳到对应填写页；绿色表示已有材料，灰色表示缺失或还没被证据点亮。
+              点击下面任意小节点，会跳到对应填写页；所有小节点完成后，当前章节才允许正式开跑。
             </div>
           </div>
         </div>

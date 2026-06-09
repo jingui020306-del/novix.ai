@@ -36,6 +36,7 @@ export function RightTechniquePanel({
   techniqueTitleById,
 }: RightTechniquePanelProps) {
   const suggestionRows = autoRecommendedTechniques.length ? autoRecommendedTechniques.slice(0, 4) : quickTechniqueRows.slice(0, 4)
+  const shortList = (items?: unknown[], limit = 2) => Array.isArray(items) ? items.map(String).filter(Boolean).slice(0, limit) : []
 
   return (
     <Card title='本章技法' extra={<Badge>{pinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
@@ -44,6 +45,10 @@ export function RightTechniquePanel({
           const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
           const mark = tech ? findRequirementMark('technique', [row.technique_id, tech.title, tech.payload?.name, ...(tech.payload?.signals || [])]) : null
           const level = mark?.detection?.support_level || 'unsupported'
+          const suitable = shortList(tech?.payload?.suitable_scenes)
+          const unsuitable = shortList(tech?.payload?.unsuitable_scenes)
+          const signals = shortList(tech?.payload?.signals)
+          const dos = shortList(tech?.payload?.do_dont?.do)
           return (
             <div key={row.technique_id} className='rounded-ui border border-border bg-surface px-2 py-1.5'>
               <div className='flex items-start justify-between gap-2'>
@@ -65,6 +70,14 @@ export function RightTechniquePanel({
                   第 {mark.span.start_line} 行：{mark.span.quote}
                 </button>
               ) : null}
+              {suitable.length || signals.length || dos.length ? (
+                <div className='mt-2 space-y-1 rounded-ui border border-border bg-surface-2 p-2 text-muted'>
+                  {suitable.length ? <div>适合：{suitable.join(' / ')}</div> : null}
+                  {signals.length ? <div>检查：{signals.join(' / ')}</div> : null}
+                  {dos.length ? <div>写法：{dos.join(' / ')}</div> : null}
+                </div>
+              ) : null}
+              {unsuitable.length ? <div className='mt-2 text-muted'>慎用：{unsuitable.join(' / ')}</div> : null}
               {tech?.payload?.overuse_risks?.length ? <div className='mt-2 text-amber-700 dark:text-amber-300'>风险：{tech.payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
               {tech ? (
                 <div className='mt-2 grid grid-cols-3 gap-1'>
