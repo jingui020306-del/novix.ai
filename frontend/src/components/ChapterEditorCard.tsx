@@ -315,7 +315,7 @@ export function ChapterEditorCard({
             <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='结束' />
           </div>
           <div className='col-span-3 flex items-end gap-2'>
-            {selectionRange ? <Button onClick={onRewriteSelection}>让 AI 改这一段</Button> : null}
+            {selectionRange ? <Button onClick={onRewriteSelection} disabled={!canGenerate}>让 AI 改这一段</Button> : null}
           </div>
           {selectionRange ? <p className='col-span-12 text-xs text-muted'>已选择：L{selectionRange.start}-L{selectionRange.end}</p> : <p className='col-span-12 text-xs text-muted'>填写开始和结束位置后，可以只让 AI 修改这一小段。</p>}
         </div>

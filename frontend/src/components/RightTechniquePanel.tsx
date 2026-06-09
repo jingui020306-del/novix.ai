@@ -4,6 +4,7 @@ import { Card } from './ui/Card'
 
 type RightTechniquePanelProps = {
   autoRecommendedTechniques: any[]
+  canGenerate: boolean
   findRequirementMark: (targetType: string, candidates: string[]) => any
   markTone: (level?: string) => 'default' | 'success' | 'warn'
   onPinAutoTechnique: (row: any) => void
@@ -21,6 +22,7 @@ type RightTechniquePanelProps = {
 
 export function RightTechniquePanel({
   autoRecommendedTechniques,
+  canGenerate,
   findRequirementMark,
   markTone,
   onPinAutoTechnique,
@@ -81,9 +83,9 @@ export function RightTechniquePanel({
               {tech?.payload?.overuse_risks?.length ? <div className='mt-2 text-amber-700 dark:text-amber-300'>风险：{tech.payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
               {tech ? (
                 <div className='mt-2 grid grid-cols-3 gap-1'>
-                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '试写一句', row.intensity || 'med')}>试写</Button>
-                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '改写选区', row.intensity || 'med')}>改写</Button>
-                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '强度变体', 'high')}>强度</Button>
+                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '试写一句', row.intensity || 'med')} disabled={!canGenerate}>试写</Button>
+                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '改写选区', row.intensity || 'med')} disabled={!canGenerate}>改写</Button>
+                  <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '强度变体', 'high')} disabled={!canGenerate}>强度</Button>
                 </div>
               ) : null}
               <Button className='mt-1 w-full text-xs' onClick={() => onUnpinTechnique(row, tech?.title || row.technique_id)}>移除</Button>

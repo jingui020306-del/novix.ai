@@ -1555,6 +1555,11 @@ export default function App() {
   }
 
   const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章', techniqueAction: any = null) => {
+    const missing = getWriteReadinessItems().filter((item) => !item.done)
+    if (missing.length) {
+      push(`请先补齐开写检查：${missing.slice(0, 3).map((item) => item.label).join('、')}`, 'error')
+      return
+    }
     setPendingWriteJob({ maxTokens, range, label, techniqueAction })
   }
 
@@ -2522,6 +2527,7 @@ export default function App() {
                     <Button className='text-xs' onClick={() => updateEvidenceFeedback(selectedMark, 'false_positive')}>误判</Button>
                     <Button
                       className='text-xs'
+                      disabled={!canStartWriting()}
                       onClick={() => {
                         const start = Number(selectedMark?.span?.start_line || 0)
                         const end = Number(selectedMark?.span?.end_line || start)
@@ -4505,9 +4511,9 @@ export default function App() {
                         <div className='mt-1 text-muted'>本章证据：{traceSummary(traces)}</div>
                         {isMaintainerMode ? <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div> : null}
                         <div className='mt-2 grid grid-cols-3 gap-1'>
-                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '试写一句', 'med')}>试写</Button>
-                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '改写选区', 'med')}>改写选区</Button>
-                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '强度变体', 'high')}>强度</Button>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '试写一句', 'med')} disabled={!canStartWriting()}>试写</Button>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '改写选区', 'med')} disabled={!canStartWriting()}>改写选区</Button>
+                          <Button className='text-xs' onClick={() => requestTechniqueAction(r, '强度变体', 'high')} disabled={!canStartWriting()}>强度</Button>
                         </div>
                       </div>
                     )
@@ -5204,6 +5210,7 @@ export default function App() {
 
       <RightTechniquePanel
         autoRecommendedTechniques={rightAutoRecommendedTechniques}
+        canGenerate={canStartWriting()}
         findRequirementMark={findRequirementMark}
         markTone={markTone}
         onPinAutoTechnique={pinRightAutoTechnique}
