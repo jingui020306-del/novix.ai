@@ -18,6 +18,7 @@ type AlignmentVersion = {
 
 type ChapterAlignmentPanelProps = {
   agreedDraft: string
+  canGenerate: boolean
   confirmed: boolean
   discussionInput: string
   idea: string
@@ -42,6 +43,7 @@ type ChapterAlignmentPanelProps = {
 
 export function ChapterAlignmentPanel({
   agreedDraft,
+  canGenerate,
   confirmed,
   discussionInput,
   idea,
@@ -64,6 +66,7 @@ export function ChapterAlignmentPanel({
   setIdea,
 }: ChapterAlignmentPanelProps) {
   const ready = Boolean(confirmed && agreedDraft.trim())
+  const writeReady = ready && canGenerate
   const statusTone = ready ? 'success' : understanding.trim() ? 'warn' : 'default'
   const statusText = ready ? '作者已确认' : understanding.trim() ? '待确认' : '未开始'
   const stepRows = [
@@ -177,8 +180,9 @@ export function ChapterAlignmentPanel({
           <Button onClick={onMergeIntoAgreement} disabled={!understanding.trim() && !messages.length}>带入当前 AI 理解</Button>
           <Button onClick={onConfirm}>确认写法</Button>
           <Button onClick={onSaveAgreement}>保存共识</Button>
-          <Button variant='primary' onClick={onRunWithAgreement} disabled={!ready}>按这个写初稿</Button>
+          <Button variant='primary' onClick={onRunWithAgreement} disabled={!writeReady}>按这个写初稿</Button>
         </div>
+        {!writeReady ? <div className='mt-2 text-xs text-muted'>确认写法并补齐开写检查后，才能生成初稿。</div> : null}
       </div>
     </Card>
   )

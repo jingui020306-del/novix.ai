@@ -4135,6 +4135,7 @@ export default function App() {
         <div className='space-y-3 density-space'>
           <ChapterAlignmentPanel
             agreedDraft={alignmentAgreedDraft}
+            canGenerate={generationReady}
             confirmed={alignmentConfirmed}
             discussionInput={alignmentDiscussionInput}
             idea={alignmentIdea}
