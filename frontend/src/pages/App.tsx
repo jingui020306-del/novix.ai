@@ -166,6 +166,8 @@ const TASK_AI_MODULES = [
   { id: 'recap_reviewer', label: '风险检查', group: '可信检查' },
 ]
 
+const AI_MODULE_LABELS = Object.fromEntries(TASK_AI_MODULES.map((item) => [item.id, item.label]))
+
 const WRITE_ROUTE_MODULES = ['chapter_writer', 'chapter_reviewer', 'proofreader', 'canon_extractor']
 
 const GENERATION_SCOPE_OPTIONS = [
@@ -640,11 +642,11 @@ export default function App() {
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
     if (!profileId) {
-      push('Please input profile id before applying preset', 'error')
+      push('请先填写模型配置名称', 'error')
       return
     }
     if (!selectedPreset) {
-      push('Preset metadata unavailable', 'error')
+      push('服务商模板还没加载完成', 'error')
       return
     }
     try {
@@ -654,16 +656,16 @@ export default function App() {
         [profileId]: { ...(selectedPreset.defaults || {}) },
       }
       setProfilesEditor(JSON.stringify(next, null, 2))
-      push(`Preset applied to profile: ${profileId}`)
+      push(`已填入模型配置：${profileId}`)
     } catch {
-      push('Profiles JSON is invalid, please fix editor first', 'error')
+      push('模型配置 JSON 无法解析，请先修正', 'error')
     }
   }
 
   const saveProfileDraft = async () => {
     const profileId = (presetProfileId || '').trim()
     if (!profileId) {
-      push('Please input profile id before saving', 'error')
+      push('请先填写模型配置名称', 'error')
       return
     }
     const required = selectedPreset?.required_fields || ['provider', 'model']
@@ -678,7 +680,7 @@ export default function App() {
     }
     const missing = required.filter((field) => !String((normalized as any)[field] || '').trim())
     if (missing.length) {
-      push(`Missing required fields: ${missing.join(', ')}`, 'error')
+      push(`还有必填项未填：${missing.join(', ')}`, 'error')
       return
     }
     try {
@@ -687,9 +689,9 @@ export default function App() {
       setProfilesEditor(JSON.stringify(next, null, 2))
       await mutateGlobalProfiles()
       await mutateLlmStatus()
-      push(`Profile saved: ${profileId}`)
+      push(`模型配置已保存：${profileId}`)
     } catch {
-      push('Profile save failed', 'error')
+      push('模型配置保存失败', 'error')
     }
   }
 
@@ -702,12 +704,12 @@ export default function App() {
     if (matchedPreset) setSelectedPresetId(matchedPreset.provider_id)
     setPresetProfileId(profileId)
     setProfileDraft({ ...profile, api_key: '' })
-    push(`Loaded profile: ${profileId}`)
+    push(`已载入模型配置：${profileId}`)
   }
 
   const deleteProfileDraft = async (profileId: string) => {
     if (profileId === 'mock_default') {
-      push('mock_default cannot be deleted', 'error')
+      push('mock_default 是内置测试配置，不能删除', 'error')
       return
     }
     try {
@@ -718,9 +720,9 @@ export default function App() {
       }
       await mutateGlobalProfiles()
       await mutateLlmStatus()
-      push(`Profile deleted: ${profileId}`)
+      push(`模型配置已删除：${profileId}`)
     } catch {
-      push('Profile delete failed', 'error')
+      push('模型配置删除失败', 'error')
     }
   }
 
@@ -732,9 +734,9 @@ export default function App() {
       setAssignmentsEditor(JSON.stringify(next, null, 2))
       await mutateGlobalAssignments()
       await mutateLlmStatus()
-      push(`${module} assigned to ${profileId}`)
+      push(`写作分工已更新：${AI_MODULE_LABELS[module] || module} -> ${profileId}`)
     } catch {
-      push('Agent assignment save failed', 'error')
+      push('写作分工保存失败', 'error')
     }
   }
 
@@ -838,7 +840,7 @@ export default function App() {
         blueprint: blueprintSchema || {},
       }
     } catch {
-      push('Command Palette data load failed, showing local commands only', 'error')
+      push('快捷入口素材读取失败，暂时只显示本地命令', 'error')
       paletteCacheRef.current.loadedFor = project
     }
   }
@@ -846,7 +848,7 @@ export default function App() {
   const refreshPaletteData = async () => {
     paletteCacheRef.current = { storyCards: [], characters: [], worldCards: [], styleCards: [], outlines: [], blueprints: [], chapters: [], proposals: [], techniques: [], techniqueCategories: [], toolSkills: [] }
     await lazyLoadPaletteData(true)
-    push('Palette data refreshed')
+    push('快捷入口素材已刷新')
   }
 
 
@@ -917,7 +919,7 @@ export default function App() {
       const setMaybe = (k: string, path: string, value: any) => {
         if (value === undefined || value === null || value === '') return
         if (schemaHasPath(schema, path)) setByPath(card, path, value)
-        else warnings.push(`Ignored --${k} (schema path ${path} missing)`)
+        else warnings.push(`已忽略 --${k}：当前卡片没有这个字段`)
       }
       setMaybe('name', 'payload.name', parsed.title)
       setMaybe('identity', 'payload.identity', parsed.opts.identity)
@@ -1014,12 +1016,12 @@ export default function App() {
       const locks: Record<string, boolean> = {}
       parsed.locks.forEach((lk) => {
         if (lockKeys.includes(lk)) locks[lk] = true
-        else warnings.push(`Ignored --lock ${lk}`)
+        else warnings.push(`已忽略 --lock ${lk}：暂不支持这个锁定项`)
       })
       const setMaybe = (k: string, path: string, value: any) => {
         if (value === undefined || value === null || value === '') return
         if (schemaHasPath(schema, path)) setByPath(card, path, value)
-        else warnings.push(`Ignored --${k} (schema path ${path} missing)`)
+        else warnings.push(`已忽略 --${k}：当前卡片没有这个字段`)
       }
       setMaybe('lock', 'payload.locks', locks)
       setMaybe('max_examples', 'payload.injection_policy.max_examples', parsed.opts.max_examples)
@@ -1049,7 +1051,7 @@ export default function App() {
 
   const runCreate = async (rawInput: string) => {
     const parsed = parseCreateInput(rawInput)
-    if (!parsed) return { ok: false, message: 'Not a create command' }
+    if (!parsed) return { ok: false, message: '这不是创建命令' }
     if (parsed.errors.length) return { ok: false, message: parsed.errors[0] }
 
     try {
@@ -1193,7 +1195,7 @@ export default function App() {
   }
 
   const pinTechniqueToChapter = async (tech: any, intensity: string, weight?: number, notes?: string) => {
-    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    if (!selectedChapter) return { ok: false, message: '请先打开一个章节' }
     const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
     const pinned = Array.isArray(meta?.pinned_techniques) ? meta.pinned_techniques : []
     const row: any = { technique_id: tech.id, intensity: intensity || 'med' }
@@ -1202,17 +1204,17 @@ export default function App() {
     const next = [row, ...pinned.filter((x: any) => x.technique_id !== tech.id)]
     await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_techniques: next })
     mutateDraft()
-    return { ok: true, message: `Pinned "${tech.title || tech.id}" (${row.intensity})` }
+    return { ok: true, message: `已把技法挂到本章：${tech.title || tech.id} (${row.intensity})` }
   }
 
   const unpinTechniqueFromChapter = async (tech: any) => {
-    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    if (!selectedChapter) return { ok: false, message: '请先打开一个章节' }
     const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
     const pinned = Array.isArray(meta?.pinned_techniques) ? meta.pinned_techniques : []
     const next = pinned.filter((x: any) => x.technique_id !== tech.id)
     await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_techniques: next })
     mutateDraft()
-    return { ok: true, message: `Unpinned "${tech.title || tech.id}"` }
+    return { ok: true, message: `已从本章移除技法：${tech.title || tech.id}` }
   }
 
 
@@ -1238,7 +1240,7 @@ export default function App() {
   }
 
   const pinCategoryToChapter = async (cat: any, intensity: string, weight?: number, notes?: string) => {
-    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    if (!selectedChapter) return { ok: false, message: '请先打开一个章节' }
     const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
     const pinned = Array.isArray(meta?.pinned_technique_categories) ? meta.pinned_technique_categories : []
     const row: any = { category_id: cat.id, intensity: intensity || 'med' }
@@ -1247,17 +1249,17 @@ export default function App() {
     const next = [row, ...pinned.filter((x: any) => x.category_id !== cat.id)]
     await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_technique_categories: next })
     mutateDraft()
-    return { ok: true, message: `Pinned category "${cat.title || cat.id}" (${row.intensity})` }
+    return { ok: true, message: `已把技法分类挂到本章：${cat.title || cat.id} (${row.intensity})` }
   }
 
   const unpinCategoryFromChapter = async (cat: any) => {
-    if (!selectedChapter) return { ok: false, message: '请先在 ChapterEditor 打开章节' }
+    if (!selectedChapter) return { ok: false, message: '请先打开一个章节' }
     const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
     const pinned = Array.isArray(meta?.pinned_technique_categories) ? meta.pinned_technique_categories : []
     const next = pinned.filter((x: any) => x.category_id !== cat.id)
     await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, { ...meta, pinned_technique_categories: next })
     mutateDraft()
-    return { ok: true, message: `Unpinned category "${cat.title || cat.id}"` }
+    return { ok: true, message: `已从本章移除技法分类：${cat.title || cat.id}` }
   }
 
   const parseCategoryPinCommand = (query: string): { mode: 'pin_cat' | 'unpin_cat' | 'list_cat' | null; name?: string; intensity?: string; weight?: number; note?: string; error?: string } => {
@@ -1334,17 +1336,17 @@ export default function App() {
       return {
         item: {
           id: 'cmd-list-pinned-categories',
-          title: 'List pinned categories',
-          subtitle: selectedChapter || 'open chapter first',
-          group: 'Actions',
+          title: '查看本章技法分类',
+          subtitle: selectedChapter || '先打开章节',
+          group: '写作动作',
           icon: List,
           run: async () => {
             if (!selectedChapter) {
-              push('请先在 ChapterEditor 打开章节', 'error')
+              push('请先打开一个章节', 'error')
               return
             }
             const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
-            push(`Pinned categories: ${JSON.stringify(meta?.pinned_technique_categories || [])}`)
+            push(`本章技法分类：${JSON.stringify(meta?.pinned_technique_categories || [])}`)
           },
         },
       }
@@ -1353,21 +1355,21 @@ export default function App() {
     if (catParsed.mode === 'pin_cat' || catParsed.mode === 'unpin_cat') {
       if (catParsed.error) return { error: catParsed.error }
       const hit = resolveCategoryByQuery(catParsed.name || '')
-      if (!hit) return { error: `Category not found: ${catParsed.name}` }
-      const actionTitle = catParsed.mode === 'pin_cat' ? `Pin category ${hit.title} ${catParsed.intensity || 'med'}` : `Unpin category ${hit.title}`
+      if (!hit) return { error: `没有找到技法分类：${catParsed.name}` }
+      const actionTitle = catParsed.mode === 'pin_cat' ? `挂载技法分类 ${hit.title} ${catParsed.intensity || 'med'}` : `取消技法分类 ${hit.title}`
       return {
         item: {
           id: `${catParsed.mode}-${hit.id}`,
           title: actionTitle,
-          subtitle: selectedChapter || 'open chapter first',
-          group: 'Actions',
+          subtitle: selectedChapter || '先打开章节',
+          group: '写作动作',
           icon: Sparkles,
           run: async () => {
             const out = catParsed.mode === 'pin_cat'
               ? await pinCategoryToChapter(hit, catParsed.intensity || 'med', catParsed.weight, catParsed.note)
               : await unpinCategoryFromChapter(hit)
             if (out.ok) push(out.message)
-            else push(out.message || 'Command failed', 'error')
+            else push(out.message || '命令执行失败', 'error')
           },
         },
       }
@@ -1378,17 +1380,17 @@ export default function App() {
       return {
         item: {
           id: 'cmd-list-pinned-techniques',
-          title: 'List pinned techniques',
-          subtitle: selectedChapter || 'open chapter first',
-          group: 'Actions',
+          title: '查看本章技法',
+          subtitle: selectedChapter || '先打开章节',
+          group: '写作动作',
           icon: List,
           run: async () => {
             if (!selectedChapter) {
-              push('请先在 ChapterEditor 打开章节', 'error')
+              push('请先打开一个章节', 'error')
               return
             }
             const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
-            push(`Pinned: ${JSON.stringify(meta?.pinned_techniques || [])}`)
+            push(`本章技法：${JSON.stringify(meta?.pinned_techniques || [])}`)
           },
         },
       }
@@ -1397,21 +1399,21 @@ export default function App() {
     if (pinParsed.mode === 'pin' || pinParsed.mode === 'unpin') {
       if (pinParsed.error) return { error: pinParsed.error }
       const hit = resolveTechniqueByQuery(pinParsed.name || '')
-      if (!hit) return { error: `Technique not found: ${pinParsed.name}` }
-      const actionTitle = pinParsed.mode === 'pin' ? `Pin technique ${hit.title} ${pinParsed.intensity || 'med'}` : `Unpin technique ${hit.title}`
+      if (!hit) return { error: `没有找到技法：${pinParsed.name}` }
+      const actionTitle = pinParsed.mode === 'pin' ? `挂载技法 ${hit.title} ${pinParsed.intensity || 'med'}` : `取消技法 ${hit.title}`
       return {
         item: {
           id: `${pinParsed.mode}-tech-${hit.id}`,
           title: actionTitle,
-          subtitle: selectedChapter || 'open chapter first',
-          group: 'Actions',
+          subtitle: selectedChapter || '先打开章节',
+          group: '写作动作',
           icon: Sparkles,
           run: async () => {
             const out = pinParsed.mode === 'pin'
               ? await pinTechniqueToChapter(hit, pinParsed.intensity || 'med', pinParsed.weight, pinParsed.note)
               : await unpinTechniqueFromChapter(hit)
             if (out.ok) push(out.message)
-            else push(out.message || 'Command failed', 'error')
+            else push(out.message || '命令执行失败', 'error')
           },
         },
       }
@@ -1437,10 +1439,10 @@ export default function App() {
         run: async () => {
           const out = await runCreate(query)
           if (!out.ok) {
-            push(out.message || 'Create failed', 'error')
+            push(out.message || '创建失败', 'error')
             return
           }
-          push(`Created ${out.label}`)
+          push(`已创建：${out.label}`)
         },
       },
     }
@@ -1455,9 +1457,9 @@ export default function App() {
       const r = await fetch(`/api/projects/${project}/uploads`, { method: 'POST', body: fd }).then((x) => x.json())
       const assetId = r.asset_id || r?.items?.[0]?.asset_id
       if (assetId) setActiveStyleAssets((x) => [...x, assetId])
-      push('Style sample uploaded')
+      push('文风样本已上传')
     } catch {
-      push('Style sample upload failed', 'error')
+      push('文风样本上传失败', 'error')
     }
   }
 
@@ -1465,9 +1467,9 @@ export default function App() {
     try {
       await api.post(`/api/projects/${project}/style/analyze`, { style_card_id: 'style_001', asset_ids: activeStyleAssets, mode: 'fast' })
       mutateStyles()
-      push('Style analysis completed')
+      push('文风分析完成')
     } catch {
-      push('Style analysis failed', 'error')
+      push('文风分析失败', 'error')
     }
   }
 
@@ -1543,14 +1545,14 @@ export default function App() {
           mutateJobs()
           mutateChapterReviews()
           mutatePatchReviews()
-          push('Job finished')
+          push('本章生成完成')
         }
         if (evt.event === 'MARK_EXTRACTION' && Array.isArray(evt.data?.marks)) {
           void applyCanvasEvidenceStatuses(evt.data.marks).then(() => push('本章结构点状态已根据证据更新'))
         }
       }
     } catch {
-      push('Run job failed', 'error')
+      push('本章生成失败', 'error')
     }
   }
 
@@ -1570,9 +1572,9 @@ export default function App() {
       const res = await api.post(`/api/projects/${project}/analyze/${selectedChapter}`, { reason: 'ui_button' })
       setAnalyzeResult(res)
       mutateProposals()
-      push(`Analyze done: +${res.new_facts_count || 0} facts, +${res.new_proposals_count || 0} proposals`)
+      push(`分析完成：新增 ${res.new_facts_count || 0} 条事实，${res.new_proposals_count || 0} 条待确认建议`)
     } catch {
-      push('Analyze failed', 'error')
+      push('分析失败', 'error')
     } finally {
       setAnalyzeBusy(false)
     }
@@ -1585,9 +1587,9 @@ export default function App() {
       await mutateEvidenceMarks()
       await mutateTrustReport()
       await applyCanvasEvidenceStatuses(Array.isArray(res?.marks) ? res.marks : evidenceMarkRows)
-      push(`Marks analyzed: ${res?.marks?.length || 0}`)
+      push(`检查完成：${res?.marks?.length || 0} 个证据标记`)
     } catch {
-      push('Analyze marks failed', 'error')
+      push('证据检查失败', 'error')
     }
   }
 
@@ -1617,7 +1619,7 @@ export default function App() {
     await mutateVolumes()
     await lazyLoadPaletteData(true)
     setActiveActivity('explorer')
-    push(`Volume created: ${volume.title}`)
+    push(`已创建卷：${volume.title}`)
   }
 
   const createChapterInVolume = async (volumeId?: string) => {
@@ -1641,7 +1643,7 @@ export default function App() {
     await mutateDraftDetails()
     await mutateVolumes()
     await lazyLoadPaletteData(true)
-    push(`Chapter created: ${title}`)
+    push(`已创建章节：${title}`)
   }
 
   const saveChapterDraft = async () => {
@@ -1661,9 +1663,9 @@ export default function App() {
       await mutateDraftDetails()
       await mutateVolumes()
       await mutateChapterReviews()
-      push('Chapter saved')
+      push('正文已保存')
     } catch {
-      push('Chapter save failed', 'error')
+      push('正文保存失败', 'error')
     } finally {
       setChapterSaving(false)
     }
@@ -1893,7 +1895,7 @@ export default function App() {
       await mutateDraftDetails()
       push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已拒绝')
     } catch {
-      push('Review update failed', 'error')
+      push('AI 草稿状态更新失败', 'error')
     }
   }
 
@@ -1906,9 +1908,9 @@ export default function App() {
       mutateVersions()
       mutateSessionMeta()
       mutatePatchReviews()
-      push('Patch applied')
+      push('校对建议已应用')
     } catch {
-      push('Patch apply failed', 'error')
+      push('校对建议应用失败', 'error')
     }
   }
 
@@ -1918,9 +1920,9 @@ export default function App() {
     try {
       await api.put(`/api/projects/${project}/drafts/${selectedChapter}/patch-reviews/${reviewId}`, { status: 'rejected', accepted_op_ids: [] })
       await mutatePatchReviews()
-      push('Patch rejected')
+      push('校对建议已拒绝')
     } catch {
-      push('Patch reject failed', 'error')
+      push('校对建议拒绝失败', 'error')
     }
   }
 
@@ -1930,10 +1932,10 @@ export default function App() {
       const patch = JSON.parse(factRevisionModal.patch || '{}')
       await api.post(`/api/projects/${project}/canon/facts/${factRevisionModal.fact.id}/revise`, { patch, reason: factRevisionModal.reason })
       mutateCanonFacts()
-      push('Fact revision appended')
+      push('事实修订已保存')
       setFactRevisionModal({ open: false, fact: null, patch: '{}', reason: '' })
     } catch {
-      push('Revise fact failed (check patch/reason)', 'error')
+      push('事实修订失败，请检查内容和原因', 'error')
     }
   }
 
@@ -1943,9 +1945,9 @@ export default function App() {
       await mutateDraft()
       await mutateVersions()
       await mutateDraftDetails()
-      push(`Rolled back to ${versionId}`)
+      push(`已回到版本：${versionId}`)
     } catch {
-      push('Rollback failed', 'error')
+      push('版本回滚失败', 'error')
     }
   }
 
@@ -2649,12 +2651,12 @@ export default function App() {
     const toPinnedFromAuto = async (row: any) => {
       const tech = (techniqueCards || []).find((x: any) => x.id === row.technique_id)
       if (!tech) {
-        push(`Technique not found: ${row.technique_id}`, 'error')
+        push(`没有找到技法：${row.technique_id}`, 'error')
         return
       }
       const out = await pinTechniqueToChapter(tech, row.intensity || 'med', row.weight, row.notes)
-      if (out.ok) push(`Converted auto recommendation to pinned micro: ${tech.title || tech.id}`)
-      else push(out.message || 'Convert failed', 'error')
+      if (out.ok) push(`已把推荐技法挂到本章：${tech.title || tech.id}`)
+      else push(out.message || '推荐技法挂载失败', 'error')
     }
 
     const updateStoryRoot = (key: string, value: any) => {
@@ -2698,7 +2700,7 @@ export default function App() {
       setStoryForm(normalizeStoryCard(body))
       mutateStoryCards()
       await lazyLoadPaletteData(true)
-      push('Story card saved')
+      push('故事卡已保存')
     }
 
     const localBuildDraftContent = (kind: string, revision: number) => {
@@ -2869,7 +2871,7 @@ export default function App() {
           } : undefined,
           generation_reason: sourceNode ? `画布节点「${sourceNode.label}」请求待确认草案` : '',
         })
-        push('后端草案接口不可用，已使用本地 fallback', 'error')
+        push('草案接口暂不可用，已先生成本地待确认草案', 'error')
       } finally {
         setBuildDraftBusy(false)
       }
@@ -3996,7 +3998,7 @@ export default function App() {
               await api.put(`/api/projects/${project}/cards/${id}`, body)
               setCharacterForm(body)
               mutateCards()
-              push('Character saved')
+              push('人物卡已保存')
             }}
           >
             保存角色
@@ -4322,14 +4324,14 @@ export default function App() {
                   <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify(inheritedTechniqueDefaults, null, 2)}</pre>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-2'>
-                  <div className='text-xs font-medium mb-1'>Auto-recommended micro from pinned categories (read-only)</div>
+                  <div className='text-xs font-medium mb-1'>分类自动推荐的本章技法（只读）</div>
                   <div className='space-y-1'>
                     {autoRecommendedTechniques.length ? autoRecommendedTechniques.map((row: any) => (
                       <div key={`${row.technique_id}:${row.source}`} className='flex items-center justify-between gap-2 rounded-ui border border-border bg-panel px-2 py-1'>
                         <span className='text-xs'>{row.technique_id} <span className='text-muted'>({row.intensity || 'med'}, {row.source})</span></span>
-                        <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>转为 pinned micro</Button>
+                        <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>挂到本章</Button>
                       </div>
-                    )) : <p className='text-xs text-muted'>暂无自动推荐（先 pin category 并运行生成）。</p>}
+                    )) : <p className='text-xs text-muted'>暂无自动推荐（先挂载技法分类，再运行生成）。</p>}
                   </div>
                 </div>
               </div>
@@ -4380,8 +4382,8 @@ export default function App() {
                       <span className='text-xs text-muted'>{p.status === 'accepted' ? '已确认' : p.status === 'rejected' ? '已拒绝' : '待确认'}</span>
                     </div>
                     <div className='mt-2 flex gap-2'>
-                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('Proposal accepted') }}>确认</Button>
-                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('Proposal rejected') }}>拒绝</Button>
+                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('待确认事实已确认') }}>确认</Button>
+                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('待确认事实已拒绝') }}>拒绝</Button>
                     </div>
                   </div>
                 )
@@ -4474,7 +4476,7 @@ export default function App() {
               <Card title='叙事技巧库'>
                 <div className='flex gap-2 mb-2'>
                   <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='搜索悬念、反转、潜台词、人物关系...' />
-                  <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>刷新</Button>
+                  <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('技法库已刷新') }}>刷新</Button>
                 </div>
                 <div className='mb-2 grid grid-cols-3 gap-1 text-xs md:grid-cols-6'>
                   {TECHNIQUE_LAYER_OPTIONS.map((layer) => (
@@ -4524,13 +4526,13 @@ export default function App() {
               {techniqueForm && (
                 <div className='space-y-2'>
                   <SchemaForm title='技法维护字段' schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>保存技法</Button>
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('技法已保存') }}>保存技法</Button>
                 </div>
               )}
               {categoryForm && (
                 <div className='space-y-2'>
                   <SchemaForm title='分类维护字段' schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>保存分类</Button>
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('技法分类已保存') }}>保存分类</Button>
                 </div>
               )}
             </>
@@ -4539,7 +4541,7 @@ export default function App() {
               <Card title='写作工具库'>
                 <div className='flex gap-2 mb-2'>
                   <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='搜索问题检查、人物小传、大纲调研...' />
-                  <Button onClick={async () => { mutateToolSkillCards(); push('Tool skill list refreshed') }}>刷新</Button>
+                  <Button onClick={async () => { mutateToolSkillCards(); push('写作工具已刷新') }}>刷新</Button>
                 </div>
                 <div className='grid grid-cols-2 gap-2'>
                   {toolRows.map((r: any) => (
@@ -4558,7 +4560,7 @@ export default function App() {
               {toolSkillForm && (
                 <div className='space-y-2'>
                   <SchemaForm title='工具维护字段' schema={toolSkillSchema} value={toolSkillForm} onChange={setToolSkillForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${toolSkillForm.id}`, toolSkillForm); mutateToolSkillCards(); push('Tool skill saved') }}>保存工具</Button>
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${toolSkillForm.id}`, toolSkillForm); mutateToolSkillCards(); push('写作工具已保存') }}>保存工具</Button>
                 </div>
               )}
             </>
@@ -4573,7 +4575,7 @@ export default function App() {
           <Textarea className='h-40 mono' value={wikiHtml} onChange={(e) => setWikiHtml(e.target.value)} placeholder='粘贴百科、设定资料或 HTML 片段，导入后会进入待确认事实。' />
           <p className='mt-2 text-xs text-muted'>导入内容不会直接变成可信设定，需要作者确认后才进入正式事实库。</p>
           <div className='mt-2'>
-            <Button variant='primary' onClick={async () => { const fd = new FormData(); fd.append('kind', 'auto'); fd.append('file', new File([wikiHtml], 'wiki.html', { type: 'text/html' })); await fetch(`/api/projects/${project}/wiki/import`, { method: 'POST', body: fd }); mutateProposals(); push('Wiki imported') }}>导入资料</Button>
+            <Button variant='primary' onClick={async () => { const fd = new FormData(); fd.append('kind', 'auto'); fd.append('file', new File([wikiHtml], 'wiki.html', { type: 'text/html' })); await fetch(`/api/projects/${project}/wiki/import`, { method: 'POST', body: fd }); mutateProposals(); push('资料已导入') }}>导入资料</Button>
           </div>
         </Card>
       )
@@ -4663,15 +4665,15 @@ export default function App() {
                   </div>
                   <div className='mt-1 text-muted'>{row.profile_id}</div>
                   <div className='mt-1 text-muted'>{row.model || 'no model'}</div>
-                  <div className='mt-1'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
-                  {row.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
-                  {row.profile_missing ? <div className='mt-1 text-amber-700 dark:text-amber-300'>Profile not found</div> : null}
+                  <div className='mt-1'>API Key：{row.requires_api_key ? (row.api_key_configured ? '已填写' : '未填写') : '不需要'}</div>
+                  {row.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>缺少字段：{row.missing_fields.join(', ')}</div> : null}
+                  {row.profile_missing ? <div className='mt-1 text-amber-700 dark:text-amber-300'>模型配置未找到</div> : null}
                 </div>
               ))}
             </div>
             <div className='mt-3 space-y-1 text-xs text-muted'>
               <div>API key 不会在状态卡里显示原文；当前全局配置文件：{llmStatus?.storage?.profiles_path || '-'}</div>
-              <div>{llmStatus?.fallback_policy || 'Fallback policy loading...'}</div>
+              <div>{llmStatus?.fallback_policy || '备用策略读取中...'}</div>
             </div>
           </Card> : null}
 
@@ -4872,9 +4874,9 @@ export default function App() {
                       await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
                       mutateGlobalProfiles()
                       mutateLlmStatus()
-                      push('Global LLM profiles saved')
+                      push('模型配置 JSON 已保存')
                     } catch {
-                      push('Invalid profiles JSON', 'error')
+                      push('模型配置 JSON 无法解析', 'error')
                     }
                   }}>保存原始配置</Button>
                   <Button onClick={() => setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))}>重置</Button>
@@ -4934,9 +4936,9 @@ export default function App() {
                       setAssignmentDraft(next)
                       mutateGlobalAssignments()
                       mutateLlmStatus()
-                      push('Global assignments saved')
+                      push('写作分工 JSON 已保存')
                     } catch {
-                      push('Invalid assignments JSON', 'error')
+                      push('写作分工 JSON 无法解析', 'error')
                     }
                   }}>保存分工 JSON</Button>
                   <Button onClick={() => setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))}>重置</Button>
@@ -4973,7 +4975,7 @@ export default function App() {
                 const next = { ...outlineCard, payload: { ...(outlineCard.payload || {}), technique_prefs: JSON.parse(e.target.value) } }
                 await api.put(`/api/projects/${project}/cards/${outlineCard.id}`, next)
                 await lazyLoadPaletteData(true)
-                push('Outline technique_prefs saved')
+                push('大纲技法偏好已保存')
               } catch {
                 // keep typing tolerant
               }
@@ -5171,7 +5173,7 @@ export default function App() {
   const pinRightAutoTechnique = async (row: any) => {
     const tech = (techniqueCards || []).find((x: any) => x.id === row.technique_id)
     if (!tech) {
-      push(`Technique not found: ${row.technique_id}`, 'error')
+      push(`没有找到技法：${row.technique_id}`, 'error')
       return
     }
     const out = await pinTechniqueToChapter(tech, row.intensity || 'med', row.weight, row.notes)
