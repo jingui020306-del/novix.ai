@@ -25,9 +25,28 @@ function toneForJob(status?: string) {
   return 'default'
 }
 
+function labelForStatus(status?: string) {
+  if (status === 'completed') return '已完成'
+  if (status === 'failed') return '有问题'
+  if (status === 'awaiting_review') return '待确认'
+  if (status === 'running') return '写作中'
+  if (status === 'queued') return '排队中'
+  return '待开始'
+}
+
+function labelForStage(stage?: string) {
+  const raw = stage || ''
+  if (raw.includes('PRE_REVIEW')) return '审查写作要求'
+  if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
+  if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
+  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查证据'
+  if (raw.includes('DONE')) return '完成'
+  return '等待下一步'
+}
+
 export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJobsCardProps) {
   return (
-    <Card title='最近 AI 任务'>
+    <Card title='AI 写作进度'>
       <div className='grid grid-cols-2 gap-2'>
         {jobs.slice(0, 6).map((job) => (
           <button
@@ -37,13 +56,13 @@ export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJ
           >
             <div className='flex items-center justify-between gap-2'>
               <span className='truncate text-sm font-medium'>{job.chapter_id || job.job_id}</span>
-              <Badge tone={toneForJob(job.status)}>{job.status || 'unknown'}</Badge>
+              <Badge tone={toneForJob(job.status)}>{labelForStatus(job.status)}</Badge>
             </div>
-            <div className='mt-1 text-xs text-muted'>{job.last_event || job.stage || 'no event'} · {job.model || 'model pending'}</div>
+            <div className='mt-1 text-xs text-muted'>{labelForStage(job.last_event || job.stage)}</div>
             <div className='mt-1 text-xs text-muted'>{job.output_summary || job.input_summary || job.updated_at}</div>
           </button>
         ))}
-        {!jobs.length && <p className='text-sm text-muted'>还没有生成任务。生成本章后，这里会保留任务状态。</p>}
+        {!jobs.length && <p className='text-sm text-muted'>还没有写作记录。生成本章后，这里会显示当前进度。</p>}
       </div>
     </Card>
   )

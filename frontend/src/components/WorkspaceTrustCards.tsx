@@ -23,10 +23,19 @@ type WorkspaceTrustCardsProps = {
 
 export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposal, onOpenMark }: WorkspaceTrustCardsProps) {
   const pendingProposals = proposals.filter((proposal) => (proposal.status || 'pending') === 'pending')
+  const markTypeLabel: Record<string, string> = {
+    character: '人物',
+    technique: '技法',
+    open_line: '明线',
+    hidden_line: '暗线',
+    foreshadowing: '伏笔',
+    canon_fact: '事实',
+    style_rule: '文风',
+  }
 
   return (
     <div className='grid grid-cols-2 gap-3'>
-      <Card title='待确认 Canon'>
+      <Card title='待确认事实'>
         <div className='space-y-1'>
           {pendingProposals.slice(-5).reverse().map((proposal) => {
             const proposalId = proposal.proposal_id || proposal.id || ''
@@ -40,11 +49,11 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
               </button>
             )
           })}
-          {!pendingProposals.length && <p className='text-sm text-muted'>没有待确认 canon proposal。</p>}
+          {!pendingProposals.length && <p className='text-sm text-muted'>没有待确认事实。</p>}
         </div>
       </Card>
 
-      <Card title='可信风险'>
+      <Card title='未证实风险'>
         <div className='space-y-1'>
           {unsupportedMarks.slice(0, 5).map((mark) => (
             <button
@@ -52,7 +61,7 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
               className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
               onClick={() => onOpenMark(mark.mark_id)}
             >
-              {mark.target_type} · {mark.label || mark.target_id}
+              {markTypeLabel[mark.target_type || ''] || '风险'} · {mark.label || mark.target_id}
             </button>
           ))}
           {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有未证实风险。</p>}

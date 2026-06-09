@@ -13,18 +13,21 @@ type PendingPatchCardProps = {
 
 export function PendingPatchCard({ operations, onOpenPatchReview }: PendingPatchCardProps) {
   return (
-    <Card title='待审 AI Patch'>
+    <Card title='待确认校对建议'>
       <div className='space-y-1'>
-        {operations.slice(0, 5).map((op) => (
-          <button
-            key={op.op_id}
-            className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
-            onClick={onOpenPatchReview}
-          >
-            {op.op_id} · {op.rationale || op.type}
-          </button>
-        ))}
-        {!operations.length && <p className='text-sm text-muted'>没有待审 patch。</p>}
+        {operations.slice(0, 5).map((op, index) => {
+          const typeLabel = op.type === 'replace' ? '替换' : op.type === 'delete' ? '删除' : op.type === 'insert' ? '补充' : '调整'
+          return (
+            <button
+              key={op.op_id}
+              className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
+              onClick={onOpenPatchReview}
+            >
+              建议 {index + 1} · {typeLabel} · {op.rationale || '等待作者确认'}
+            </button>
+          )
+        })}
+        {!operations.length && <p className='text-sm text-muted'>没有待确认校对建议。</p>}
       </div>
     </Card>
   )

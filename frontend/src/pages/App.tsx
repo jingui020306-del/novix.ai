@@ -3451,6 +3451,24 @@ export default function App() {
       const unsupportedMarks = evidenceMarkRows.filter((m: any) => m?.detection?.support_level === 'unsupported' || m?.detection?.support_level === 'contradicted')
       const runningEvent = events.length > 0 && events.slice(-1)[0]?.event !== 'DONE'
       const pendingPatchCount = pendingPatchReviews.length || latestPatch?.ops?.length || 0
+      const authorJobStatus = (status?: string) => {
+        if (runningEvent) return '生成中'
+        if (status === 'completed') return '已完成'
+        if (status === 'failed') return '有问题'
+        if (status === 'awaiting_review') return '待确认'
+        if (status === 'running') return '生成中'
+        return pendingPatchCount ? '待确认' : '空闲'
+      }
+      const authorJobStep = (eventName?: string) => {
+        const raw = eventName || ''
+        if (!raw) return '暂无生成记录'
+        if (raw.includes('PRE_REVIEW')) return '检查写作要求'
+        if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
+        if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
+        if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查证据'
+        if (raw.includes('DONE')) return '完成'
+        return '准备下一步'
+      }
       const realReadyProfiles = profileHealthRows.filter((row: any) => !row.is_mock && !row.missing_fields?.length)
       const agentModuleRows = Array.isArray(llmStatus?.modules) ? llmStatus.modules : []
       const agentAssignmentsReady = agentModuleRows.length > 0 && agentModuleRows.every((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
@@ -3504,11 +3522,11 @@ export default function App() {
           id: 'cards',
           label: '大重要 · 卡片资产',
           detail: '人物、风格、技法、工具 skill 会成为章节生成约束。',
-          items: [
+            items: [
             { id: 'characters', label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('characters') } },
             { id: 'style_cards', label: '文风卡', done: Array.isArray(styles) && styles.length > 0, detail: `${Array.isArray(styles) ? styles.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('style') } },
             { id: 'technique_cards', label: '叙事技巧', done: Array.isArray(techniqueCards) && techniqueCards.length > 0, detail: `${Array.isArray(techniqueCards) ? techniqueCards.length : 0} 张`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
-            { id: 'tool_skills', label: '工具 skill', done: Array.isArray(toolSkillCards) && toolSkillCards.length > 0, detail: `${Array.isArray(toolSkillCards) ? toolSkillCards.length : 0} 个`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+            { id: 'tool_skills', label: '写作工具', done: Array.isArray(toolSkillCards) && toolSkillCards.length > 0, detail: `${Array.isArray(toolSkillCards) ? toolSkillCards.length : 0} 个`, run: () => { setActiveActivity('techniques'); setView('techniques') } },
           ],
         },
         {
@@ -3529,12 +3547,12 @@ export default function App() {
           label: '大重要 · 可信点亮',
           detail: 'AI 判断必须有正文 quote 和行号，不能只靠自述。',
           items: [
-            { id: 'profile', label: '真实 API Profile', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个 ready`, run: () => setView('settings') },
-            { id: 'agents', label: 'Agent 分配', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} ready` : '未读取 runtime', run: () => setView('settings') },
-            { id: 'marks', label: '证据标记', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个 mark`, run: () => { setView('chapter'); void analyzeMarks() } },
+            { id: 'profile', label: '真实模型配置', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个可用`, run: () => setView('settings') },
+            { id: 'agents', label: '写作分工', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 可用` : '等待读取', run: () => setView('settings') },
+            { id: 'marks', label: '证据标记', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个`, run: () => { setView('chapter'); void analyzeMarks() } },
             { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
             { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
-            { id: 'pending_reviews', label: '待审稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `稿 ${pendingChapterReviews.length} · patch ${pendingPatchCount}`, run: () => setView('chapter') },
+            { id: 'pending_reviews', label: '待确认稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `草稿 ${pendingChapterReviews.length} · 校对 ${pendingPatchCount}`, run: () => setView('chapter') },
           ],
         },
       ]
@@ -3602,17 +3620,17 @@ export default function App() {
       const setupChecklist = [
         {
           id: 'api',
-          label: '配置 API Profile',
+          label: '配置模型 API',
           done: realReadyProfiles.length > 0,
-          detail: realReadyProfiles.length ? `${realReadyProfiles.length} 个可用真实 profile` : '还没有 ready 的真实 profile',
+          detail: realReadyProfiles.length ? `${realReadyProfiles.length} 个可用配置` : '还没有可用配置',
           action: '去配置',
           run: () => setView('settings'),
         },
         {
           id: 'agents',
-          label: '分配三 Agent 模型',
+          label: '分配写作模型',
           done: agentAssignmentsReady,
-          detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 个模块 ready` : '等待 LLM runtime status',
+          detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 个分工可用` : '等待读取模型状态',
           action: '分配模型',
           run: () => setView('settings'),
         },
@@ -3651,7 +3669,7 @@ export default function App() {
           id: 'evidence',
           label: '建立证据标记',
           done: evidenceMarkRows.length > 0 || Boolean(trustReport?.updated_at),
-          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个 mark · 风险 ${unsupportedMarks.length}` : '还没有分析当前章节',
+          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个标记 · 风险 ${unsupportedMarks.length}` : '还没有分析当前章节',
           action: '分析当前章',
           run: () => { setView('chapter'); analyzeMarks() },
         },
@@ -3666,11 +3684,11 @@ export default function App() {
             <div className='grid grid-cols-1 gap-3 md:grid-cols-5'>
               <div className='metric-card metric-blue rounded-ui border p-3'>
                 <div className='text-xs text-muted'>生成状态</div>
-                <div className='font-display mt-1 text-lg font-semibold'>{runningEvent ? '生成中' : (latestJob?.status || (pendingPatchCount ? '待审稿' : '空闲'))}</div>
-                <div className='text-xs text-muted'>{events.slice(-1)[0]?.event || latestJob?.last_event || 'no job event'}</div>
+                <div className='font-display mt-1 text-lg font-semibold'>{authorJobStatus(latestJob?.status)}</div>
+                <div className='text-xs text-muted'>{authorJobStep(events.slice(-1)[0]?.event || latestJob?.last_event)}</div>
               </div>
               <div className='metric-card metric-purple rounded-ui border p-3'>
-                <div className='text-xs text-muted'>待审 Patch</div>
+                <div className='text-xs text-muted'>待确认校对</div>
                 <div className='font-display mt-1 text-lg font-semibold'>{pendingPatchCount}</div>
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
               </div>
@@ -3687,7 +3705,7 @@ export default function App() {
               <div className='metric-card metric-rose rounded-ui border p-3'>
                 <div className='text-xs text-muted'>风险标记</div>
                 <div className='font-display mt-1 text-lg font-semibold'>{unsupportedMarks.length}</div>
-                <div className='text-xs text-muted'>unsupported / contradicted</div>
+                <div className='text-xs text-muted'>未证实 / 有矛盾</div>
               </div>
             </div>
           </Card>
