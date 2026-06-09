@@ -184,21 +184,17 @@ export function ChapterEditorCard({
       }
     >
       <div className='grid grid-cols-12 gap-3'>
-        <div className='col-span-4'>
-          <label className='text-xs text-muted'>章节编号</label>
-          <Input value={selectedChapter} onChange={(e) => setSelectedChapter(e.target.value)} />
-        </div>
-        <div className='col-span-4'>
+        <div className='col-span-12 md:col-span-6'>
           <label className='text-xs text-muted'>章节名</label>
           <Input value={chapterTitleDraft} onChange={(e) => setChapterTitleDraft(e.target.value)} />
         </div>
-        <div className='col-span-2'>
+        <div className='col-span-6 md:col-span-3'>
           <label className='text-xs text-muted'>所属卷</label>
           <Select value={volumeId} onChange={(e) => onVolumeChange(e.target.value)}>
             {volumeRows.map((v) => <option key={v.id} value={v.id}>{v.title || v.id}</option>)}
           </Select>
         </div>
-        <div className='col-span-2'>
+        <div className='col-span-6 md:col-span-3'>
           <label className='text-xs text-muted'>状态</label>
           <Select value={chapterStatus} onChange={(e) => onStatusChange(e.target.value)}>
             <option value='draft'>草稿</option>
@@ -208,6 +204,16 @@ export function ChapterEditorCard({
             <option value='done'>已完成</option>
           </Select>
         </div>
+        <details className='col-span-12 rounded-ui border border-border bg-surface-2 text-xs'>
+          <summary className='cursor-pointer px-3 py-2 font-medium'>章节信息</summary>
+          <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
+            <div>
+              <label className='text-xs text-muted'>章节编号</label>
+              <Input value={selectedChapter} onChange={(e) => setSelectedChapter(e.target.value)} />
+              <div className='mt-1 text-muted'>用于文件和接口定位。正常写作时不用修改。</div>
+            </div>
+          </div>
+        </details>
         <details className='col-span-12 rounded-ui border border-border bg-surface-2 text-xs'>
           <summary className='cursor-pointer px-3 py-2 font-medium'>高级设置</summary>
           <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
