@@ -225,7 +225,7 @@ const CANVAS_TYPE_LABELS: Record<string, string> = {
 }
 
 const TECHNIQUE_LAYER_OPTIONS = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: '全部' },
   { id: 'structure', label: '结构' },
   { id: 'scene', label: '场景' },
   { id: 'character', label: '人物' },
@@ -299,7 +299,7 @@ export default function App() {
   const [worldRows, setWorldRows] = useState<any[]>([])
   const [wikiHtml, setWikiHtml] = useState('<html><head><title>示例</title></head><body><table class="infobox"><tr><th>阵营</th><td>黑潮同盟</td></tr></table><h2>设定</h2><p>临港城由七港区组成。</p></body></html>')
   const [techniqueQuery, setTechniqueQuery] = useState('')
-  const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('Narrative Techniques')
+  const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('叙事技巧')
   const [techniqueLayerFilter, setTechniqueLayerFilter] = useState('all')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
@@ -490,8 +490,7 @@ export default function App() {
   const traceSummary = (rows: any[]) => {
     if (!rows.length) return '未使用'
     const supported = rows.filter((mark: any) => mark?.detection?.support_level === 'supported' && mark?.span?.quote).length
-    const stages = Array.from(new Set(rows.map((mark: any) => mark?.agent_trace?.stage).filter(Boolean)))
-    return `${supported}/${rows.length} 已证实${stages.length ? ` · ${stages.join('/')}` : ''}`
+    return supported ? `${supported}/${rows.length} 已证实` : `${rows.length} 条待确认`
   }
   const isMaintainerMode = settings.experienceMode === 'maintainer'
   const meaningfulRows = (rows: any[] | undefined, keys: string[]) => (Array.isArray(rows) ? rows : []).filter((row: any) => keys.some((key) => String(row?.[key] || '').trim()))
@@ -1167,7 +1166,7 @@ export default function App() {
         mutateTechniqueCards()
       } else if (parsed.type === 'tool_skill') {
         setView('techniques')
-        setTechniqueLibraryTab('AI Tool Skills')
+        setTechniqueLibraryTab('写作工具')
         setToolSkillForm(mapped.card)
         mutateToolSkillCards()
       }
@@ -2081,7 +2080,7 @@ export default function App() {
         payload: { kind: 'tool_skill', id: t.id },
         run: () => {
           setView('techniques')
-          setTechniqueLibraryTab('AI Tool Skills')
+          setTechniqueLibraryTab('写作工具')
           setToolSkillForm(t)
         },
       })),
@@ -2329,8 +2328,8 @@ export default function App() {
 
         {activeActivity === 'techniques' ? (
           <div className='mt-3 space-y-2'>
-            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('Narrative Techniques'); setView('techniques') }}>叙事技巧</Button>
-            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('AI Tool Skills'); setView('techniques') }}>写作工具</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('叙事技巧'); setView('techniques') }}>叙事技巧</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setTechniqueLibraryTab('写作工具'); setView('techniques') }}>写作工具</Button>
             {(techniqueCategories || []).slice(0, 12).map((cat: any) => (
               <button key={cat.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setCategoryForm(cat); setView('techniques') }}>
                 {cat.title || cat.id}
@@ -3843,65 +3842,81 @@ export default function App() {
 
     if (view === 'characters') {
       const payload = characterForm?.payload || {}
+      const updateCharacterPayload = (key: string, value: any) => setCharacterForm({ ...characterForm, payload: { ...payload, [key]: value } })
+      const updateCharacterArray = (key: string, value: string) => updateCharacterPayload(key, value.split(/[，,]/).map((x) => x.trim()).filter(Boolean))
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Profile / Importance'>
+          <Card title='人物写作卡'>
             <div className='grid grid-cols-12 gap-3'>
-              <div className='col-span-3'>
-                <label className='text-xs text-muted'>Role</label>
+              <div className='col-span-12 md:col-span-3'>
+                <label className='text-xs text-muted'>姓名</label>
+                <Input
+                  value={payload.name || characterForm?.title || ''}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    setCharacterForm({ ...characterForm, title: name, payload: { ...payload, name } })
+                  }}
+                />
+              </div>
+              <div className='col-span-12 md:col-span-3'>
+                <label className='text-xs text-muted'>身份</label>
+                <Input value={payload.identity || ''} onChange={(e) => updateCharacterPayload('identity', e.target.value)} placeholder='调查记者 / 皇子 / 医师' />
+              </div>
+              <div className='col-span-6 md:col-span-2'>
+                <label className='text-xs text-muted'>角色位置</label>
                 <Select
                   value={payload.role || 'other'}
-                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, role: e.target.value } })}
+                  onChange={(e) => updateCharacterPayload('role', e.target.value)}
                 >
-                  <option value='protagonist'>protagonist</option>
-                  <option value='supporting'>supporting</option>
-                  <option value='antagonist'>antagonist</option>
-                  <option value='other'>other</option>
+                  <option value='protagonist'>主角</option>
+                  <option value='supporting'>配角</option>
+                  <option value='antagonist'>反派</option>
+                  <option value='other'>其他</option>
                 </Select>
               </div>
-              <div className='col-span-3'>
-                <label className='text-xs text-muted'>Character Importance (1-5)</label>
+              <div className='col-span-6 md:col-span-2'>
+                <label className='text-xs text-muted'>重要度 1-5</label>
                 <Input
                   type='number'
                   min={1}
                   max={5}
                   value={payload.importance ?? 3}
-                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, importance: Number(e.target.value || 3) } })}
+                  onChange={(e) => updateCharacterPayload('importance', Number(e.target.value || 3))}
                 />
               </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>Age</label>
+              <div className='col-span-6 md:col-span-2'>
+                <label className='text-xs text-muted'>年龄</label>
                 <Input
                   type='number'
                   min={0}
                   max={200}
                   value={payload.age ?? ''}
-                  onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, age: e.target.value === '' ? undefined : Number(e.target.value) } })}
+                  onChange={(e) => updateCharacterPayload('age', e.target.value === '' ? undefined : Number(e.target.value))}
                 />
               </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>Card Stars</label>
-                <Input
-                  type='number'
-                  min={0}
-                  max={5}
-                  value={characterForm?.stars ?? ''}
-                  onChange={(e) => setCharacterForm({ ...characterForm, stars: e.target.value === '' ? undefined : Number(e.target.value) })}
-                />
+              <div className='col-span-12 md:col-span-4'>
+                <label className='text-xs text-muted'>外貌/第一印象</label>
+                <Input value={payload.appearance || ''} onChange={(e) => updateCharacterPayload('appearance', e.target.value)} placeholder='短发、灰色风衣' />
               </div>
-              <div className='col-span-2'>
-                <label className='text-xs text-muted'>Card Importance</label>
-                <Input
-                  type='number'
-                  min={1}
-                  max={5}
-                  value={characterForm?.importance ?? ''}
-                  onChange={(e) => setCharacterForm({ ...characterForm, importance: e.target.value === '' ? undefined : Number(e.target.value) })}
-                />
+              <div className='col-span-12 md:col-span-4'>
+                <label className='text-xs text-muted'>核心动机</label>
+                <Input value={payload.core_motivation || ''} onChange={(e) => updateCharacterPayload('core_motivation', e.target.value)} placeholder='他真正想得到什么' />
+              </div>
+              <div className='col-span-12 md:col-span-4'>
+                <label className='text-xs text-muted'>说话方式</label>
+                <Input value={payload.voice || ''} onChange={(e) => updateCharacterPayload('voice', e.target.value)} placeholder='克制 / 犀利 / 温吞' />
+              </div>
+              <div className='col-span-12 md:col-span-6'>
+                <label className='text-xs text-muted'>性格关键词</label>
+                <Input value={(payload.personality_traits || []).join('，')} onChange={(e) => updateCharacterArray('personality_traits', e.target.value)} placeholder='冷静，执拗，敏感' />
+              </div>
+              <div className='col-span-12 md:col-span-6'>
+                <label className='text-xs text-muted'>行为边界</label>
+                <Input value={(payload.boundaries || []).join('，')} onChange={(e) => updateCharacterArray('boundaries', e.target.value)} placeholder='不会伤及无辜，不主动撒谎' />
               </div>
             </div>
           </Card>
-          <SchemaForm schema={charSchema} value={characterForm} onChange={setCharacterForm} />
+          {isMaintainerMode ? <SchemaForm title='人物维护字段' schema={charSchema} value={characterForm} onChange={setCharacterForm} /> : null}
           <Button
             variant='primary'
             onClick={async () => {
@@ -3915,18 +3930,20 @@ export default function App() {
           >
             保存角色
           </Button>
-          <Card title='Character Cards / 调用痕迹' extra={<Badge>{selectedChapter}</Badge>}>
+          <Card title='人物在本章的使用情况' extra={<Badge>{selectedChapter}</Badge>}>
             <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
               {(Array.isArray(chars) ? chars : []).map((card: any) => {
                 const traces = traceRowsFor('character', [card.id, card.title, card.payload?.name])
+                const usedChapters = traces.map((mark: any) => mark.chapter_id).filter(Boolean)
+                const traceStages = Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean)))
                 return (
                   <button key={card.id} className='rounded-ui border border-border bg-surface px-3 py-2 text-left hover:bg-surface-2' onClick={() => setCharacterForm(card)}>
                     <div className='flex items-center justify-between gap-2'>
                       <span className='text-sm font-medium'>{card.title || card.id}</span>
                       <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
                     </div>
-                    <div className='mt-1 text-xs text-muted'>用于章节: {traces.map((mark: any) => mark.chapter_id).filter(Boolean).join(', ') || 'none'}</div>
-                    <div className='mt-1 text-xs text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div>
+                    <div className='mt-1 text-xs text-muted'>出现章节：{usedChapters.join(', ') || '还没有证据'}</div>
+                    {isMaintainerMode ? <div className='mt-1 text-xs text-muted'>Agent: {traceStages.join(', ') || 'none'}</div> : null}
                   </button>
                 )
               })}
@@ -4327,13 +4344,13 @@ export default function App() {
       return (
         <div className='space-y-3 density-space'>
           <Tabs
-            items={['Narrative Techniques', 'AI Tool Skills']}
+            items={['叙事技巧', '写作工具']}
             active={techniqueLibraryTab}
             onChange={setTechniqueLibraryTab}
           />
-          {techniqueLibraryTab === 'Narrative Techniques' ? (
+          {techniqueLibraryTab === '叙事技巧' ? (
             <>
-              <Card title='Technique Categories (Tree)'>
+              <Card title='技法分类'>
                 <div className='space-y-1'>
                   {cats.filter((c: any) => !(c.payload || {}).parent_id).map((c: any) => (
                     <div key={c.id} className='rounded-ui border border-border p-2'>
@@ -4347,10 +4364,10 @@ export default function App() {
                   ))}
                 </div>
               </Card>
-              <Card title='Narrative Technique Library'>
+              <Card title='叙事技巧库'>
                 <div className='flex gap-2 mb-2'>
-                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search technique/category keywords...' />
-                  <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>Refresh</Button>
+                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='搜索悬念、反转、潜台词、人物关系...' />
+                  <Button onClick={async () => { mutateTechniqueCards(); mutateTechniqueCategories(); push('Technique list refreshed') }}>刷新</Button>
                 </div>
                 <div className='mb-2 grid grid-cols-3 gap-1 text-xs md:grid-cols-6'>
                   {TECHNIQUE_LAYER_OPTIONS.map((layer) => (
@@ -4372,19 +4389,20 @@ export default function App() {
                       <div key={r.id} className='rounded-ui border border-border bg-surface px-2 py-2 text-xs'>
                         <div className='flex items-center justify-between gap-2'>
                           <button className='text-left font-medium hover:underline' onClick={() => setTechniqueForm(r)}>
-                            {r.title} <span className='text-muted'>({r.id})</span>
+                            {r.title} {isMaintainerMode ? <span className='text-muted'>({r.id})</span> : null}
                           </button>
                           <Badge tone={traceBadgeTone(traces) as any}>{traceSummary(traces)}</Badge>
                         </div>
                         <div className='mt-1 flex flex-wrap gap-1'>
                           <Badge>{techniqueLayerLabel(payload.usage_layer)}</Badge>
-                          {payload.recipe_steps?.length ? <Badge>Recipe</Badge> : null}
+                          {payload.recipe_steps?.length ? <Badge>步骤</Badge> : null}
                           {(payload.suitable_scenes || []).slice(0, 2).map((x: string) => <Badge key={x} tone='success'>{x}</Badge>)}
                         </div>
                         <div className='mt-1 text-muted'>{(payload.signals || []).slice(0, 2).join(' / ')}</div>
                         {(payload.overuse_risks || []).length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>风险：{payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
-                        {firstExample ? <div className='mt-1 truncate text-muted'>Example: {firstExample.source} → {firstExample.med || firstExample.low}</div> : null}
-                        <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div>
+                        {firstExample ? <div className='mt-1 truncate text-muted'>示例：{firstExample.source} → {firstExample.med || firstExample.low}</div> : null}
+                        <div className='mt-1 text-muted'>本章证据：{traceSummary(traces)}</div>
+                        {isMaintainerMode ? <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div> : null}
                         <div className='mt-2 grid grid-cols-3 gap-1'>
                           <Button className='text-xs' onClick={() => requestTechniqueAction(r, '试写一句', 'med')}>试写</Button>
                           <Button className='text-xs' onClick={() => requestTechniqueAction(r, '改写选区', 'med')}>改写选区</Button>
@@ -4398,33 +4416,33 @@ export default function App() {
               </Card>
               {techniqueForm && (
                 <div className='space-y-2'>
-                  <SchemaForm schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>Save Technique</Button>
+                  <SchemaForm title='技法维护字段' schema={techniqueSchema} value={techniqueForm} onChange={setTechniqueForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${techniqueForm.id}`, techniqueForm); mutateTechniqueCards(); push('Technique saved') }}>保存技法</Button>
                 </div>
               )}
               {categoryForm && (
                 <div className='space-y-2'>
-                  <SchemaForm schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>Save Category</Button>
+                  <SchemaForm title='分类维护字段' schema={techniqueCategorySchema} value={categoryForm} onChange={setCategoryForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${categoryForm.id}`, categoryForm); mutateTechniqueCategories(); push('Category saved') }}>保存分类</Button>
                 </div>
               )}
             </>
           ) : (
             <>
-              <Card title='AI Tool Skills'>
+              <Card title='写作工具库'>
                 <div className='flex gap-2 mb-2'>
-                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='Search problem checker, bio generator, outline research...' />
-                  <Button onClick={async () => { mutateToolSkillCards(); push('Tool skill list refreshed') }}>Refresh</Button>
+                  <Input value={techniqueQuery} onChange={(e) => setTechniqueQuery(e.target.value)} placeholder='搜索问题检查、人物小传、大纲调研...' />
+                  <Button onClick={async () => { mutateToolSkillCards(); push('Tool skill list refreshed') }}>刷新</Button>
                 </div>
                 <div className='grid grid-cols-2 gap-2'>
                   {toolRows.map((r: any) => (
                     <button key={r.id} className='rounded-ui border border-border bg-surface px-3 py-2 text-left text-xs hover:bg-surface-2' onClick={() => setToolSkillForm(r)}>
                       <div className='flex items-center justify-between gap-2'>
                         <span className='text-sm font-medium'>{r.title || r.id}</span>
-                        <Badge>{r.payload?.category || 'tool'}</Badge>
+                        <Badge>{r.payload?.category || '工具'}</Badge>
                       </div>
                       <div className='mt-1 text-muted'>{r.payload?.description || r.id}</div>
-                      <div className='mt-1 text-muted'>auto apply: {r.payload?.auto_apply_allowed ? 'allowed' : 'off'} · evidence: {r.payload?.evidence_required ? 'required' : 'optional'}</div>
+                      <div className='mt-1 text-muted'>自动写入：{r.payload?.auto_apply_allowed ? '允许' : '关闭'} · 证据：{r.payload?.evidence_required ? '必须' : '可选'}</div>
                     </button>
                   ))}
                   {!toolRows.length && <p className='text-sm text-muted'>暂无工具 skill，可用 Command Palette 创建：+ tool_skill 小说问题检查 --category checker</p>}
@@ -4432,8 +4450,8 @@ export default function App() {
               </Card>
               {toolSkillForm && (
                 <div className='space-y-2'>
-                  <SchemaForm schema={toolSkillSchema} value={toolSkillForm} onChange={setToolSkillForm} />
-                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${toolSkillForm.id}`, toolSkillForm); mutateToolSkillCards(); push('Tool skill saved') }}>Save Tool Skill</Button>
+                  <SchemaForm title='工具维护字段' schema={toolSkillSchema} value={toolSkillForm} onChange={setToolSkillForm} />
+                  <Button variant='primary' onClick={async () => { await api.put(`/api/projects/${project}/cards/${toolSkillForm.id}`, toolSkillForm); mutateToolSkillCards(); push('Tool skill saved') }}>保存工具</Button>
                 </div>
               )}
             </>

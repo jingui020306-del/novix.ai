@@ -283,7 +283,7 @@ function LineTraceCard({
                 <span className='font-medium'>{item.label}</span>
                 <Badge tone={getTraceTone(traces) as any}>{getTraceSummary(traces)}</Badge>
               </div>
-              <div className='mt-1 text-muted'>{item.type} · 当前章节 evidence marks</div>
+              <div className='mt-1 text-muted'>{item.type} · 当前章节证据记录</div>
             </div>
           )
         })}

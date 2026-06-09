@@ -2,11 +2,11 @@ import React from 'react'
 import { Card } from './ui/Card'
 import { Input, Select, Textarea } from './ui/Fields'
 
-export function SchemaForm({ schema, value, onChange }: { schema: any; value: any; onChange: (v: any) => void }) {
+export function SchemaForm({ schema, value, onChange, title = '维护字段' }: { schema: any; value: any; onChange: (v: any) => void; title?: string }) {
   const props = schema?.properties || {}
 
   return (
-    <Card title='Schema Form'>
+    <Card title={title}>
       <div className='space-y-3 density-space'>
         {Object.entries(props).map(([k, v]: any) => {
           const label = v?.title || k
