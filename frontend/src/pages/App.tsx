@@ -4584,21 +4584,21 @@ export default function App() {
       return (
         <div className='space-y-3 density-space'>
           {!isMaintainerMode ? (
-            <Card title='生成可用状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? 'ready' : '需要配置'}</Badge>} className='module-card module-context'>
+            <Card title='生成可用状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? '可生成' : '需要配置'}</Badge>} className='module-card module-context'>
               <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
                 <div className='rounded-ui border border-border bg-surface p-3'>
-                  <div className='text-xs text-muted'>API Profile</div>
+                  <div className='text-xs text-muted'>模型配置</div>
                   <div className='mt-1 text-lg font-semibold'>{readyProfileCount}</div>
                   <div className='text-xs text-muted'>{readyProfileCount ? '已有可用模型配置' : '还没有可用 API'}</div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-3'>
-                  <div className='text-xs text-muted'>Agent 分工</div>
+                  <div className='text-xs text-muted'>写作分工</div>
                   <div className='mt-1 text-lg font-semibold'>{readyModuleCount}/{agentModuleRows.length || 0}</div>
-                  <div className='text-xs text-muted'>{readyModuleCount ? '已有模块可用' : '等待配置 writer / critic / editor'}</div>
+                  <div className='text-xs text-muted'>{readyModuleCount ? '已有分工可用' : '等待配置写作/审查/校对'}</div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-3'>
                   <div className='text-xs text-muted'>当前模式</div>
-                  <div className='mt-1 text-lg font-semibold'>Author</div>
+                  <div className='mt-1 text-lg font-semibold'>作者</div>
                   <div className='text-xs text-muted'>隐藏维护信息，只保留作者需要的状态。</div>
                 </div>
               </div>
@@ -4631,49 +4631,49 @@ export default function App() {
             </div>
           </Card> : null}
 
-          <Card title='Settings'>
+          <Card title='界面设置'>
             <div className='grid grid-cols-2 gap-3'>
               <div>
-                <label className='text-xs text-muted'>Theme</label>
+                <label className='text-xs text-muted'>主题</label>
                 <Select value={settings.theme} onChange={(e) => applySettings({ ...settings, theme: e.target.value as any })}>
-                  <option value='system'>System</option>
-                  <option value='light'>Light</option>
-                  <option value='dark'>Dark</option>
+                  <option value='system'>跟随系统</option>
+                  <option value='light'>明亮</option>
+                  <option value='dark'>深色</option>
                 </Select>
               </div>
               <div>
-                <label className='text-xs text-muted'>Density</label>
+                <label className='text-xs text-muted'>界面密度</label>
                 <Select value={settings.density} onChange={(e) => applySettings({ ...settings, density: e.target.value as any })}>
-                  <option value='comfortable'>Comfortable</option>
-                  <option value='compact'>Compact</option>
+                  <option value='comfortable'>舒适</option>
+                  <option value='compact'>紧凑</option>
                 </Select>
               </div>
               <div>
-                <label className='text-xs text-muted'>Editor Font Size</label>
+                <label className='text-xs text-muted'>正文字号</label>
                 <Select value={settings.editorSize} onChange={(e) => applySettings({ ...settings, editorSize: e.target.value as any })}>
-                  <option value='small'>Small</option>
-                  <option value='medium'>Medium</option>
-                  <option value='large'>Large</option>
+                  <option value='small'>小</option>
+                  <option value='medium'>中</option>
+                  <option value='large'>大</option>
                 </Select>
               </div>
               <div>
-                <label className='text-xs text-muted'>Experience Mode</label>
+                <label className='text-xs text-muted'>使用模式</label>
                 <Select value={settings.experienceMode} onChange={(e) => applySettings({ ...settings, experienceMode: e.target.value as any })}>
-                  <option value='author'>Author</option>
-                  <option value='maintainer'>Maintainer</option>
+                  <option value='author'>作者</option>
+                  <option value='maintainer'>维护者</option>
                 </Select>
-                <div className='mt-1 text-xs text-muted'>Author 隐藏调试信息；Maintainer 显示 provider、manifest、JSON 和维护记录。</div>
+                <div className='mt-1 text-xs text-muted'>作者模式隐藏维护信息；维护者模式显示运行记录和原始配置。</div>
               </div>
               <div>
-                <label className='text-xs text-muted'>Default LLM profile</label>
+                <label className='text-xs text-muted'>默认模型配置</label>
                 <Select value={settings.defaultLlmProfileId} onChange={(e) => { const val = e.target.value; applySettings({ ...settings, defaultLlmProfileId: val }); setLlmProfileId(val) }}>
                   {Object.keys(profiles).map((k) => <option key={k} value={k}>{k}</option>)}
                 </Select>
               </div>
             </div>
             <div className='mt-3 space-y-2'>
-              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> Default auto apply patch</label>
-              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> Evidence viewer soft wrap</label>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> 默认自动应用校对建议</label>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> 证据文本自动换行</label>
             </div>
           </Card>
 
@@ -4683,7 +4683,7 @@ export default function App() {
                 <div className='mb-2 flex items-center justify-between gap-2'>
                   <span className='font-medium'>API Key 存储</span>
                   <Badge tone={llmStatus?.storage?.api_keys_returned_in_status ? 'warn' : 'success'}>
-                    {llmStatus?.storage?.api_keys_returned_in_status ? 'visible' : 'not returned'}
+                    {llmStatus?.storage?.api_keys_returned_in_status ? '可见' : '不会返回'}
                   </Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
@@ -4695,11 +4695,11 @@ export default function App() {
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
                 <div className='mb-2 flex items-center justify-between gap-2'>
                   <span className='font-medium'>作者确认策略</span>
-                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? 'auto apply on' : 'manual review'}</Badge>
+                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? '自动应用' : '手动确认'}</Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
                   <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
-                  <div>Proofread patch 默认应由作者接受/拒绝。</div>
+                  <div>校对建议默认应由作者接受/拒绝。</div>
                   <div>证据标记没有真实 quote 时不能显示为已命中。</div>
                 </div>
               </div>
@@ -4718,12 +4718,12 @@ export default function App() {
             </div>
           </Card>
 
-          <Card title='LLM Profiles (Global)'>
-            <p className='text-xs text-muted mb-2'>Create a profile from a provider preset, then assign writer / critic / editor agents below. Advanced JSON editing remains available.</p>
+          <Card title='模型配置'>
+            <p className='text-xs text-muted mb-2'>先添加一个模型配置，再在下面分配给写作、审查、校对和事实抽取。</p>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
               <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
                 <div>
-                  <label className='text-xs text-muted'>Preset</label>
+                  <label className='text-xs text-muted'>服务商模板</label>
                   <Select
                     value={selectedPresetId}
                     onChange={(e) => {
@@ -4737,98 +4737,102 @@ export default function App() {
                   </Select>
                 </div>
                 <div>
-                  <label className='text-xs text-muted'>Profile ID</label>
+                  <label className='text-xs text-muted'>配置名称</label>
                   <Input value={presetProfileId} onChange={(e) => setPresetProfileId(e.target.value)} placeholder='e.g. deepseek_writer' />
                 </div>
                 <div>
-                  <label className='text-xs text-muted'>Provider</label>
+                  <label className='text-xs text-muted'>服务商</label>
                   <Input value={profileDraft.provider || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, provider: e.target.value }))} placeholder='openai_compat' />
                 </div>
               </div>
               <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2'>
                 <div>
-                  <label className='text-xs text-muted'>Model</label>
+                  <label className='text-xs text-muted'>模型</label>
                   <Input value={profileDraft.model || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, model: e.target.value }))} placeholder='deepseek-chat' />
                 </div>
                 <div>
-                  <label className='text-xs text-muted'>Base URL</label>
+                  <label className='text-xs text-muted'>接口地址</label>
                   <Input value={profileDraft.base_url || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, base_url: e.target.value }))} placeholder='https://api.example.com' />
                 </div>
                 <div>
                   <label className='text-xs text-muted'>API Key</label>
-                  <Input type='password' value={profileDraft.api_key || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, api_key: e.target.value }))} placeholder='Stored locally in data/_global' />
+                  <Input type='password' value={profileDraft.api_key || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, api_key: e.target.value }))} placeholder='只保存在本地 data/_global' />
                 </div>
                 <div className='grid grid-cols-[1fr_auto] gap-2'>
                   <div>
-                    <label className='text-xs text-muted'>Timeout (seconds)</label>
+                    <label className='text-xs text-muted'>超时秒数</label>
                     <Input type='number' min='1' value={profileDraft.timeout_s || 60} onChange={(e) => setProfileDraft((x: any) => ({ ...x, timeout_s: e.target.value }))} />
                   </div>
                   <label className='mt-6 flex items-center gap-2 text-sm'>
                     <input type='checkbox' checked={Boolean(profileDraft.stream ?? true)} onChange={(e) => setProfileDraft((x: any) => ({ ...x, stream: e.target.checked }))} />
-                    Stream
+                    流式输出
                   </label>
                 </div>
               </div>
               <div className='mt-3 flex flex-wrap gap-2'>
-                <Button variant='primary' onClick={saveProfileDraft}>Save Profile</Button>
-                <Button onClick={applyPresetToEditor}>Fill JSON Only</Button>
+                <Button variant='primary' onClick={saveProfileDraft}>保存配置</Button>
+                {isMaintainerMode ? <Button onClick={applyPresetToEditor}>填入原始配置</Button> : null}
               </div>
-              <div className='mt-3 text-xs text-muted'>
+              {isMaintainerMode ? <div className='mt-3 text-xs text-muted'>
                 <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
                 <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
                 <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
                 <div>Editing an existing profile with an empty API Key field keeps the stored key.</div>
-              </div>
+              </div> : null}
             </div>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
               <div className='mb-2 flex items-center justify-between gap-2'>
                 <div>
-                  <h4 className='text-sm font-semibold'>Profile Health</h4>
-                  <p className='text-xs text-muted'>Local validation only. No provider call is made and API keys are not displayed.</p>
+                  <h4 className='text-sm font-semibold'>配置检查</h4>
+                  <p className='text-xs text-muted'>只检查本地字段，不会调用服务商，也不会显示 API Key 原文。</p>
                 </div>
-                <Badge tone={(llmStatus?.profile_missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.profile_missing_count || 0} incomplete</Badge>
+                <Badge tone={(llmStatus?.profile_missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.profile_missing_count || 0} 个待补</Badge>
               </div>
               <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
                 {profileHealthRows.map((row: any) => (
                   <div key={row.profile_id} className='rounded-ui border border-border bg-surface p-2'>
                     <div className='flex items-center justify-between gap-2'>
                       <span className='font-medium'>{row.profile_id}</span>
-                      <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.missing_fields?.length ? 'incomplete' : 'ready'}</Badge>
+                      <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? '模拟' : row.missing_fields?.length ? '待补' : '可用'}</Badge>
                     </div>
-                    <div className='mt-1 text-xs text-muted'>{row.provider} · {row.model || 'no model'}</div>
-                    <div className='mt-1 text-xs'>API key: {row.requires_api_key ? (row.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
-                    {row.missing_fields?.length ? <div className='mt-1 text-xs text-amber-700 dark:text-amber-300'>Missing: {row.missing_fields.join(', ')}</div> : null}
+                    <div className='mt-1 text-xs text-muted'>{row.provider} · {row.model || '未填写模型'}</div>
+                    <div className='mt-1 text-xs'>API Key：{row.requires_api_key ? (row.api_key_configured ? '已填写' : '未填写') : '不需要'}</div>
+                    {row.missing_fields?.length ? <div className='mt-1 text-xs text-amber-700 dark:text-amber-300'>待补字段：{row.missing_fields.join(', ')}</div> : null}
                     <div className='mt-2 flex flex-wrap gap-2'>
-                      <Button className='text-xs' onClick={() => loadProfileDraft(row.profile_id)}>Edit</Button>
-                      <Button className='text-xs' onClick={() => deleteProfileDraft(row.profile_id)} disabled={row.profile_id === 'mock_default'}>Delete</Button>
+                      <Button className='text-xs' onClick={() => loadProfileDraft(row.profile_id)}>编辑</Button>
+                      <Button className='text-xs' onClick={() => deleteProfileDraft(row.profile_id)} disabled={row.profile_id === 'mock_default'}>删除</Button>
                     </div>
                   </div>
                 ))}
-                {!profileHealthRows.length && <p className='text-sm text-muted'>No profiles found.</p>}
+                {!profileHealthRows.length && <p className='text-sm text-muted'>还没有模型配置。</p>}
               </div>
             </div>
-            <div className='mb-1 flex items-center justify-between gap-2'>
-              <label className='text-xs text-muted'>Advanced JSON</label>
-              <Badge>{Object.keys(globalProfiles?.profiles || {}).length} profiles</Badge>
-            </div>
-            <Textarea className='h-48 mono' value={profilesEditor} onChange={(e) => setProfilesEditor(e.target.value)} />
-            <div className='mt-2 flex gap-2'>
-              <Button variant='primary' onClick={async () => {
-                try {
-                  await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
-                  mutateGlobalProfiles()
-                  mutateLlmStatus()
-                  push('Global LLM profiles saved')
-                } catch {
-                  push('Invalid profiles JSON', 'error')
-                }
-              }}>Save Profiles</Button>
-              <Button onClick={() => setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))}>Reset</Button>
-            </div>
+            {isMaintainerMode ? (
+              <>
+                <div className='mb-1 flex items-center justify-between gap-2'>
+                  <label className='text-xs text-muted'>原始配置 JSON</label>
+                  <Badge>{Object.keys(globalProfiles?.profiles || {}).length} profiles</Badge>
+                </div>
+                <Textarea className='h-48 mono' value={profilesEditor} onChange={(e) => setProfilesEditor(e.target.value)} />
+                <div className='mt-2 flex gap-2'>
+                  <Button variant='primary' onClick={async () => {
+                    try {
+                      await api.post('/api/config/llm/profiles', { mode: 'replace', profiles: JSON.parse(profilesEditor || '{}') })
+                      mutateGlobalProfiles()
+                      mutateLlmStatus()
+                      push('Global LLM profiles saved')
+                    } catch {
+                      push('Invalid profiles JSON', 'error')
+                    }
+                  }}>保存原始配置</Button>
+                  <Button onClick={() => setProfilesEditor(JSON.stringify(globalProfiles?.profiles || {}, null, 2))}>重置</Button>
+                </div>
+              </>
+            ) : null}
           </Card>
 
-          <Card title='LLM Assignments (Global)'>
-            <p className='text-xs text-muted mb-2'>任务类型 {'->'} profile_id mapping. 建书、人物、脉络、章节正文、审查、校对、事实抽取可以分别使用不同模型。</p>
+          <Card title='写作分工'>
+            <p className='text-xs text-muted mb-2'>建书、人物、脉络、章节正文、审查、校对、事实抽取可以分别使用不同模型。</p>
             <div className='mb-3 space-y-3'>
               {['设定建设', '章节生成', '可信检查'].map((group) => (
                 <div key={group} className='rounded-ui border border-border bg-surface-2 p-3'>
@@ -4844,9 +4848,9 @@ export default function App() {
                         <div key={task.id} className='rounded-ui border border-border bg-surface p-2'>
                           <div className='mb-1 flex items-center justify-between gap-2'>
                             <label className='text-sm font-medium'>{task.label}</label>
-                            <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? 'mock' : row?.provider || 'missing'}</Badge>
+                            <Badge tone={row?.is_mock ? 'warn' : row?.missing_fields?.length || row?.profile_missing ? 'warn' : 'success'}>{row?.is_mock ? '模拟' : row?.provider || '待配置'}</Badge>
                           </div>
-                          <div className='mb-1 text-[11px] text-muted'>{task.id}</div>
+                          {isMaintainerMode ? <div className='mb-1 text-[11px] text-muted'>{task.id}</div> : null}
                           <Select
                             value={current}
                             onChange={(e) => {
@@ -4859,7 +4863,7 @@ export default function App() {
                               <option key={profileId} value={profileId}>{profileId}</option>
                             ))}
                           </Select>
-                          <div className='mt-1 text-xs text-muted'>{row?.model || 'no model'} · API key {row?.requires_api_key ? (row?.api_key_configured ? 'configured' : 'missing') : 'not required'}</div>
+                          <div className='mt-1 text-xs text-muted'>{row?.model || '未填写模型'} · API Key {row?.requires_api_key ? (row?.api_key_configured ? '已填写' : '未填写') : '不需要'}</div>
                         </div>
                       )
                     })}
@@ -4867,23 +4871,27 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
-            <div className='mt-2 flex gap-2'>
-              <Button variant='primary' onClick={async () => {
-                try {
-                  const next = JSON.parse(assignmentsEditor || '{}')
-                  await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: next })
-                  setAssignmentDraft(next)
-                  mutateGlobalAssignments()
-                  mutateLlmStatus()
-                  push('Global assignments saved')
-                } catch {
-                  push('Invalid assignments JSON', 'error')
-                }
-              }}>Save Assignments</Button>
-              <Button onClick={() => setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))}>Reset</Button>
-            </div>
-            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3 mt-2'>{JSON.stringify(providersMeta?.providers || [], null, 2)}</pre>
+            {isMaintainerMode ? (
+              <>
+                <Textarea className='h-40 mono' value={assignmentsEditor} onChange={(e) => setAssignmentsEditor(e.target.value)} />
+                <div className='mt-2 flex gap-2'>
+                  <Button variant='primary' onClick={async () => {
+                    try {
+                      const next = JSON.parse(assignmentsEditor || '{}')
+                      await api.post('/api/config/llm/assignments', { mode: 'replace', assignments: next })
+                      setAssignmentDraft(next)
+                      mutateGlobalAssignments()
+                      mutateLlmStatus()
+                      push('Global assignments saved')
+                    } catch {
+                      push('Invalid assignments JSON', 'error')
+                    }
+                  }}>保存分工 JSON</Button>
+                  <Button onClick={() => setAssignmentsEditor(JSON.stringify(globalAssignments?.assignments || {}, null, 2))}>重置</Button>
+                </div>
+                <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3 mt-2'>{JSON.stringify(providersMeta?.providers || [], null, 2)}</pre>
+              </>
+            ) : null}
           </Card>
         </div>
       )

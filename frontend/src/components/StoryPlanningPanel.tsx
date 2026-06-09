@@ -212,7 +212,7 @@ export function StoryPlanningPanel({
       )}
 
       {showJsonPreview ? (
-        <Card title='JSON Preview'>
+        <Card title='维护预览'>
           <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(storyCardPreview, null, 2)}</pre>
         </Card>
       ) : null}

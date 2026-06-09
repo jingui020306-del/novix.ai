@@ -239,7 +239,7 @@ export function WriteConfirmOverlay({
               })}
             </div>
             <div className='mt-2 text-muted'>
-              {useAgentAssignments ? 'Settings 里的任务分工会决定本次调用。' : `当前使用 ${llmProfileId} 覆盖全部分工。`}
+              {useAgentAssignments ? '设置里的写作分工会决定本次调用。' : `当前使用 ${llmProfileId} 覆盖全部分工。`}
             </div>
           </div>
 

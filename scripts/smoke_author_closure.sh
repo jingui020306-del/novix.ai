@@ -65,7 +65,7 @@ require_grep "StoryBuildWizardPanel" frontend/src/pages/App.tsx
 require_grep "StoryControlCard" frontend/src/pages/App.tsx
 require_grep "StoryPlanningPanel" frontend/src/pages/App.tsx
 require_grep "showJsonPreview=\\{isMaintainerMode\\}" frontend/src/pages/App.tsx
-require_grep "JSON Preview" frontend/src/components/StoryPlanningPanel.tsx
+require_grep "维护预览" frontend/src/components/StoryPlanningPanel.tsx
 
 # AI output must remain pending until the author confirms it.
 require_grep "待确认建书草案" frontend/src/components/BuildDraftReviewCards.tsx
