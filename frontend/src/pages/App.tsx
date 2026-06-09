@@ -4634,9 +4634,15 @@ export default function App() {
                 </div>
               </div>
               <div className='mt-3 flex flex-wrap gap-2'>
-                <Button onClick={() => applySettings({ ...settings, experienceMode: 'maintainer' })}>切到维护者模式</Button>
                 <Button onClick={() => mutateLlmStatus()}>刷新状态</Button>
               </div>
+              <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
+                <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>维护者入口</summary>
+                <div className='space-y-2 border-t border-border p-3'>
+                  <p>普通写作不需要进入这里。只有调试模型路由、原始 JSON、运行记录或开源维护时才切换。</p>
+                  <Button onClick={() => applySettings({ ...settings, experienceMode: 'maintainer' })}>进入维护者模式</Button>
+                </div>
+              </details>
             </Card>
           ) : null}
 
@@ -4687,14 +4693,22 @@ export default function App() {
                   <option value='large'>大</option>
                 </Select>
               </div>
-              <div>
-                <label className='text-xs text-muted'>使用模式</label>
-                <Select value={settings.experienceMode} onChange={(e) => applySettings({ ...settings, experienceMode: e.target.value as any })}>
-                  <option value='author'>作者</option>
-                  <option value='maintainer'>维护者</option>
-                </Select>
-                <div className='mt-1 text-xs text-muted'>作者模式隐藏维护信息；维护者模式显示运行记录和原始配置。</div>
-              </div>
+              {isMaintainerMode ? (
+                <div>
+                  <label className='text-xs text-muted'>使用模式</label>
+                  <Select value={settings.experienceMode} onChange={(e) => applySettings({ ...settings, experienceMode: e.target.value as any })}>
+                    <option value='author'>作者</option>
+                    <option value='maintainer'>维护者</option>
+                  </Select>
+                  <div className='mt-1 text-xs text-muted'>作者模式隐藏维护信息；维护者模式显示运行记录和原始配置。</div>
+                </div>
+              ) : (
+                <div className='rounded-ui border border-border bg-surface-2 p-3'>
+                  <div className='text-xs text-muted'>使用模式</div>
+                  <div className='mt-1 text-sm font-medium'>作者模式</div>
+                  <div className='mt-1 text-xs text-muted'>维护信息已折叠，写作时不用处理。</div>
+                </div>
+              )}
               <div>
                 <label className='text-xs text-muted'>默认模型配置</label>
                 <Select value={settings.defaultLlmProfileId} onChange={(e) => { const val = e.target.value; applySettings({ ...settings, defaultLlmProfileId: val }); setLlmProfileId(val) }}>

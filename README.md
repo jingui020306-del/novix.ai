@@ -356,12 +356,12 @@ On the Chapter page, pinned techniques show their suitable scenes, checking sign
 
 ## Author Mode And Maintainer Mode
 
-Settings include **Experience Mode**:
+Settings default to **Author mode**:
 
 - **Author** is the default. It hides provider, manifest, raw JSON, job event internals, and maintenance records.
 - **Maintainer** shows runtime safety, provider/model routing, context manifests, trust report JSON, patch internals, and debugging records.
 
-Use Author mode for normal writing. Use Maintainer mode when developing the open-source project or diagnosing model/provider behavior.
+Use Author mode for normal writing. The Maintainer entry is folded under Settings and should only be used when developing the open-source project or diagnosing model/provider behavior.
 
 ## Three Agent Workflow
 
