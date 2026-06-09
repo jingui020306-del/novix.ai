@@ -128,6 +128,8 @@ Open the app, go to **Projects**, and use the **首次启动检查** card.
 
 This checklist is a launch gate, not a marketing tour. You can open every page freely, but formal generation should only begin after the required book, model, character, chapter, and evidence-prep items are complete.
 
+In Author mode, a real model/API assignment is part of the launch gate. `mock_default` is for Maintainer-mode development and smoke testing, not for normal author generation.
+
 Recommended completion order:
 
 1. Configure an API profile in **Settings -> 模型配置**.

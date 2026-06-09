@@ -1475,15 +1475,20 @@ export default function App() {
     try {
       const routeRisks = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length)
       if (useAgentAssignments && !writeRouteRows.length) {
-        push('Agent assignments 状态还未加载，生成时将按后端配置解析', 'error')
+        push('模型分工还没有读取完成，请先刷新或去设置页检查', 'error')
+        if (!isMaintainerMode) return
       } else if (useAgentAssignments && routeRisks.length) {
-        push(`Agent assignments 有 ${routeRisks.length} 个模块未 ready，生成时可能 mock/fallback`, 'error')
+        push(`写作分工还有 ${routeRisks.length} 项待配置，请先补齐模型/API`, 'error')
+        if (!isMaintainerMode) return
       } else if (!useAgentAssignments && selectedProfileHealth?.is_mock) {
-        push(`当前 profile ${llmProfileId} 是 mock 模式，会生成模拟结果`, 'error')
+        push(`当前模型配置 ${llmProfileId} 是模拟模式，请先换成真实 API`, 'error')
+        if (!isMaintainerMode) return
       } else if (!useAgentAssignments && selectedProfileHealth?.missing_fields?.length) {
-        push(`当前 profile ${llmProfileId} 缺少: ${selectedProfileHealth.missing_fields.join(', ')}，生成时可能 fallback`, 'error')
+        push(`当前模型配置 ${llmProfileId} 还缺少字段：${selectedProfileHealth.missing_fields.join(', ')}`, 'error')
+        if (!isMaintainerMode) return
       } else if (!useAgentAssignments && !profiles[llmProfileId]) {
-        push(`当前 profile ${llmProfileId} 未找到，生成时可能 fallback`, 'error')
+        push(`当前模型配置 ${llmProfileId} 未找到，请先去设置页配置`, 'error')
+        if (!isMaintainerMode) return
       }
       setSelectedOpIds([])
       setEvents([])
@@ -1843,7 +1848,10 @@ export default function App() {
   const getWriteReadinessItems = () => {
     const pinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
     const pinnedCategories = Array.isArray(currentChapterMeta?.pinned_technique_categories) ? currentChapterMeta.pinned_technique_categories : []
+    const readyRoutes = writeRouteRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
+    const modelReady = writeRouteRows.length > 0 && readyRoutes.length === writeRouteRows.length
     return [
+      { label: '模型/API', done: isMaintainerMode || modelReady, detail: isMaintainerMode ? '维护者模式可测试' : writeRouteRows.length ? `${readyRoutes.length}/${writeRouteRows.length} 个分工可用` : '等待读取模型状态' },
       { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
       { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
       { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
@@ -5251,7 +5259,6 @@ export default function App() {
     </div>
   )
 
-  const confirmRouteRiskCount = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length).length
   const confirmReadinessItems = getWriteReadinessItems()
   const writeConfirmOverlay = pendingWriteJob ? (
     <WriteConfirmOverlay
