@@ -38,7 +38,7 @@ export function RightTechniquePanel({
   const suggestionRows = autoRecommendedTechniques.length ? autoRecommendedTechniques.slice(0, 4) : quickTechniqueRows.slice(0, 4)
 
   return (
-    <Card title='Techniques' extra={<Badge>{pinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
+    <Card title='本章技法' extra={<Badge>{pinnedTechniqueRows.length}</Badge>} className='module-card module-technique'>
       <div className='space-y-2 text-xs'>
         {pinnedTechniqueRows.map((row) => {
           const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)

@@ -79,6 +79,7 @@ const ACTIVITY_ITEMS = [
   { id: 'cards', label: '卡片', icon: UserRound },
   { id: 'techniques', label: '技法', icon: Sparkles },
   { id: 'canon', label: '事实', icon: Waypoints },
+  { id: 'wiki', label: '资料', icon: BookOpen },
   { id: 'settings', label: '设置', icon: Settings },
 ]
 
@@ -1998,7 +1999,7 @@ export default function App() {
       { id: 'nav-chapter', title: 'Go to Chapter Editor', group: 'Navigate', icon: FilePenLine, run: () => { setActiveActivity('explorer'); setView('chapter') } },
       { id: 'nav-canon', title: 'Go to Canon / Proposals', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('canon'); setView('canon') } },
       { id: 'nav-world', title: 'Go to World panel', group: 'Navigate', icon: Globe, run: () => { setActiveActivity('cards'); setView('world') } },
-      { id: 'nav-techniques', title: 'Go to Techniques', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('techniques'); setView('techniques') } },
+      { id: 'nav-techniques', title: '打开技法库', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('techniques'); setView('techniques') } },
     ]
 
     const navData: CommandItem[] = [
@@ -2239,6 +2240,7 @@ export default function App() {
               onClick={() => {
                 setActiveActivity(item.id)
                 if (item.id === 'settings') setView('settings')
+                if (item.id === 'wiki') setView('wiki')
               }}
               className={`focus-ring flex h-9 w-9 items-center justify-center rounded-ui ${activeActivity === item.id ? 'bg-brand-500 text-white' : 'text-muted hover:bg-surface'}`}
             >
@@ -2342,11 +2344,22 @@ export default function App() {
           <div className='mt-3 space-y-2'>
             <Button className='w-full justify-start text-xs' onClick={() => setView('canon')}>作品事实</Button>
             <Button className='w-full justify-start text-xs' onClick={() => setView('context')}>AI 使用材料</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setActiveActivity('wiki'); setView('wiki') }}>导入资料</Button>
             {(proposals || []).slice(-8).reverse().map((p: any) => (
               <button key={p.proposal_id || p.id} className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2' onClick={() => { setSelectedProposalId(p.proposal_id || p.id || ''); setView('canon') }}>
                 {p.name || p.proposal_id || p.id} <span className='text-muted'>({p.status || 'pending'})</span>
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {activeActivity === 'wiki' ? (
+          <div className='mt-3 space-y-2'>
+            <Button className='w-full justify-start text-xs' onClick={() => setView('wiki')}>资料导入</Button>
+            <Button className='w-full justify-start text-xs' onClick={() => { setActiveActivity('canon'); setView('canon') }}>待确认事实</Button>
+            <div className='rounded-ui border border-border bg-surface p-2 text-[11px] text-muted'>
+              导入资料只会生成待确认内容，不会直接改写正式设定。
+            </div>
           </div>
         ) : null}
 
@@ -3957,23 +3970,37 @@ export default function App() {
     if (view === 'style') {
       return (
         <div className='space-y-3 density-space'>
-          <Card title='Style Studio'>
+          <Card title='文风样本与规则'>
             <div className='space-y-2'>
-              <Textarea className='h-28' value={styleUploadText} onChange={(e) => setStyleUploadText(e.target.value)} placeholder='粘贴文风样本文本 txt/md' />
+              <Textarea className='h-28' value={styleUploadText} onChange={(e) => setStyleUploadText(e.target.value)} placeholder='粘贴一段你喜欢的文风样本，AI 会学习节奏、句式和语气。' />
               <div className='flex gap-2'>
                 <Button onClick={uploadStyleSample}>上传样本</Button>
                 <Button variant='primary' onClick={analyzeStyle}>分析文风</Button>
               </div>
-              <div className='text-xs text-muted'>Active Assets: {activeStyleAssets.join(', ') || 'none'}</div>
+              <div className='text-xs text-muted'>已启用素材：{activeStyleAssets.join('，') || '暂无'}</div>
             </div>
           </Card>
-          <Tabs items={['Style Card', 'Schema']} active='Style Card' onChange={() => {}} />
-          <Card title='Style data'>
-            <pre className='mono text-xs overflow-auto'>{JSON.stringify(styles, null, 2)}</pre>
+          <Card title='文风卡'>
+            <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+              {(Array.isArray(styles) ? styles : []).map((row: any) => (
+                <div key={row.id || row.title} className='rounded-ui border border-border bg-surface px-3 py-2 text-sm'>
+                  <div className='font-medium'>{row.title || row.id || '文风样本'}</div>
+                  <div className='mt-1 text-xs text-muted'>{row.payload?.summary || row.payload?.tone || row.payload?.description || '用于辅助 AI 保持文风一致。'}</div>
+                </div>
+              ))}
+              {(!Array.isArray(styles) || !styles.length) && <p className='text-sm text-muted'>还没有文风卡。可以先上传一段样本文本。</p>}
+            </div>
           </Card>
-          <Card title='Style schema'>
-            <pre className='mono text-xs overflow-auto'>{JSON.stringify(styleSchema, null, 2)}</pre>
-          </Card>
+          {isMaintainerMode ? (
+            <>
+              <Card title='文风原始数据'>
+                <pre className='mono text-xs overflow-auto'>{JSON.stringify(styles, null, 2)}</pre>
+              </Card>
+              <Card title='文风 Schema'>
+                <pre className='mono text-xs overflow-auto'>{JSON.stringify(styleSchema, null, 2)}</pre>
+              </Card>
+            </>
+          ) : null}
         </div>
       )
     }
@@ -4315,13 +4342,27 @@ export default function App() {
     }
 
     if (view === 'world') {
+      const worldResultRows = Array.isArray(worldRows) ? worldRows : []
       return (
-        <Card title='World Lore / World State'>
+        <Card title='世界观查询'>
           <div className='flex gap-2'>
-            <Input value={worldQuery} onChange={(e) => setWorldQuery(e.target.value)} />
-            <Button variant='primary' onClick={async () => { const r = await api.post(`/api/projects/${project}/world/query`, { query: worldQuery, top_k: 10, include_global: false }); setWorldRows(r) }}>Search</Button>
+            <Input value={worldQuery} onChange={(e) => setWorldQuery(e.target.value)} placeholder='查一个地点、规则、组织、物件...' />
+            <Button variant='primary' onClick={async () => { const r = await api.post(`/api/projects/${project}/world/query`, { query: worldQuery, top_k: 10, include_global: false }); setWorldRows(r) }}>查找</Button>
           </div>
-          <pre className='mono mt-3 text-xs rounded-ui bg-surface-2 p-3 overflow-auto'>{JSON.stringify(worldRows, null, 2)}</pre>
+          <div className='mt-3 space-y-2'>
+            {worldResultRows.map((row: any, idx: number) => {
+              const title = row.title || row.name || row.id || row.chunk_id || `资料片段 ${idx + 1}`
+              const body = row.text || row.content || row.summary || row.value || row.description || ''
+              return (
+                <div key={`${title}-${idx}`} className='rounded-ui border border-border bg-surface px-3 py-2 text-sm'>
+                  <div className='font-medium'>{title}</div>
+                  <div className='mt-1 text-xs text-muted'>{body || '已找到一条相关资料。'}</div>
+                </div>
+              )
+            })}
+            {!worldResultRows.length && <p className='text-sm text-muted'>输入关键词后，可以查找本书世界观里的地点、规则、组织和事实。</p>}
+          </div>
+          {isMaintainerMode ? <pre className='mono mt-3 text-xs rounded-ui bg-surface-2 p-3 overflow-auto'>{JSON.stringify(worldRows, null, 2)}</pre> : null}
         </Card>
       )
     }
@@ -4462,10 +4503,11 @@ export default function App() {
 
     if (view === 'wiki') {
       return (
-        <Card title='Wiki Import'>
-          <Textarea className='h-40 mono' value={wikiHtml} onChange={(e) => setWikiHtml(e.target.value)} />
+        <Card title='资料导入'>
+          <Textarea className='h-40 mono' value={wikiHtml} onChange={(e) => setWikiHtml(e.target.value)} placeholder='粘贴百科、设定资料或 HTML 片段，导入后会进入待确认事实。' />
+          <p className='mt-2 text-xs text-muted'>导入内容不会直接变成可信设定，需要作者确认后才进入正式事实库。</p>
           <div className='mt-2'>
-            <Button variant='primary' onClick={async () => { const fd = new FormData(); fd.append('kind', 'auto'); fd.append('file', new File([wikiHtml], 'wiki.html', { type: 'text/html' })); await fetch(`/api/projects/${project}/wiki/import`, { method: 'POST', body: fd }); mutateProposals(); push('Wiki imported') }}>导入HTML</Button>
+            <Button variant='primary' onClick={async () => { const fd = new FormData(); fd.append('kind', 'auto'); fd.append('file', new File([wikiHtml], 'wiki.html', { type: 'text/html' })); await fetch(`/api/projects/${project}/wiki/import`, { method: 'POST', body: fd }); mutateProposals(); push('Wiki imported') }}>导入资料</Button>
           </div>
         </Card>
       )
@@ -5027,9 +5069,9 @@ export default function App() {
   const latestTechniqueBriefForRight = events.filter((e) => e.event === 'TECHNIQUE_BRIEF').slice(-1)[0]?.data || (draft?.meta || {}).technique_brief || {}
   const latestEvent = (name: string) => events.filter((e) => e.event === name).slice(-1)[0]?.data
   const agentSteps = [
-    { name: 'A Review', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN') },
-    { name: 'B Draft', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT') },
-    { name: 'C Polish', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH') },
+    { name: 'A 审查', event: 'PRE_REVIEW_PLAN', data: latestEvent('PRE_REVIEW_PLAN') },
+    { name: 'B 初稿', event: 'WRITER_DRAFT', data: latestEvent('WRITER_DRAFT') },
+    { name: 'C 校对', event: 'PROOFREAD_PATCH', data: latestEvent('PROOFREAD_PATCH') },
   ]
   const rightPinnedTechniqueRows = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
   const rightPinnedTechniqueIds = new Set(rightPinnedTechniqueRows.map((row: any) => row.technique_id))
