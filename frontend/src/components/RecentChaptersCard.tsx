@@ -14,10 +14,32 @@ type RecentChaptersCardProps = {
   onOpenChapter: (chapterId: string) => void
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  draft: '草稿',
+  drafting: '写作中',
+  planned: '已规划',
+  revising: '修改中',
+  done: '已完成',
+  completed: '已完成',
+  generating: '生成中',
+  awaiting_review: '待审稿',
+  saved: '已保存',
+  risky: '有风险',
+}
+
+function statusLabel(status?: string) {
+  return STATUS_LABELS[status || ''] || status || '未开始'
+}
+
+function volumeLabel(volumeId?: string) {
+  if (!volumeId || volumeId === 'volume_default') return '默认卷'
+  return volumeId
+}
+
 export function RecentChaptersCard({ chapters, onOpenChapter }: RecentChaptersCardProps) {
   return (
     <Card title='最近章节'>
-      <div className='grid grid-cols-2 gap-2'>
+      <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
         {chapters.map((chapter) => (
           <button
             key={chapter.chapter_id}
@@ -26,12 +48,12 @@ export function RecentChaptersCard({ chapters, onOpenChapter }: RecentChaptersCa
           >
             <div className='flex items-center justify-between gap-2'>
               <span className='text-sm font-medium'>{chapter.chapter_title || chapter.title || chapter.chapter_id}</span>
-              <Badge>{chapter.chapter_status || '未开始'}</Badge>
+              <Badge>{statusLabel(chapter.chapter_status)}</Badge>
             </div>
-            <div className='mt-1 text-xs text-muted'>{chapter.chapter_id} · {chapter.volume_id || 'volume_default'}</div>
+            <div className='mt-1 text-xs text-muted'>{volumeLabel(chapter.volume_id)}</div>
           </button>
         ))}
-        {!chapters.length && <p className='text-sm text-muted'>暂无章节。</p>}
+        {!chapters.length && <p className='text-sm text-muted'>还没有章节。先建一卷，再创建第一章。</p>}
       </div>
     </Card>
   )
