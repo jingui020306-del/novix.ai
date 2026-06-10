@@ -131,10 +131,10 @@ export function parseCreateInput(input: string): ParsedCreate | null {
   const typeRaw = tokens.shift() || ''
   const type = typeRaw as CreateType
   if (!typeRaw) {
-    return { raw: input, type: 'character', title: '', opts, tags, locks, flags, errors: ['Missing create type'], warnings }
+    return { raw: input, type: 'character', title: '', opts, tags, locks, flags, errors: ['请先写要新建的类型，比如 + character 林秋'], warnings }
   }
   if (!Object.keys(ALLOWED).includes(typeRaw)) {
-    return { raw: input, type: 'character', title: '', opts, tags, locks, flags, errors: [`Unknown create type: ${typeRaw}`], warnings }
+    return { raw: input, type: 'character', title: '', opts, tags, locks, flags, errors: [`不支持这个新建类型：${typeRaw}`], warnings }
   }
 
   const titleParts: string[] = []
@@ -145,13 +145,13 @@ export function parseCreateInput(input: string): ParsedCreate | null {
   while (tokens.length) {
     const tk = tokens.shift() as string
     if (!tk.startsWith('--')) {
-      errors.push(`Unexpected token ${tk}`)
+      errors.push(`无法识别这段内容：${tk}`)
       continue
     }
     const key = tk.slice(2)
     const allowed = ALLOWED[type]
     if (!allowed.has(key) && !BOOL_FLAGS.has(key)) {
-      errors.push(`Unknown option --${key}`)
+      errors.push(`不支持这个参数：--${key}`)
       continue
     }
 
@@ -182,7 +182,7 @@ export function parseCreateInput(input: string): ParsedCreate | null {
 
     const val = tokens[0] && !tokens[0].startsWith('--') ? (tokens.shift() as string) : ''
     if (!val) {
-      errors.push(`Option --${key} needs a value`)
+      errors.push(`参数 --${key} 需要填写内容`)
       continue
     }
 
@@ -212,7 +212,7 @@ export function parseCreateInput(input: string): ParsedCreate | null {
     if (NUM_KEYS.has(key)) {
       const n = toNumber(val, key)
       if (n === null) {
-        errors.push(`Invalid number for --${key}: ${val}`)
+        errors.push(`参数 --${key} 需要填写数字：${val}`)
         continue
       }
       opts[key] = n
@@ -223,11 +223,11 @@ export function parseCreateInput(input: string): ParsedCreate | null {
   }
 
   const title = titleParts.join(' ').trim()
-  if (type === 'project' && !title) errors.push('Missing project title')
+  if (type === 'project' && !title) errors.push('请输入书名')
   if (type !== 'project' && !title) errors.push('请输入名称')
   if (type === 'blueprint') {
     const scenes = Number(opts.scenes ?? 1)
-    if (!Number.isFinite(scenes) || scenes < 1) errors.push('Blueprint requires --scenes >= 1')
+    if (!Number.isFinite(scenes) || scenes < 1) errors.push('蓝图场景数至少为 1')
   }
 
   return { raw: input, type, title, opts, tags, locks, flags, errors, warnings }
