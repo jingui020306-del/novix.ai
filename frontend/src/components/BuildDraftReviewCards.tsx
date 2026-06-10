@@ -36,6 +36,27 @@ const HISTORY_FILTERS = [
   ['rejected', '已拒绝'],
 ]
 
+const STATUS_LABELS: Record<string, string> = {
+  accepted: '已接受',
+  partially_accepted: '局部接受',
+  rejected: '已拒绝',
+  pending: '待确认',
+  pending_author_review: '待确认',
+  processed: '已处理',
+}
+
+function sourceLabel(source?: string) {
+  if (!source) return '本地草案'
+  if (source.includes('fallback')) return '本地草案'
+  if (source.includes('ai') || source.includes('agent')) return 'AI 建议'
+  if (source.includes('canvas')) return '脉络节点'
+  return source
+}
+
+function timeLabel(draft: BuildDraftRecord) {
+  return draft.updated_at || draft.created_at || '刚刚更新'
+}
+
 export function BuildDraftReviewCards({
   pendingDrafts,
   historyRows,
@@ -55,9 +76,9 @@ export function BuildDraftReviewCards({
             <div key={draft.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
               <button className='w-full text-left hover:underline' onClick={() => onOpenDraft(draft)}>
                 <span className='font-medium'>{draft.title || draft.kind}</span>
-                <span className='ml-2 text-muted'>rev {draft.revision || 1} · {draft.source || 'unknown'}</span>
+                <span className='ml-2 text-muted'>版本 {draft.revision || 1} · {sourceLabel(draft.source)}</span>
               </button>
-              <div className='mt-1 text-muted'>{draft.updated_at || draft.created_at || 'no timestamp'}</div>
+              <div className='mt-1 text-muted'>{timeLabel(draft)}</div>
               <div className='mt-1 flex gap-2'>
                 <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
                 <Button className='text-xs' onClick={() => onRejectDraft(draft)}>拒绝</Button>
@@ -89,9 +110,9 @@ export function BuildDraftReviewCards({
             <div key={draft.draft_id} className='rounded-ui border border-border bg-surface px-2 py-1.5 text-xs'>
               <button className='w-full text-left hover:underline' onClick={() => onOpenDraft(draft)}>
                 <span className='font-medium'>{draft.title || draft.kind}</span>
-                <span className='ml-2 text-muted'>{draft.status || 'processed'}</span>
+                <span className='ml-2 text-muted'>{STATUS_LABELS[draft.status || 'processed'] || draft.status || '已处理'}</span>
               </button>
-              <div className='mt-1 text-muted'>{draft.updated_at || draft.created_at || 'no timestamp'}</div>
+              <div className='mt-1 text-muted'>{timeLabel(draft)}</div>
               <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
                 {getAcceptedScopeLabels(draft).length ? <Badge tone='success'>{getAcceptedScopeLabels(draft).join(', ')}</Badge> : null}
                 {draft.rejection_reason ? <span>{draft.rejection_reason}</span> : null}
