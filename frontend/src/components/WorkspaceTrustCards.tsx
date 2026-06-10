@@ -1,4 +1,5 @@
 import { Card } from './ui/Card'
+import { Badge } from './ui/Badge'
 
 type CanonProposal = {
   proposal_id?: string
@@ -32,11 +33,17 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
     canon_fact: '事实',
     style_rule: '文风',
   }
+  const proposalTitle = (proposal: CanonProposal) => proposal.name || proposal.proposal_id || proposal.id || '待确认内容'
+  const riskTitle = (mark: UnsupportedMark) => {
+    const kind = markTypeLabel[mark.target_type || ''] || '要求'
+    return `${kind} · ${mark.label || mark.target_id || '需要回看'}`
+  }
 
   return (
-    <div className='grid grid-cols-2 gap-3'>
-      <Card title='待确认事实'>
-        <div className='space-y-1'>
+    <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+      <Card title='待作者确认' extra={<Badge tone={pendingProposals.length ? 'warn' : 'success'}>{pendingProposals.length}</Badge>}>
+        <div className='space-y-2'>
+          <p className='text-xs text-muted'>AI 提出的新设定、新事实或剧情信息，确认后才会进入正式资料。</p>
           {pendingProposals.slice(-5).reverse().map((proposal) => {
             const proposalId = proposal.proposal_id || proposal.id || ''
             return (
@@ -45,26 +52,27 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
                 className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
                 onClick={() => onOpenProposal(proposalId)}
               >
-                {proposal.name || proposalId}
+                {proposalTitle(proposal)}
               </button>
             )
           })}
-          {!pendingProposals.length && <p className='text-sm text-muted'>没有待确认事实。</p>}
+          {!pendingProposals.length && <p className='text-sm text-muted'>没有待确认内容，正式资料暂时干净。</p>}
         </div>
       </Card>
 
-      <Card title='未证实风险'>
-        <div className='space-y-1'>
+      <Card title='需要回看' extra={<Badge tone={unsupportedMarks.length ? 'warn' : 'success'}>{unsupportedMarks.length}</Badge>}>
+        <div className='space-y-2'>
+          <p className='text-xs text-muted'>这些要求还没有在正文里找到可靠证据，可以点开查看对应段落。</p>
           {unsupportedMarks.slice(0, 5).map((mark) => (
             <button
               key={mark.mark_id}
               className='w-full rounded-ui border border-border bg-surface px-2 py-1.5 text-left text-xs hover:bg-surface-2'
               onClick={() => onOpenMark(mark.mark_id)}
             >
-              {markTypeLabel[mark.target_type || ''] || '风险'} · {mark.label || mark.target_id}
+              {riskTitle(mark)}
             </button>
           ))}
-          {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有未证实风险。</p>}
+          {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有需要回看的证据问题。</p>}
         </div>
       </Card>
     </div>
