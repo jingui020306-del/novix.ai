@@ -65,6 +65,35 @@ const HISTORY_FILTERS = [
   ['rejected', '已拒绝'],
 ]
 
+const DRAFT_STATUS_LABELS: Record<string, string> = {
+  accepted: '已接受',
+  partially_accepted: '局部接受',
+  rejected: '已拒绝',
+  pending: '待确认',
+  pending_author_review: '待确认',
+  processed: '已处理',
+}
+
+function draftStatusLabel(status?: string) {
+  return DRAFT_STATUS_LABELS[status || ''] || status || '待确认'
+}
+
+function draftSourceLabel(source?: string) {
+  if (!source) return '本地草案'
+  if (source.includes('fallback')) return '本地草案'
+  if (source.includes('ai') || source.includes('agent')) return 'AI 建议'
+  if (source.includes('canvas')) return '脉络节点'
+  return source
+}
+
+function draftTimeLabel(draft: BuildDraftRecord) {
+  return draft.updated_at || draft.created_at || '刚刚更新'
+}
+
+function draftChapterLabel(chapterId?: string) {
+  return chapterId || '未绑定章节'
+}
+
 export function StoryBuildWizardPanel({
   steps,
   activeStepId,
@@ -152,20 +181,19 @@ export function StoryBuildWizardPanel({
           {selectedDraft ? (
             <div className='space-y-2'>
               <div className='flex items-center justify-between gap-2'>
-                <div className='text-sm font-medium'>{selectedDraft.title} <span className='text-xs text-muted'>rev {selectedDraft.revision}</span></div>
+                <div className='text-sm font-medium'>{selectedDraft.title} <span className='text-xs text-muted'>版本 {selectedDraft.revision || 1}</span></div>
                 <div className='flex gap-2'>
                   <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft(selectedDraft.kind || 'story_overview', selectedDraft.source_node || null)}>{busy ? '生成中...' : '刷新这一环节'}</Button>
                   <Button className='text-xs' variant='primary' onClick={onAcceptDraft}>确认写入</Button>
                 </div>
               </div>
               <div className='flex flex-wrap gap-2 text-xs text-muted'>
-                <Badge>{selectedDraft.status || 'pending'}</Badge>
-                <Badge>{selectedDraft.source || 'local'}</Badge>
+                <Badge>{draftStatusLabel(selectedDraft.status)}</Badge>
+                <Badge>{draftSourceLabel(selectedDraft.source)}</Badge>
                 {getAcceptedScopeLabels(selectedDraft).length ? <Badge tone='success'>已接受: {getAcceptedScopeLabels(selectedDraft).join(', ')}</Badge> : null}
-                {selectedDraft.accepted_target ? <Badge>写入: {selectedDraft.accepted_target}</Badge> : null}
-                {selectedDraft.rejection_reason ? <Badge tone='warn'>拒绝: {selectedDraft.rejection_reason}</Badge> : null}
-                {selectedDraft.source_node?.label ? <Badge>来源节点: {selectedDraft.source_node.label}</Badge> : null}
-                {selectedDraft.draft_id ? <span>{selectedDraft.draft_id}</span> : <span>未落盘 fallback</span>}
+                {selectedDraft.accepted_target ? <Badge>写入：{selectedDraft.accepted_target}</Badge> : null}
+                {selectedDraft.rejection_reason ? <Badge tone='warn'>拒绝：{selectedDraft.rejection_reason}</Badge> : null}
+                {selectedDraft.source_node?.label ? <Badge>来源节点：{selectedDraft.source_node.label}</Badge> : null}
               </div>
               {selectedDraft.generation_reason ? <div className='text-xs text-muted'>{selectedDraft.generation_reason}</div> : null}
               {draftEditor}
@@ -199,11 +227,11 @@ function DraftQueue({
           <div key={draft.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
             <button className='w-full text-left hover:underline' onClick={() => onOpenDraft(draft)}>
               <span className='font-medium'>{draft.title || draft.kind}</span>
-              <span className='ml-2 text-muted'>rev {draft.revision || 1}</span>
+              <span className='ml-2 text-muted'>版本 {draft.revision || 1}</span>
             </button>
-            <div className='mt-1 text-muted'>{draft.updated_at || draft.created_at || 'no timestamp'}</div>
+            <div className='mt-1 text-muted'>{draftTimeLabel(draft)}</div>
             <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
-              <span>{draft.source || 'unknown'} · {draft.selected_chapter || 'no chapter'}</span>
+              <span>{draftSourceLabel(draft.source)} · {draftChapterLabel(draft.selected_chapter)}</span>
               <div className='flex gap-1'>
                 <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
                 <Button className='text-xs' onClick={() => onRejectDraft(draft)}>拒绝</Button>
@@ -257,12 +285,12 @@ function DraftHistory({
           <div key={draft.draft_id} className='rounded-ui border border-border bg-surface-2 px-2 py-1.5 text-xs'>
             <button className='w-full text-left hover:underline' onClick={() => onOpenDraft(draft)}>
               <span className='font-medium'>{draft.title || draft.kind}</span>
-              <span className='ml-2 text-muted'>{draft.status || 'processed'}</span>
+              <span className='ml-2 text-muted'>{draftStatusLabel(draft.status || 'processed')}</span>
             </button>
-            <div className='mt-1 text-muted'>{draft.updated_at || draft.created_at || 'no timestamp'}</div>
+            <div className='mt-1 text-muted'>{draftTimeLabel(draft)}</div>
             <div className='mt-1 flex flex-wrap items-center gap-1 text-muted'>
               {getAcceptedScopeLabels(draft).length ? <Badge tone='success'>{getAcceptedScopeLabels(draft).join(', ')}</Badge> : null}
-              {draft.accepted_target ? <span>target: {draft.accepted_target}</span> : null}
+              {draft.accepted_target ? <span>写入：{draft.accepted_target}</span> : null}
               {draft.rejection_reason ? <span>{draft.rejection_reason}</span> : null}
             </div>
             <div className='mt-1 flex gap-1'>
