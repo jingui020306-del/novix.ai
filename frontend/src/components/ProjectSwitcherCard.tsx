@@ -41,6 +41,7 @@ export function ProjectSwitcherCard({
             <div className='text-xs text-muted'>项目编号：{project.id}</div>
           </button>
         ))}
+        {!projects.length ? <p className='rounded-ui border border-dashed border-border bg-surface px-3 py-3 text-sm text-muted'>书架还是空的。先新建一本书，再补题材、人物和第一卷。</p> : null}
         <div className='flex flex-wrap gap-2'>
           <Button variant='primary' onClick={onCreateProject}>新建一本书</Button>
           <Button onClick={onDownloadBackup}>导出备份</Button>

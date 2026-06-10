@@ -3787,7 +3787,7 @@ export default function App() {
             importInputRef={backupImportInputRef}
             onSelectProject={setProject}
             onCreateProject={async () => {
-              const response = await api.post('/api/projects', { title: '新项目' })
+              const response = await api.post('/api/projects', { title: '未命名新书' })
               setProject(response.project_id)
               mutateProjects()
             }}
