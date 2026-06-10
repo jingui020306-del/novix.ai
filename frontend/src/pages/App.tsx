@@ -883,6 +883,22 @@ export default function App() {
     return out
   }
 
+  const createTypeLabel = (type: string) => ({
+    project: '书',
+    blueprint: '大纲蓝图',
+    volume: '卷',
+    chapter: '章节',
+    character: '人物',
+    world: '世界观',
+    lore: '资料',
+    world_rule: '世界规则',
+    style: '文风',
+    outline: '大纲',
+    story: '故事卡',
+    technique: '技法',
+    tool_skill: '写作工具',
+  } as Record<string, string>)[type] || type
+
   const mapCreateCard = (parsed: ParsedCreate): { card: any; warnings: string[] } => {
     const warnings: string[] = []
     const ts = Date.now()
@@ -1176,7 +1192,7 @@ export default function App() {
       await lazyLoadPaletteData(true)
       return { ok: true, label: `${parsed.type}:${parsed.title}` }
     } catch {
-      return { ok: false, message: 'Create request failed' }
+      return { ok: false, message: '创建失败，请检查命令内容' }
     }
   }
 
@@ -1275,7 +1291,7 @@ export default function App() {
     const head = parts[0].trim()
     const optsRaw = parts.slice(1)
     const headTokens = head.split(/\s+/).filter(Boolean)
-    if (!headTokens.length) return { mode: isPin ? 'pin_cat' : 'unpin_cat', error: 'Missing category name' }
+    if (!headTokens.length) return { mode: isPin ? 'pin_cat' : 'unpin_cat', error: '请填写技法分类名称' }
     let intensity = 'med'
     if (isPin && ['low', 'med', 'high'].includes((headTokens[headTokens.length - 1] || '').toLowerCase())) {
       intensity = headTokens.pop()!.toLowerCase()
@@ -1309,7 +1325,7 @@ export default function App() {
     const head = parts[0].trim()
     const optsRaw = parts.slice(1)
     const headTokens = head.split(/\s+/).filter(Boolean)
-    if (!headTokens.length) return { mode: isPin ? 'pin' : 'unpin', error: 'Missing technique name' }
+    if (!headTokens.length) return { mode: isPin ? 'pin' : 'unpin', error: '请填写技法名称' }
     let intensity = 'med'
     if (isPin && ['low', 'med', 'high'].includes((headTokens[headTokens.length - 1] || '').toLowerCase())) {
       intensity = headTokens.pop()!.toLowerCase()
@@ -1430,9 +1446,9 @@ export default function App() {
     return {
       item: {
         id: `create-${parsed.type}-${parsed.title || 'untitled'}`,
-        title: `Create ${parsed.type}: ${parsed.title || '(title required)'}`,
-        subtitle: parsed.title ? 'Press Enter to create' : 'Missing title',
-        group: 'Create',
+        title: `新建${createTypeLabel(parsed.type)}：${parsed.title || '请先填写标题'}`,
+        subtitle: parsed.title ? '按 Enter 创建' : '缺少标题',
+        group: '新建',
         icon: Sparkles,
         keywords: [parsed.type, parsed.title, ...parsed.tags, ...parsed.locks, ...createHelpText()],
         payload: { kind: 'create', type: parsed.type },
@@ -1442,7 +1458,7 @@ export default function App() {
             push(out.message || '创建失败', 'error')
             return
           }
-          push(`已创建：${out.label}`)
+          push(`已创建${createTypeLabel(parsed.type)}：${parsed.title || out.label}`)
         },
       },
     }
