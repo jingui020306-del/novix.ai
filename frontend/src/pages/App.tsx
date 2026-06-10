@@ -2974,7 +2974,7 @@ export default function App() {
         return normalizeStoryCard({ ...prev, payload })
       })
       await markBuildDraftPartiallyAccepted(keys)
-      push('已局部写入 Story 表单，请保存故事卡')
+      push('已局部写入故事卡表单，请保存故事卡')
     }
 
     const acceptBuildDraft = async () => {
@@ -2983,7 +2983,7 @@ export default function App() {
       try {
         parsed = JSON.parse(buildDraft.body || '{}')
       } catch {
-        push('草案 JSON 无法解析，请先修正', 'error')
+        push('草案原始内容无法解析，请先修正', 'error')
         return
       }
       if (buildDraft.kind === 'character_seed') {
@@ -3039,7 +3039,7 @@ export default function App() {
       if (buildDraft.draft_id) await api.put(`/api/projects/${project}/build-drafts/${buildDraft.draft_id}`, { body: buildDraft.body, status: 'accepted', accepted_target: storyForm?.id || 'story_new', accepted_scope: ['all'] })
       setBuildDraft({ ...buildDraft, status: 'accepted', accepted_scope: ['all'] })
       mutateBuildDraftRows()
-      push('草案已确认写入 Story 表单，请保存故事卡')
+      push('草案已确认写入故事卡表单，请保存故事卡')
     }
 
     const storyPayload = normalizeStoryCard(storyForm).payload
@@ -3311,7 +3311,7 @@ export default function App() {
     )
     const renderBuildDraftJsonDebug = () => (
       <details className='rounded-ui border border-border bg-surface-2 p-2'>
-        <summary className='cursor-pointer text-xs text-muted'>JSON debug / 原始草案</summary>
+        <summary className='cursor-pointer text-xs text-muted'>原始草案内容</summary>
         <Textarea className='mt-2 h-40 mono' value={buildDraft?.body || ''} onChange={(e) => buildDraft && setBuildDraft({ ...buildDraft, body: e.target.value })} />
       </details>
     )
@@ -3327,7 +3327,7 @@ export default function App() {
       if (!parsedBuildDraft) {
         return (
           <div className='space-y-2'>
-            <div className='rounded-ui border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-200'>草案 JSON 暂时无法解析，修正后会恢复结构化编辑。</div>
+            <div className='rounded-ui border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-200'>草案原始内容暂时无法解析，修正后会恢复结构化编辑。</div>
             {renderBuildDraftJsonDebug()}
           </div>
         )
@@ -4570,7 +4570,7 @@ export default function App() {
                       <div className='mt-1 text-muted'>自动写入：{r.payload?.auto_apply_allowed ? '允许' : '关闭'} · 证据：{r.payload?.evidence_required ? '必须' : '可选'}</div>
                     </button>
                   ))}
-                  {!toolRows.length && <p className='text-sm text-muted'>暂无工具 skill，可用 Command Palette 创建：+ tool_skill 小说问题检查 --category checker</p>}
+                  {!toolRows.length && <p className='text-sm text-muted'>暂无写作工具。可以用快捷入口创建：+ tool_skill 小说问题检查 --category checker</p>}
                 </div>
               </Card>
               {toolSkillForm && (
@@ -4671,16 +4671,16 @@ export default function App() {
             </Card>
           ) : null}
 
-          {isMaintainerMode ? <Card title='LLM Runtime Safety' extra={<Badge tone={llmStatus?.all_mock ? 'warn' : (llmStatus?.missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.all_mock ? 'mock mode' : `${llmStatus?.missing_count || 0} missing`}</Badge>}>
+          {isMaintainerMode ? <Card title='模型运行安全' extra={<Badge tone={llmStatus?.all_mock ? 'warn' : (llmStatus?.missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.all_mock ? '模拟模式' : `${llmStatus?.missing_count || 0} 项待补`}</Badge>}>
             <div className='grid grid-cols-1 gap-2 text-xs md:grid-cols-4'>
               {(llmStatus?.modules || []).map((row: any) => (
                 <div key={row.module} className='rounded-ui border border-border bg-surface-2 p-2'>
                   <div className='flex items-center justify-between gap-2'>
                     <span className='font-medium'>{row.module}</span>
-                    <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? 'mock' : row.provider}</Badge>
+                    <Badge tone={row.is_mock ? 'warn' : row.missing_fields?.length ? 'warn' : 'success'}>{row.is_mock ? '模拟' : row.provider}</Badge>
                   </div>
                   <div className='mt-1 text-muted'>{row.profile_id}</div>
-                  <div className='mt-1 text-muted'>{row.model || 'no model'}</div>
+                  <div className='mt-1 text-muted'>{row.model || '未填写模型'}</div>
                   <div className='mt-1'>API Key：{row.requires_api_key ? (row.api_key_configured ? '已填写' : '未填写') : '不需要'}</div>
                   {row.missing_fields?.length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>缺少字段：{row.missing_fields.join(', ')}</div> : null}
                   {row.profile_missing ? <div className='mt-1 text-amber-700 dark:text-amber-300'>模型配置未找到</div> : null}
@@ -4847,7 +4847,7 @@ export default function App() {
                 <div><b>Required:</b> {selectedPreset?.required_fields?.join(', ') || '-'}</div>
                 <div><b>Optional:</b> {selectedPreset?.optional_fields?.join(', ') || '-'}</div>
                 <div><b>Stream:</b> {selectedPreset?.supports_stream ? 'supported' : 'not supported'}</div>
-                <div>Editing an existing profile with an empty API Key field keeps the stored key.</div>
+                <div>编辑已有配置时，API Key 留空会保留原来的密钥。</div>
               </div> : null}
             </div>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
@@ -4971,14 +4971,14 @@ export default function App() {
     const outlineCard = (paletteCacheRef.current.outlines || [])[0] || null
     return (
       <div className='space-y-3 density-space'>
-        <Card title='Outline Technique Mount'>
+        <Card title='大纲技法挂载'>
           <div className='grid grid-cols-2 gap-2 mb-2'>
             <div className='rounded-ui border border-border bg-surface-2 p-2'>
-              <div className='text-xs font-medium mb-1'>Macro categories</div>
+              <div className='text-xs font-medium mb-1'>大类技法</div>
               <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify((outlineCard?.payload?.technique_prefs || []).map((x: any) => ({ scope: x.scope, ref: x.ref, categories: x.categories || [] })), null, 2)}</pre>
             </div>
             <div className='rounded-ui border border-border bg-surface-2 p-2'>
-              <div className='text-xs font-medium mb-1'>Micro techniques</div>
+              <div className='text-xs font-medium mb-1'>具体技法</div>
               <pre className='mono text-[11px] whitespace-pre-wrap'>{JSON.stringify((outlineCard?.payload?.technique_prefs || []).map((x: any) => ({ scope: x.scope, ref: x.ref, techniques: x.techniques || [] })), null, 2)}</pre>
             </div>
           </div>
@@ -4997,9 +4997,9 @@ export default function App() {
               }
             }}
           />
-          <p className='text-xs text-muted'>支持 arc/chapter/beat 级 macro(categories) + micro(techniques) 挂载；chapter pinned_techniques 会覆盖同 technique_id。</p>
+          <p className='text-xs text-muted'>支持按脉络、章节和情节点挂载大类技法与具体技法；本章单独挂载的技法会优先使用。</p>
         </Card>
-        <Card title='Memory Packs'>
+        <Card title='本章记忆'>
           <div className='grid grid-cols-2 gap-3'>
             <div className='space-y-2 max-h-64 overflow-auto'>
               {(Array.isArray(memoryPacks) ? memoryPacks : []).map((p: any) => (
@@ -5009,18 +5009,18 @@ export default function App() {
                   onClick={() => setSelectedMemoryPackId(p.pack_id)}
                 >
                   <div className='font-medium'>{p.chapter_id} / {p.job_id}</div>
-                  <div className='text-muted'>evidence={p.summary?.evidence_count || 0} compression={p.summary?.compression_steps || 0}</div>
+                  <div className='text-muted'>证据 {p.summary?.evidence_count || 0} · 压缩 {p.summary?.compression_steps || 0}</div>
                 </button>
               ))}
-              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>No memory packs yet. Run a job first.</p> : null}
+              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>还没有本章记忆。生成或检查章节后会出现。</p> : null}
             </div>
             <div className='rounded-ui border border-border bg-surface-2 p-3'>
               {selectedMemoryPack ? (
                 <div className='space-y-2'>
-                  <div className='text-xs'><b>Pack:</b> {selectedMemoryPack.pack_id}</div>
-                  <div className='text-xs'><b>Budget report</b></div>
+                  <div className='text-xs'><b>记忆包：</b>{selectedMemoryPack.pack_id}</div>
+                  <div className='text-xs'><b>材料取舍记录</b></div>
                   <pre className='mono text-[11px] overflow-auto max-h-36'>{JSON.stringify(selectedMemoryPack.budget_report || {}, null, 2)}</pre>
-                  <div className='text-xs'><b>Evidence</b></div>
+                  <div className='text-xs'><b>证据来源</b></div>
                   <div className='space-y-1 max-h-32 overflow-auto'>
                     {(selectedMemoryPack.evidence || []).map((e: any) => (
                       <button key={`${e.kb_id}:${e.chunk_id}`} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => openEvidence(e)}>
@@ -5029,18 +5029,21 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-              ) : <p className='text-sm text-muted'>Select a memory pack.</p>}
+              ) : <p className='text-sm text-muted'>选择一个记忆包查看 AI 本章记住了什么。</p>}
             </div>
           </div>
         </Card>
-        <Card title='Context Manifest' extra={selectedBlueprintId ? <Badge>Blueprint: {selectedBlueprintId}</Badge> : undefined}>
+        <Card title='上下文记录' extra={selectedBlueprintId ? <Badge>蓝图：{selectedBlueprintId}</Badge> : undefined}>
           {currentManifest ? (
-            <pre className='mono text-xs overflow-auto rounded-ui bg-surface-2 p-3'>{JSON.stringify(currentManifest, null, 2)}</pre>
+            <details className='rounded-ui border border-border bg-surface-2 text-xs'>
+              <summary className='cursor-pointer px-3 py-2 font-medium'>查看本次 AI 使用和舍弃的材料</summary>
+              <pre className='mono overflow-auto border-t border-border p-3'>{JSON.stringify(currentManifest, null, 2)}</pre>
+            </details>
           ) : (
             <Skeleton className='h-20' />
           )}
         </Card>
-        <Card title='Evidence Jump'>
+        <Card title='证据跳转'>
           <div className='space-y-2'>
             {evidence.map((e: any) => (
               <button key={`${e.kb_id}:${e.chunk_id}`} className='w-full rounded-ui border border-border bg-surface px-2 py-2 text-left text-sm hover:bg-surface-2' onClick={() => openEvidence(e)}>
@@ -5048,7 +5051,7 @@ export default function App() {
                 <span className='ml-2 text-xs text-muted'>{e.source?.path}</span>
               </button>
             ))}
-            {!evidence.length && <p className='text-sm text-muted'>No evidence yet.</p>}
+            {!evidence.length && <p className='text-sm text-muted'>还没有证据。生成或检查章节后会出现。</p>}
           </div>
         </Card>
       </div>
