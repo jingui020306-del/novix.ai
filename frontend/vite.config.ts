@@ -5,6 +5,17 @@ const backendPort = process.env.NOVIX_BACKEND_PORT || '8000'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'swr'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,
