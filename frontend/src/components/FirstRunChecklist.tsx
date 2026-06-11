@@ -38,7 +38,7 @@ export function FirstRunChecklist({ steps }: FirstRunChecklistProps) {
         ))}
       </div>
       <p className='mt-2 text-xs text-muted'>
-        模型、建书、人物、卷章和证据检查全部补齐后，再进入正式生成。
+        模型、建书、人物、卷章和正文依据全部补齐后，再开始写初稿。
       </p>
     </Card>
   )

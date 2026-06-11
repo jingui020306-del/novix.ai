@@ -62,7 +62,7 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
 
       <Card title='需要回看' extra={<Badge tone={unsupportedMarks.length ? 'warn' : 'success'}>{unsupportedMarks.length}</Badge>}>
         <div className='space-y-2'>
-          <p className='text-xs text-muted'>这些要求还没有在正文里找到可靠证据，可以点开查看对应段落。</p>
+          <p className='text-xs text-muted'>这些要求还没有找到可靠正文依据，可以点开回看对应段落。</p>
           {unsupportedMarks.slice(0, 5).map((mark) => (
             <button
               key={mark.mark_id}
@@ -72,7 +72,7 @@ export function WorkspaceTrustCards({ proposals, unsupportedMarks, onOpenProposa
               {riskTitle(mark)}
             </button>
           ))}
-          {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有需要回看的证据问题。</p>}
+          {!unsupportedMarks.length && <p className='text-sm text-muted'>当前章节没有需要回看的要求。</p>}
         </div>
       </Card>
     </div>
