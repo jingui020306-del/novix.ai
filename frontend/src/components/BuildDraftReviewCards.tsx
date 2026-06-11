@@ -32,14 +32,14 @@ type BuildDraftReviewCardsProps = {
 const HISTORY_FILTERS = [
   ['all', '全部'],
   ['accepted', '已接受'],
-  ['partially_accepted', '局部'],
-  ['rejected', '已拒绝'],
+  ['partially_accepted', '部分接受'],
+  ['rejected', '先不用'],
 ]
 
 const STATUS_LABELS: Record<string, string> = {
   accepted: '已接受',
   partially_accepted: '局部接受',
-  rejected: '已拒绝',
+  rejected: '先不用',
   pending: '待确认',
   pending_author_review: '待确认',
   processed: '已处理',
@@ -80,8 +80,8 @@ export function BuildDraftReviewCards({
               </button>
               <div className='mt-1 text-muted'>{timeLabel(draft)}</div>
               <div className='mt-1 flex gap-2'>
-                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
-                <Button className='text-xs' onClick={() => onRejectDraft(draft)}>拒绝</Button>
+                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>查看草案</Button>
+                <Button className='text-xs' onClick={() => onRejectDraft(draft)}>先不用</Button>
               </div>
               {draft.source_node?.label ? (
                 <div className='mt-1 text-[11px] text-muted'>来源节点：{draft.source_node.label}</div>
@@ -92,7 +92,7 @@ export function BuildDraftReviewCards({
         </div>
       </Card>
 
-      <Card title='建书草案历史'>
+      <Card title='已处理草案'>
         <div className='space-y-1'>
           <div className='flex flex-wrap gap-1 pb-1'>
             {HISTORY_FILTERS.map(([key, label]) => (
@@ -118,8 +118,8 @@ export function BuildDraftReviewCards({
                 {draft.rejection_reason ? <span>{draft.rejection_reason}</span> : null}
               </div>
               <div className='mt-1 flex gap-1'>
-                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
-                <Button className='text-xs' onClick={() => onRestoreDraft(draft)}>恢复待确认</Button>
+                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>查看草案</Button>
+                <Button className='text-xs' onClick={() => onRestoreDraft(draft)}>重新确认</Button>
               </div>
             </div>
           ))}
