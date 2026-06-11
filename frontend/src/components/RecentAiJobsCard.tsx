@@ -46,9 +46,8 @@ function labelForStage(stage?: string) {
 
 const jobSteps = [
   { id: 'plan', label: '读要求' },
-  { id: 'draft', label: '写正文' },
+  { id: 'draft', label: '写初稿' },
   { id: 'proof', label: '校对' },
-  { id: 'trust', label: '查证据' },
 ]
 
 function stepIndexForJob(stage?: string, status?: string) {
@@ -57,7 +56,7 @@ function stepIndexForJob(stage?: string, status?: string) {
   if (raw.includes('PRE_REVIEW') || raw.includes('MANIFEST')) return 0
   if (raw.includes('WRITER') || raw.includes('DRAFT')) return 1
   if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return 2
-  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return 3
+  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return 2
   return -1
 }
 
@@ -69,7 +68,7 @@ function cleanSummary(job: AiJobSummary) {
 
 export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJobsCardProps) {
   return (
-    <Card title='写作进度'>
+    <Card title='最近写作'>
       <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
         {jobs.slice(0, 6).map((job) => {
           const currentStep = stepIndexForJob(job.last_event || job.stage, job.status)
@@ -84,10 +83,12 @@ export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJ
                 <span className='truncate text-sm font-medium'>{job.chapter_id || '本章写作'}</span>
                 <Badge tone={toneForJob(job.status)}>{labelForStatus(job.status)}</Badge>
               </div>
-              <div className='mt-2 grid grid-cols-4 gap-1 text-[11px]'>
+              <div className='mt-2 flex items-center gap-2 text-[11px]'>
                 {jobSteps.map((step, idx) => (
-                  <div key={step.id} className={`rounded-ui border px-1.5 py-1 text-center ${idx <= currentStep ? 'border-brand-500 bg-indigo-50 text-foreground dark:bg-indigo-900/20' : 'border-border bg-surface-2 text-muted'}`}>
-                    {step.label}
+                  <div key={step.id} className='flex min-w-0 flex-1 items-center gap-1.5'>
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${idx <= currentStep ? 'bg-brand-500' : 'bg-border'}`} />
+                    <span className={idx <= currentStep ? 'truncate text-foreground' : 'truncate text-muted'}>{step.label}</span>
+                    {idx < jobSteps.length - 1 ? <span className='h-px flex-1 bg-border' /> : null}
                   </div>
                 ))}
               </div>
