@@ -21,7 +21,7 @@ export function BuildProgressCard({ steps, onOpenStep }: BuildProgressCardProps)
       title='建书完成度'
       extra={<Badge tone={doneCount === steps.length ? 'success' : 'warn'}>{doneCount}/{steps.length}</Badge>}
     >
-      <div className='grid grid-cols-3 gap-2'>
+      <div className='grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3'>
         {steps.map((step) => (
           <button
             key={step.id}

@@ -19,7 +19,7 @@ export function FirstRunChecklist({ steps }: FirstRunChecklistProps) {
 
   return (
     <Card
-      title='首次启动检查'
+      title='正式写作前检查'
       extra={<Badge tone={doneCount === steps.length ? 'success' : 'warn'}>{doneCount}/{steps.length}</Badge>}
     >
       <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
@@ -38,7 +38,7 @@ export function FirstRunChecklist({ steps }: FirstRunChecklistProps) {
         ))}
       </div>
       <p className='mt-2 text-xs text-muted'>
-        这些是开跑前条件：模型、建书、人物、卷章和证据检查全部补齐后，再进入正式生成。
+        模型、建书、人物、卷章和证据检查全部补齐后，再进入正式生成。
       </p>
     </Card>
   )
