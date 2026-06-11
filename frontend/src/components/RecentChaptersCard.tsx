@@ -38,7 +38,7 @@ function volumeLabel(volumeId?: string) {
 
 export function RecentChaptersCard({ chapters, onOpenChapter }: RecentChaptersCardProps) {
   return (
-    <Card title='最近章节'>
+    <Card title='最近在写'>
       <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
         {chapters.map((chapter) => (
           <button
@@ -53,7 +53,7 @@ export function RecentChaptersCard({ chapters, onOpenChapter }: RecentChaptersCa
             <div className='mt-1 text-xs text-muted'>{volumeLabel(chapter.volume_id)}</div>
           </button>
         ))}
-        {!chapters.length && <p className='text-sm text-muted'>还没有章节。先建一卷，再创建第一章。</p>}
+        {!chapters.length && <p className='text-sm text-muted'>还没有正文。先建一卷，再写第一章。</p>}
       </div>
     </Card>
   )
