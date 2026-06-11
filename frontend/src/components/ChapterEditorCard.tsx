@@ -205,20 +205,20 @@ export function ChapterEditorCard({
           </Select>
         </div>
         <details className='col-span-12 rounded-ui border border-border bg-surface-2 text-xs'>
-          <summary className='cursor-pointer px-3 py-2 font-medium'>章节信息</summary>
+          <summary className='cursor-pointer px-3 py-2 font-medium'>存档信息</summary>
           <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
             <div>
               <label className='text-xs text-muted'>章节编号</label>
               <Input value={selectedChapter} onChange={(e) => setSelectedChapter(e.target.value)} />
-              <div className='mt-1 text-muted'>用于文件和接口定位。正常写作时不用修改。</div>
+              <div className='mt-1 text-muted'>这是本章的内部存档名，正常写作时不用修改。</div>
             </div>
           </div>
         </details>
         <details className='col-span-12 rounded-ui border border-border bg-surface-2 text-xs'>
-          <summary className='cursor-pointer px-3 py-2 font-medium'>高级设置</summary>
+          <summary className='cursor-pointer px-3 py-2 font-medium'>高级写作设置</summary>
           <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
             <div>
-              <label className='text-xs text-muted'>模型选择</label>
+              <label className='text-xs text-muted'>AI 分工</label>
               <label className='mb-1 flex items-center gap-2 text-xs'>
                 <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
                 使用设置里的分工模型
@@ -228,11 +228,11 @@ export function ChapterEditorCard({
                   <option key={k} value={k}>{k} ({v.provider}/{v.model})</option>
                 ))}
               </Select>
-              <div className='mt-1 text-muted'>给开源维护和高级用户使用，作者默认不用改。</div>
+              <div className='mt-1 text-muted'>需要为不同写作环节指定不同模型时再改。</div>
             </div>
             <label className='flex items-center gap-2 text-sm'>
               <input type='checkbox' checked={autoApplyPatch} onChange={(e) => setAutoApplyPatch(e.target.checked)} />
-              自动应用 AI 修改建议
+              自动写入 AI 校对建议
             </label>
           </div>
         </details>
@@ -240,7 +240,7 @@ export function ChapterEditorCard({
 
       <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs'>
         <summary className='cursor-pointer px-3 py-2 font-medium'>
-          AI 生成控制 <span className='ml-2 text-muted'>({generationScopeLabel})</span>
+          本次写作控制 <span className='ml-2 text-muted'>({generationScopeLabel})</span>
         </summary>
         <div className='border-t border-border p-3'>
           <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
@@ -305,22 +305,22 @@ export function ChapterEditorCard({
       <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs'>
         <summary className='cursor-pointer px-3 py-2 font-medium'>只修改正文中的一小段</summary>
         <div className='grid grid-cols-12 gap-2 border-t border-border p-3'>
-          <div className='col-span-3'>
+          <div className='col-span-12 sm:col-span-6 lg:col-span-3'>
             <label className='text-xs text-muted'>选择方式</label>
             <Select value={selectionMode} onChange={(e) => setSelectionMode(e.target.value)}>
               <option value='line'>按行</option>
               <option value='paragraph'>按段落</option>
             </Select>
           </div>
-          <div className='col-span-3'>
+          <div className='col-span-12 sm:col-span-6 lg:col-span-3'>
             <label className='text-xs text-muted'>{selectionMode === 'line' ? '开始行' : '开始段'}</label>
             <Input value={selectionStart} onChange={(e) => setSelectionStart(e.target.value)} placeholder='开始' />
           </div>
-          <div className='col-span-3'>
+          <div className='col-span-12 sm:col-span-6 lg:col-span-3'>
             <label className='text-xs text-muted'>{selectionMode === 'line' ? '结束行' : '结束段'}</label>
             <Input value={selectionEnd} onChange={(e) => setSelectionEnd(e.target.value)} placeholder='结束' />
           </div>
-          <div className='col-span-3 flex items-end gap-2'>
+          <div className='col-span-12 flex items-end gap-2 lg:col-span-3'>
             {selectionRange ? <Button onClick={onRewriteSelection} disabled={!canGenerate}>让 AI 改这一段</Button> : null}
           </div>
           {selectionRange ? <p className='col-span-12 text-xs text-muted'>已选择：L{selectionRange.start}-L{selectionRange.end}</p> : <p className='col-span-12 text-xs text-muted'>填写开始和结束位置后，可以只让 AI 修改这一小段。</p>}
@@ -336,7 +336,7 @@ export function ChapterEditorCard({
       ) : null}
 
       <div className='mt-3 grid grid-cols-12 gap-3'>
-        <div className='col-span-3 rounded-ui border border-border bg-surface p-2'>
+        <div className='col-span-12 rounded-ui border border-border bg-surface p-2 lg:col-span-3'>
           <div className='mb-2 flex items-center justify-between'>
             <span className='text-xs font-medium'>段落标记</span>
             <Badge>{evidenceMarkCount}</Badge>
@@ -367,7 +367,7 @@ export function ChapterEditorCard({
         </div>
         <Textarea
           id='chapter-manuscript-editor'
-          className='editor-text col-span-9 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7'
+          className='editor-text col-span-12 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7 lg:col-span-9'
           value={chapterEditorText}
           onFocus={onEditorFocus}
           onChange={(e) => setChapterEditorText(e.target.value)}
