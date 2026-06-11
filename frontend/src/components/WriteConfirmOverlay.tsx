@@ -92,14 +92,14 @@ export function WriteConfirmOverlay({
       <div
         role='dialog'
         aria-modal='true'
-        aria-label='生成前确认'
+        aria-label='开写前确认'
         className='w-[min(840px,96vw)] rounded-ui border border-border bg-panel shadow-soft'
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className='border-b border-border px-4 py-3'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <div>
-              <h3 className='text-base font-semibold'>生成前确认</h3>
+              <h3 className='text-base font-semibold'>开写前确认</h3>
               <p className='text-xs text-muted'>确认作者已经同意本章写法、材料和检查项，再让 AI 扩展初稿。</p>
             </div>
             <Badge tone={allReady ? 'success' : 'warn'}>{readyCount}/{readinessItems.length}</Badge>
@@ -162,7 +162,7 @@ export function WriteConfirmOverlay({
               <span className='font-medium'>本章开写检查</span>
               <Badge tone={allReady ? 'success' : 'warn'}>{readyCount}/{readinessItems.length}</Badge>
             </div>
-            <div className='grid grid-cols-2 gap-1.5 md:grid-cols-4'>
+            <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4'>
               {readinessItems.map((item) => (
                 <div key={item.label} className={`rounded-ui border px-2 py-1.5 ${item.done ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border bg-surface-2'}`}>
                   <div className='flex items-center justify-between gap-2'>
@@ -219,7 +219,7 @@ export function WriteConfirmOverlay({
               <span className='font-medium'>AI 分工</span>
               <Badge tone={readyRoutes === orderedRouteRows.length ? 'success' : 'warn'}>{readyRoutes}/{orderedRouteRows.length} 可用</Badge>
             </div>
-            <div className='grid grid-cols-1 gap-1.5 md:grid-cols-4'>
+            <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4'>
               {orderedRouteRows.map((row: any) => {
                 const meta = routeLabels[row.module] || { label: row.module, purpose: '本次写作' }
                 const ready = routeReady(row)
@@ -236,14 +236,14 @@ export function WriteConfirmOverlay({
             </div>
             <div className='mt-2 text-muted'>
               {useAgentAssignments ? '每个角色会按设置里的写作分工执行。' : '当前使用同一个模型完成全部分工。'}
-              <span className='ml-2'>模型细节已收起，作者只需要确认四个分工都可用。</span>
+              <span className='ml-2'>模型明细已收起，作者只需要确认四个分工都可用。</span>
             </div>
           </div>
 
           <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
-            <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>维护信息</summary>
+            <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>高级信息</summary>
             <div className='space-y-2 border-t border-border p-3'>
-              <div>模型路由：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 覆盖全部分工`}；自动应用校对：{autoApplyPatch ? '开启' : '关闭'}；最大生成量：{pendingWriteJob.maxTokens}</div>
+              <div>分工方式：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 负责全部分工`}；校对建议自动写入：{autoApplyPatch ? '开启' : '关闭'}；写作长度上限：{pendingWriteJob.maxTokens}</div>
               <div className='space-y-1'>
                 {writeRouteRows.map((row: any) => (
                   <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>
@@ -254,14 +254,14 @@ export function WriteConfirmOverlay({
                 ))}
                 {!writeRouteRows.length ? <div>模型状态还没有读取完成。</div> : null}
               </div>
-              <div>本章记忆包：{memoryPackCount}</div>
+              <div>本章参考包：{memoryPackCount}</div>
             </div>
           </details>
         </div>
         <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
-          <Button onClick={onGoSettings}>去配置 API</Button>
+          <Button onClick={onGoSettings}>检查 API 设置</Button>
           <Button onClick={onCancel}>取消</Button>
-          <Button variant='primary' onClick={onConfirm} disabled={!allReady}>确认生成</Button>
+          <Button variant='primary' onClick={onConfirm} disabled={!allReady}>开始写初稿</Button>
         </div>
       </div>
     </div>
