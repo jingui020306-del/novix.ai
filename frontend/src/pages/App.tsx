@@ -1909,7 +1909,7 @@ export default function App() {
       await mutateChapterReviews()
       await mutateDraft()
       await mutateDraftDetails()
-      push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已拒绝')
+      push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已标为先不用')
     } catch {
       push('AI 草稿状态更新失败', 'error')
     }
@@ -1936,7 +1936,7 @@ export default function App() {
     try {
       await api.put(`/api/projects/${project}/drafts/${selectedChapter}/patch-reviews/${reviewId}`, { status: 'rejected', accepted_op_ids: [] })
       await mutatePatchReviews()
-      push('校对建议已拒绝')
+      push('校对建议已标为先不用')
     } catch {
       push('校对建议拒绝失败', 'error')
     }
@@ -2809,7 +2809,7 @@ export default function App() {
       })
       if (buildDraft?.draft_id === rec.draft_id) setBuildDraft({ ...buildDraft, status: 'rejected' })
       mutateBuildDraftRows()
-      push('草案已拒绝')
+      push('草案已标为先不用')
     }
 
     const restoreBuildDraft = async (rec: any) => {
@@ -4395,11 +4395,11 @@ export default function App() {
                     <div className='flex items-center gap-2 text-sm'>
                       <Badge>{proposalType}</Badge>
                       <span>{p.name || p.value || p.proposal_id}</span>
-                      <span className='text-xs text-muted'>{p.status === 'accepted' ? '已确认' : p.status === 'rejected' ? '已拒绝' : '待确认'}</span>
+                      <span className='text-xs text-muted'>{p.status === 'accepted' ? '已确认' : p.status === 'rejected' ? '先不用' : '待确认'}</span>
                     </div>
                     <div className='mt-2 flex gap-2'>
                       <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/accept`, {}); mutateProposals(); push('待确认事实已确认') }}>确认</Button>
-                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('待确认事实已拒绝') }}>拒绝</Button>
+                      <Button className='text-xs' onClick={async () => { await api.post(`/api/projects/${project}/canon/proposals/${p.proposal_id}/reject`, {}); mutateProposals(); push('待确认事实已标为先不用') }}>先不用</Button>
                     </div>
                   </div>
                 )
