@@ -4640,7 +4640,7 @@ export default function App() {
       return (
         <div className='space-y-3 density-space'>
           {!isMaintainerMode ? (
-            <Card title='生成可用状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? '可生成' : '需要配置'}</Badge>} className='module-card module-context'>
+            <Card title='开写准备状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? '可以开写' : '先补 API'}</Badge>} className='module-card module-context'>
               <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
                 <div className='rounded-ui border border-border bg-surface p-3'>
                   <div className='text-xs text-muted'>模型配置</div>
@@ -4650,7 +4650,7 @@ export default function App() {
                 <div className='rounded-ui border border-border bg-surface p-3'>
                   <div className='text-xs text-muted'>写作分工</div>
                   <div className='mt-1 text-lg font-semibold'>{readyModuleCount}/{agentModuleRows.length || 0}</div>
-                  <div className='text-xs text-muted'>{readyModuleCount ? '已有分工可用' : '等待配置写作/审查/校对'}</div>
+                  <div className='text-xs text-muted'>{readyModuleCount ? '已有写作分工' : '等待配置写作/审查/校对'}</div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-3'>
                   <div className='text-xs text-muted'>当前模式</div>
@@ -4742,7 +4742,7 @@ export default function App() {
               </div>
             </div>
             <div className='mt-3 space-y-2'>
-              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> 默认自动应用校对建议</label>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> 校对建议默认直接写入正文</label>
               <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> 证据文本自动换行</label>
             </div>
           </Card>
@@ -4765,11 +4765,11 @@ export default function App() {
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
                 <div className='mb-2 flex items-center justify-between gap-2'>
                   <span className='font-medium'>作者确认策略</span>
-                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? '自动应用' : '手动确认'}</Badge>
+                  <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? '直接写入' : '手动确认'}</Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
                   <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
-                  <div>校对建议默认应由作者接受/拒绝。</div>
+                  <div>校对建议默认应由作者确认或标为先不用。</div>
                   <div>证据标记没有真实 quote 时不能显示为已命中。</div>
                 </div>
               </div>
@@ -4780,10 +4780,10 @@ export default function App() {
                 </div>
                 <div className='flex flex-wrap gap-2'>
                   <Button onClick={downloadProjectBackup}>导出项目备份</Button>
-                  <Button onClick={downloadManuscriptMarkdown}>导出正文 Markdown</Button>
+                  <Button onClick={downloadManuscriptMarkdown}>导出正文</Button>
                   <Button onClick={() => backupImportInputRef.current?.click()}>导入备份</Button>
                 </div>
-                <div className='mt-2 text-muted'>备份包含项目资料；正文 Markdown 适合投稿、迁移和人工阅读。导入备份会作为新项目恢复，不覆盖当前项目。</div>
+                <div className='mt-2 text-muted'>备份包含项目资料；导出的正文适合投稿、迁移和人工阅读。导入备份会作为新项目恢复，不覆盖当前项目。</div>
               </div>
             </div>
           </Card>
