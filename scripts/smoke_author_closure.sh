@@ -48,7 +48,7 @@ require_grep "Maintainer mode" README.md
 
 # One write action should expose transparent pre-generation routing and readiness.
 require_grep "开写前确认" frontend/src/components/WriteConfirmOverlay.tsx
-require_grep "AI 分工" frontend/src/components/WriteConfirmOverlay.tsx
+require_grep "AI 角色" frontend/src/components/WriteConfirmOverlay.tsx
 require_grep "写初稿" frontend/src/components/WriteConfirmOverlay.tsx
 require_grep "审故事" frontend/src/components/WriteConfirmOverlay.tsx
 require_grep "改错字" frontend/src/components/WriteConfirmOverlay.tsx

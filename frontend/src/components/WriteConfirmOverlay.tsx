@@ -216,7 +216,7 @@ export function WriteConfirmOverlay({
 
           <div className='mt-3 rounded-ui border border-border bg-surface p-3 text-xs'>
             <div className='mb-2 flex items-center justify-between gap-2'>
-              <span className='font-medium'>AI 分工</span>
+              <span className='font-medium'>AI 角色</span>
               <Badge tone={readyRoutes === orderedRouteRows.length ? 'success' : 'warn'}>{readyRoutes}/{orderedRouteRows.length} 可用</Badge>
             </div>
             <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4'>
@@ -259,7 +259,7 @@ export function WriteConfirmOverlay({
           </details>
         </div>
         <div className='flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3'>
-          <Button onClick={onGoSettings}>检查 API 设置</Button>
+          <Button onClick={onGoSettings}>检查写作模型</Button>
           <Button onClick={onCancel}>取消</Button>
           <Button variant='primary' onClick={onConfirm} disabled={!allReady}>开始写初稿</Button>
         </div>
