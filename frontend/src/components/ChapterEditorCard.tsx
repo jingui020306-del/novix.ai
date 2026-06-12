@@ -179,7 +179,7 @@ export function ChapterEditorCard({
         <div className='flex flex-wrap gap-2'>
           <Button onClick={onSave} disabled={chapterSaving}>{chapterSaving ? '保存中...' : '保存正文'}</Button>
           <Button onClick={onAnalyze} disabled={chapterSaving || analyzeBusy}>{analyzeBusy ? '检查中...' : '检查要求'}</Button>
-          <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识生成</Button>
+          <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识起草</Button>
         </div>
       }
     >

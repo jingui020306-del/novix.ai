@@ -69,14 +69,14 @@ export function ChapterPrewriteCard({
           <div className='flex flex-wrap gap-2'>
             <Button onClick={onSaveStructure}>保存结构点</Button>
             <Button onClick={onOpenCanvas}>打开画布</Button>
-            <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识生成</Button>
+            <Button variant='primary' onClick={onGenerate} disabled={!canGenerate}>按共识起草</Button>
           </div>
         </div>
         <div className='rounded-ui border border-border bg-surface p-3'>
           <div className='mb-2 flex items-center justify-between gap-2'>
             <div>
               <div className='text-sm font-semibold'>这一章要写到</div>
-              <div className='text-[11px] text-muted'>勾选后会进入生成控制和证据点亮。</div>
+              <div className='text-[11px] text-muted'>勾选后会进入本次写作控制和正文点亮。</div>
             </div>
             <Badge>{selectedNodeIds.length}</Badge>
           </div>

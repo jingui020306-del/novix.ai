@@ -97,7 +97,7 @@ export function RecentAiJobsCard({ jobs, selectedJobId, onSelectJob }: RecentAiJ
             </button>
           )
         })}
-        {!jobs.length && <p className='text-sm text-muted'>还没有写作记录。生成本章后，这里会显示当前进度。</p>}
+        {!jobs.length && <p className='text-sm text-muted'>还没有写作记录。开始写初稿后，这里会显示当前进度。</p>}
       </div>
     </Card>
   )

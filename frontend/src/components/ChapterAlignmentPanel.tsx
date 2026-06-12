@@ -182,7 +182,7 @@ export function ChapterAlignmentPanel({
           <Button onClick={onSaveAgreement}>保存共识</Button>
           <Button variant='primary' onClick={onRunWithAgreement} disabled={!writeReady}>按这个写初稿</Button>
         </div>
-        {!writeReady ? <div className='mt-2 text-xs text-muted'>确认写法并补齐开写检查后，才能生成初稿。</div> : null}
+        {!writeReady ? <div className='mt-2 text-xs text-muted'>确认写法并补齐开写检查后，才能开始写初稿。</div> : null}
       </div>
     </Card>
   )

@@ -42,7 +42,7 @@ export function ChapterDraftReviewQueue({ pendingCount, reviews, onAccept, onRej
             ) : null}
           </div>
         ))}
-        {!reviews.length && <p className='text-sm text-muted'>生成本章后，AI 草稿会先进入这里等待作者确认。</p>}
+        {!reviews.length && <p className='text-sm text-muted'>开始写初稿后，AI 草稿会先进入这里等待作者确认。</p>}
       </div>
     </details>
   )

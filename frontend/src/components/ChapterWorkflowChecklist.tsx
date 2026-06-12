@@ -20,7 +20,7 @@ export function ChapterWorkflowChecklist({ steps }: ChapterWorkflowChecklistProp
   return (
     <details className='rounded-ui border border-border bg-surface'>
       <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
-        生成后的作者流程 <span className='text-xs text-muted'>({completed}/{steps.length})</span>
+        初稿后的作者流程 <span className='text-xs text-muted'>({completed}/{steps.length})</span>
       </summary>
       <div className='grid grid-cols-1 gap-2 border-t border-border p-3 md:grid-cols-4'>
         {steps.map((step) => (
