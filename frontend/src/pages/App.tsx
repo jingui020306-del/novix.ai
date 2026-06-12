@@ -4743,7 +4743,7 @@ export default function App() {
             </div>
             <div className='mt-3 space-y-2'>
               <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.defaultAutoApplyPatch} onChange={(e) => { const v = e.target.checked; applySettings({ ...settings, defaultAutoApplyPatch: v }); setAutoApplyPatch(v) }} /> 校对建议默认直接写入正文</label>
-              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> 证据文本自动换行</label>
+              <label className='flex items-center gap-2 text-sm'><input type='checkbox' checked={settings.evidenceWrap} onChange={(e) => applySettings({ ...settings, evidenceWrap: e.target.checked })} /> 回看依据自动换行</label>
             </div>
           </Card>
 
@@ -4751,15 +4751,15 @@ export default function App() {
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
                 <div className='mb-2 flex items-center justify-between gap-2'>
-                  <span className='font-medium'>API Key 存储</span>
+                  <span className='font-medium'>API Key 安全</span>
                   <Badge tone={llmStatus?.storage?.api_keys_returned_in_status ? 'warn' : 'success'}>
                     {llmStatus?.storage?.api_keys_returned_in_status ? '可见' : '不会返回'}
                   </Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
-                  <div>Profile 文件: {llmStatus?.storage?.profiles_path || '-'}</div>
-                  <div>Agent 分配文件: {llmStatus?.storage?.assignments_path || '-'}</div>
-                  <div>状态接口只显示 api_key_configured，不显示 API key 原文。</div>
+                  <div>模型配置文件: {llmStatus?.storage?.profiles_path || '-'}</div>
+                  <div>写作分工文件: {llmStatus?.storage?.assignments_path || '-'}</div>
+                  <div>界面只显示是否已填写，不显示 API Key 原文。</div>
                 </div>
               </div>
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
@@ -4770,7 +4770,7 @@ export default function App() {
                 <div className='space-y-1 text-muted'>
                   <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
                   <div>校对建议默认应由作者确认或标为先不用。</div>
-                  <div>证据标记没有真实 quote 时不能显示为已命中。</div>
+                  <div>没有正文原句的位置，不能显示为已命中。</div>
                 </div>
               </div>
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs md:col-span-2'>
