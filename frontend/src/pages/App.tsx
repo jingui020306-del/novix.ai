@@ -1564,7 +1564,7 @@ export default function App() {
           push('本章初稿已完成')
         }
         if (evt.event === 'MARK_EXTRACTION' && Array.isArray(evt.data?.marks)) {
-          void applyCanvasEvidenceStatuses(evt.data.marks).then(() => push('本章结构点状态已根据证据更新'))
+          void applyCanvasEvidenceStatuses(evt.data.marks).then(() => push('本章结构点状态已根据正文依据更新'))
         }
       }
     } catch {
@@ -1605,7 +1605,7 @@ export default function App() {
       await applyCanvasEvidenceStatuses(Array.isArray(res?.marks) ? res.marks : evidenceMarkRows)
       push(`检查完成：${res?.marks?.length || 0} 个正文依据`)
     } catch {
-      push('证据检查失败', 'error')
+      push('正文依据检查失败', 'error')
     }
   }
 
@@ -2267,7 +2267,7 @@ export default function App() {
   const trustStatusText = !requirementLights.length
     ? '还没有给本章绑定要求'
     : riskyRequirementCount
-      ? `${riskyRequirementCount} 个要求还没有可靠正文证据`
+      ? `${riskyRequirementCount} 个要求还没有可靠正文依据`
       : `${writtenRequirementCount} 个要求已被正文点亮`
   const trustStatusTone = !requirementLights.length ? 'default' : riskyRequirementCount ? 'warn' : 'success'
   const riskPreviewItems = requirementLights.filter((item: any) => {
@@ -3519,7 +3519,7 @@ export default function App() {
         if (raw.includes('PRE_REVIEW')) return '检查写作要求'
         if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
         if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
-        if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查证据'
+        if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查正文依据'
         if (raw.includes('DONE')) return '完成'
         return '准备下一步'
       }
@@ -5009,7 +5009,7 @@ export default function App() {
                   onClick={() => setSelectedMemoryPackId(p.pack_id)}
                 >
                   <div className='font-medium'>{p.chapter_id} / {p.job_id}</div>
-                  <div className='text-muted'>证据 {p.summary?.evidence_count || 0} · 压缩 {p.summary?.compression_steps || 0}</div>
+                  <div className='text-muted'>依据 {p.summary?.evidence_count || 0} · 压缩 {p.summary?.compression_steps || 0}</div>
                 </button>
               ))}
               {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>还没有本章记忆。起草或检查章节后会出现。</p> : null}
@@ -5020,7 +5020,7 @@ export default function App() {
                   <div className='text-xs'><b>记忆包：</b>{selectedMemoryPack.pack_id}</div>
                   <div className='text-xs'><b>材料取舍记录</b></div>
                   <pre className='mono text-[11px] overflow-auto max-h-36'>{JSON.stringify(selectedMemoryPack.budget_report || {}, null, 2)}</pre>
-                  <div className='text-xs'><b>证据来源</b></div>
+                  <div className='text-xs'><b>依据来源</b></div>
                   <div className='space-y-1 max-h-32 overflow-auto'>
                     {(selectedMemoryPack.evidence || []).map((e: any) => (
                       <button key={`${e.kb_id}:${e.chunk_id}`} className='w-full rounded-ui border border-border bg-surface px-2 py-1 text-left text-xs hover:bg-surface-2' onClick={() => openEvidence(e)}>
@@ -5043,7 +5043,7 @@ export default function App() {
             <Skeleton className='h-20' />
           )}
         </Card>
-        <Card title='证据跳转'>
+        <Card title='依据跳转'>
           <div className='space-y-2'>
             {evidence.map((e: any) => (
               <button key={`${e.kb_id}:${e.chunk_id}`} className='w-full rounded-ui border border-border bg-surface px-2 py-2 text-left text-sm hover:bg-surface-2' onClick={() => openEvidence(e)}>

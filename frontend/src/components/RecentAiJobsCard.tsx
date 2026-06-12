@@ -39,7 +39,7 @@ function labelForStage(stage?: string) {
   if (raw.includes('PRE_REVIEW')) return '审查写作要求'
   if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
   if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
-  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查证据'
+  if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查正文依据'
   if (raw.includes('DONE')) return '完成'
   return '等待下一步'
 }
