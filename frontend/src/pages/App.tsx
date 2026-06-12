@@ -642,11 +642,11 @@ export default function App() {
   const applyPresetToEditor = () => {
     const profileId = (presetProfileId || '').trim()
     if (!profileId) {
-      push('请先填写模型配置名称', 'error')
+      push('请先填写模型昵称', 'error')
       return
     }
     if (!selectedPreset) {
-      push('服务商模板还没加载完成', 'error')
+      push('模型来源模板还没加载完成', 'error')
       return
     }
     try {
@@ -656,16 +656,16 @@ export default function App() {
         [profileId]: { ...(selectedPreset.defaults || {}) },
       }
       setProfilesEditor(JSON.stringify(next, null, 2))
-      push(`已填入模型配置：${profileId}`)
+      push(`已填入写作模型：${profileId}`)
     } catch {
-      push('模型配置 JSON 无法解析，请先修正', 'error')
+      push('模型原始配置无法解析，请先修正', 'error')
     }
   }
 
   const saveProfileDraft = async () => {
     const profileId = (presetProfileId || '').trim()
     if (!profileId) {
-      push('请先填写模型配置名称', 'error')
+      push('请先填写模型昵称', 'error')
       return
     }
     const required = selectedPreset?.required_fields || ['provider', 'model']
@@ -689,9 +689,9 @@ export default function App() {
       setProfilesEditor(JSON.stringify(next, null, 2))
       await mutateGlobalProfiles()
       await mutateLlmStatus()
-      push(`模型配置已保存：${profileId}`)
+      push(`写作模型已保存：${profileId}`)
     } catch {
-      push('模型配置保存失败', 'error')
+      push('写作模型保存失败', 'error')
     }
   }
 
@@ -704,7 +704,7 @@ export default function App() {
     if (matchedPreset) setSelectedPresetId(matchedPreset.provider_id)
     setPresetProfileId(profileId)
     setProfileDraft({ ...profile, api_key: '' })
-    push(`已载入模型配置：${profileId}`)
+    push(`已载入写作模型：${profileId}`)
   }
 
   const deleteProfileDraft = async (profileId: string) => {
@@ -720,9 +720,9 @@ export default function App() {
       }
       await mutateGlobalProfiles()
       await mutateLlmStatus()
-      push(`模型配置已删除：${profileId}`)
+      push(`写作模型已删除：${profileId}`)
     } catch {
-      push('模型配置删除失败', 'error')
+      push('写作模型删除失败', 'error')
     }
   }
 
@@ -734,9 +734,9 @@ export default function App() {
       setAssignmentsEditor(JSON.stringify(next, null, 2))
       await mutateGlobalAssignments()
       await mutateLlmStatus()
-      push(`写作分工已更新：${AI_MODULE_LABELS[module] || module} -> ${profileId}`)
+      push(`写作角色已更新：${AI_MODULE_LABELS[module] || module} -> ${profileId}`)
     } catch {
-      push('写作分工保存失败', 'error')
+      push('写作角色保存失败', 'error')
     }
   }
 
@@ -1496,16 +1496,16 @@ export default function App() {
         push('模型分工还没有读取完成，请先刷新或去设置页检查', 'error')
         if (!isMaintainerMode) return
       } else if (useAgentAssignments && routeRisks.length) {
-        push(`写作分工还有 ${routeRisks.length} 项待配置，请先补齐模型/API`, 'error')
+        push(`写作角色还有 ${routeRisks.length} 项待补，请先接入写作模型`, 'error')
         if (!isMaintainerMode) return
       } else if (!useAgentAssignments && selectedProfileHealth?.is_mock) {
-        push(`当前模型配置 ${llmProfileId} 是模拟模式，请先换成真实 API`, 'error')
+        push(`当前写作模型 ${llmProfileId} 是模拟模式，请先换成真实模型`, 'error')
         if (!isMaintainerMode) return
       } else if (!useAgentAssignments && selectedProfileHealth?.missing_fields?.length) {
-        push(`当前模型配置 ${llmProfileId} 还缺少字段：${selectedProfileHealth.missing_fields.join(', ')}`, 'error')
+        push(`当前写作模型 ${llmProfileId} 还缺少字段：${selectedProfileHealth.missing_fields.join(', ')}`, 'error')
         if (!isMaintainerMode) return
       } else if (!useAgentAssignments && !profiles[llmProfileId]) {
-        push(`当前模型配置 ${llmProfileId} 未找到，请先去设置页配置`, 'error')
+        push(`当前写作模型 ${llmProfileId} 未找到，请先去设置页接入`, 'error')
         if (!isMaintainerMode) return
       }
       setSelectedOpIds([])
@@ -3601,8 +3601,8 @@ export default function App() {
           label: '大重要 · 可信点亮',
           detail: 'AI 判断必须有正文 quote 和行号，不能只靠自述。',
           items: [
-            { id: 'profile', label: '真实模型配置', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个可用`, run: () => setView('settings') },
-            { id: 'agents', label: '写作分工', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 可用` : '等待读取', run: () => setView('settings') },
+            { id: 'profile', label: '真实写作模型', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个可用`, run: () => setView('settings') },
+            { id: 'agents', label: '写作角色', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 可用` : '等待读取', run: () => setView('settings') },
             { id: 'marks', label: '正文依据', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个`, run: () => { setView('chapter'); void analyzeMarks() } },
             { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
             { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
@@ -4640,22 +4640,22 @@ export default function App() {
       return (
         <div className='space-y-3 density-space'>
           {!isMaintainerMode ? (
-            <Card title='开写准备状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? '可以开写' : '先补 API'}</Badge>} className='module-card module-context'>
+            <Card title='开写准备状态' extra={<Badge tone={generationReady ? 'success' : 'warn'}>{generationReady ? '可以开写' : '接入写作模型'}</Badge>} className='module-card module-context'>
               <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
                 <div className='rounded-ui border border-border bg-surface p-3'>
-                  <div className='text-xs text-muted'>模型配置</div>
+                  <div className='text-xs text-muted'>可用写作模型</div>
                   <div className='mt-1 text-lg font-semibold'>{readyProfileCount}</div>
-                  <div className='text-xs text-muted'>{readyProfileCount ? '已有可用模型配置' : '还没有可用 API'}</div>
+                  <div className='text-xs text-muted'>{readyProfileCount ? '已有模型可以写' : '还没有接入写作模型'}</div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-3'>
-                  <div className='text-xs text-muted'>写作分工</div>
+                  <div className='text-xs text-muted'>写作角色</div>
                   <div className='mt-1 text-lg font-semibold'>{readyModuleCount}/{agentModuleRows.length || 0}</div>
-                  <div className='text-xs text-muted'>{readyModuleCount ? '已有写作分工' : '等待配置写作/审查/校对'}</div>
+                  <div className='text-xs text-muted'>{readyModuleCount ? '写作角色已分配' : '等待分配起草/检查/校对'}</div>
                 </div>
                 <div className='rounded-ui border border-border bg-surface p-3'>
                   <div className='text-xs text-muted'>当前模式</div>
                   <div className='mt-1 text-lg font-semibold'>作者</div>
-                  <div className='text-xs text-muted'>隐藏维护信息，只保留作者需要的状态。</div>
+                  <div className='text-xs text-muted'>隐藏技术信息，只保留作者需要的状态。</div>
                 </div>
               </div>
               <div className='mt-3 flex flex-wrap gap-2'>
@@ -4725,17 +4725,17 @@ export default function App() {
                     <option value='author'>作者</option>
                     <option value='maintainer'>维护者</option>
                   </Select>
-                  <div className='mt-1 text-xs text-muted'>作者模式隐藏维护信息；维护者模式显示运行记录和原始配置。</div>
+                  <div className='mt-1 text-xs text-muted'>作者模式隐藏技术信息；维护者模式显示运行记录和原始配置。</div>
                 </div>
               ) : (
                 <div className='rounded-ui border border-border bg-surface-2 p-3'>
                   <div className='text-xs text-muted'>使用模式</div>
                   <div className='mt-1 text-sm font-medium'>作者模式</div>
-                  <div className='mt-1 text-xs text-muted'>维护信息已折叠，写作时不用处理。</div>
+                  <div className='mt-1 text-xs text-muted'>技术信息已折叠，写作时不用处理。</div>
                 </div>
               )}
               <div>
-                <label className='text-xs text-muted'>默认模型配置</label>
+                <label className='text-xs text-muted'>默认写作模型</label>
                 <Select value={settings.defaultLlmProfileId} onChange={(e) => { const val = e.target.value; applySettings({ ...settings, defaultLlmProfileId: val }); setLlmProfileId(val) }}>
                   {Object.keys(profiles).map((k) => <option key={k} value={k}>{k}</option>)}
                 </Select>
@@ -4751,14 +4751,14 @@ export default function App() {
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs'>
                 <div className='mb-2 flex items-center justify-between gap-2'>
-                  <span className='font-medium'>API Key 安全</span>
+                  <span className='font-medium'>密钥安全</span>
                   <Badge tone={llmStatus?.storage?.api_keys_returned_in_status ? 'warn' : 'success'}>
                     {llmStatus?.storage?.api_keys_returned_in_status ? '可见' : '不会返回'}
                   </Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
-                  <div>模型配置文件: {llmStatus?.storage?.profiles_path || '-'}</div>
-                  <div>写作分工文件: {llmStatus?.storage?.assignments_path || '-'}</div>
+                  <div>写作模型文件: {llmStatus?.storage?.profiles_path || '-'}</div>
+                  <div>写作角色文件: {llmStatus?.storage?.assignments_path || '-'}</div>
                   <div>界面只显示是否已填写，不显示 API Key 原文。</div>
                 </div>
               </div>
@@ -4788,12 +4788,12 @@ export default function App() {
             </div>
           </Card>
 
-          <Card title='模型配置'>
-            <p className='text-xs text-muted mb-2'>先添加一个模型配置，再在下面分配给写作、审查、校对和事实抽取。</p>
+          <Card title='接入写作模型'>
+            <p className='text-xs text-muted mb-2'>先添加一个可用模型，再分配给起草、故事检查、校对和事实整理。</p>
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
               <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
                 <div>
-                  <label className='text-xs text-muted'>服务商模板</label>
+                  <label className='text-xs text-muted'>模型来源模板</label>
                   <Select
                     value={selectedPresetId}
                     onChange={(e) => {
@@ -4807,11 +4807,11 @@ export default function App() {
                   </Select>
                 </div>
                 <div>
-                  <label className='text-xs text-muted'>配置名称</label>
+                  <label className='text-xs text-muted'>模型昵称</label>
                   <Input value={presetProfileId} onChange={(e) => setPresetProfileId(e.target.value)} placeholder='e.g. deepseek_writer' />
                 </div>
                 <div>
-                  <label className='text-xs text-muted'>服务商</label>
+                  <label className='text-xs text-muted'>模型来源</label>
                   <Input value={profileDraft.provider || ''} onChange={(e) => setProfileDraft((x: any) => ({ ...x, provider: e.target.value }))} placeholder='openai_compat' />
                 </div>
               </div>
@@ -4840,7 +4840,7 @@ export default function App() {
                 </div>
               </div>
               <div className='mt-3 flex flex-wrap gap-2'>
-                <Button variant='primary' onClick={saveProfileDraft}>保存配置</Button>
+                <Button variant='primary' onClick={saveProfileDraft}>保存模型</Button>
                 {isMaintainerMode ? <Button onClick={applyPresetToEditor}>填入原始配置</Button> : null}
               </div>
               {isMaintainerMode ? <div className='mt-3 text-xs text-muted'>
@@ -4853,7 +4853,7 @@ export default function App() {
             <div className='mb-3 rounded-ui border border-border bg-surface-2 p-3'>
               <div className='mb-2 flex items-center justify-between gap-2'>
                 <div>
-                  <h4 className='text-sm font-semibold'>配置检查</h4>
+                  <h4 className='text-sm font-semibold'>模型检查</h4>
                   <p className='text-xs text-muted'>只检查本地字段，不会调用服务商，也不会显示 API Key 原文。</p>
                 </div>
                 <Badge tone={(llmStatus?.profile_missing_count || 0) ? 'warn' : 'success'}>{llmStatus?.profile_missing_count || 0} 个待补</Badge>
@@ -4874,7 +4874,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                {!profileHealthRows.length && <p className='text-sm text-muted'>还没有模型配置。</p>}
+                {!profileHealthRows.length && <p className='text-sm text-muted'>还没有接入写作模型。</p>}
               </div>
             </div>
             {isMaintainerMode ? (
@@ -4901,8 +4901,8 @@ export default function App() {
             ) : null}
           </Card>
 
-          <Card title='写作分工'>
-            <p className='text-xs text-muted mb-2'>建书、人物、脉络、章节正文、审查、校对、事实抽取可以分别使用不同模型。</p>
+          <Card title='写作角色'>
+            <p className='text-xs text-muted mb-2'>建书、人物、脉络、章节正文、故事检查、校对、事实整理可以分别使用不同模型。</p>
             <div className='mb-3 space-y-3'>
               {['设定建设', '章节生成', '可信检查'].map((group) => (
                 <div key={group} className='rounded-ui border border-border bg-surface-2 p-3'>
