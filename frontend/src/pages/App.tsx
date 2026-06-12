@@ -1603,7 +1603,7 @@ export default function App() {
       await mutateEvidenceMarks()
       await mutateTrustReport()
       await applyCanvasEvidenceStatuses(Array.isArray(res?.marks) ? res.marks : evidenceMarkRows)
-      push(`检查完成：${res?.marks?.length || 0} 个证据标记`)
+      push(`检查完成：${res?.marks?.length || 0} 个正文依据`)
     } catch {
       push('证据检查失败', 'error')
     }
@@ -2517,13 +2517,13 @@ export default function App() {
             </div>
 
             <details className='rounded-ui border border-border bg-surface-2'>
-              <summary className='cursor-pointer px-2 py-1.5 font-medium'>证据详情</summary>
+              <summary className='cursor-pointer px-2 py-1.5 font-medium'>正文依据详情</summary>
               {selectedMark ? (
                 <div className='space-y-2 border-t border-border p-2'>
                   <div className='flex items-start justify-between gap-2'>
                     <div>
                       <div className='font-medium'>{requirementTypeLabel(selectedMark.target_type)} · {selectedMark.label || selectedMark.target_id}</div>
-                      <div className='text-muted'>{selectedMark.detection?.note || '可回查证据'}</div>
+                      <div className='text-muted'>{selectedMark.detection?.note || '可回看正文依据'}</div>
                     </div>
                     <Badge tone={selectedMark?.detection?.support_level === 'supported' ? 'success' : selectedMark?.detection?.support_level === 'partial' ? 'warn' : 'default'}>
                       {supportLabel(selectedMark?.detection?.support_level)}
@@ -2559,7 +2559,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <p className='border-t border-border p-2 text-muted'>暂无证据标记。</p>
+                <p className='border-t border-border p-2 text-muted'>暂无正文依据。</p>
               )}
             </details>
           </div>
@@ -2573,7 +2573,7 @@ export default function App() {
           </div>
           <div className='mt-2 rounded-ui border border-border bg-surface-2 p-2'>
             <div className='font-medium'>{trustStatusText}</div>
-            <div className='mt-1 text-muted'>打开正文后可查看证据行。</div>
+            <div className='mt-1 text-muted'>打开正文后可查看对应正文行。</div>
           </div>
           <div className='mt-2 grid grid-cols-4 gap-1 text-center'>
             {[
@@ -3603,7 +3603,7 @@ export default function App() {
           items: [
             { id: 'profile', label: '真实模型配置', done: realReadyProfiles.length > 0, detail: `${realReadyProfiles.length} 个可用`, run: () => setView('settings') },
             { id: 'agents', label: '写作分工', done: agentAssignmentsReady, detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 可用` : '等待读取', run: () => setView('settings') },
-            { id: 'marks', label: '证据标记', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个`, run: () => { setView('chapter'); void analyzeMarks() } },
+            { id: 'marks', label: '正文依据', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个`, run: () => { setView('chapter'); void analyzeMarks() } },
             { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
             { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
             { id: 'pending_reviews', label: '待确认稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `草稿 ${pendingChapterReviews.length} · 校对 ${pendingPatchCount}`, run: () => setView('chapter') },
@@ -3721,7 +3721,7 @@ export default function App() {
         },
         {
           id: 'evidence',
-          label: '建立证据标记',
+          label: '建立正文依据',
           done: evidenceMarkRows.length > 0 || Boolean(trustReport?.updated_at),
           detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个标记 · 风险 ${unsupportedMarks.length}` : '还没有分析当前章节',
           action: '分析当前章',
@@ -4124,7 +4124,7 @@ export default function App() {
           id: 'analyze_marks',
           label: '检查写到没有',
           done: marksVerified,
-          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个证据点` : '还没有检查正文',
+          detail: evidenceMarkRows.length ? `${evidenceMarkRows.length} 个正文依据` : '还没有检查正文',
           action: '检查正文',
           run: analyzeMarks,
         },
@@ -4526,7 +4526,7 @@ export default function App() {
                         <div className='mt-1 text-muted'>{(payload.signals || []).slice(0, 2).join(' / ')}</div>
                         {(payload.overuse_risks || []).length ? <div className='mt-1 text-amber-700 dark:text-amber-300'>风险：{payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
                         {firstExample ? <div className='mt-1 truncate text-muted'>示例：{firstExample.source} → {firstExample.med || firstExample.low}</div> : null}
-                        <div className='mt-1 text-muted'>本章证据：{traceSummary(traces)}</div>
+                        <div className='mt-1 text-muted'>本章依据：{traceSummary(traces)}</div>
                         {isMaintainerMode ? <div className='mt-1 text-muted'>Agent: {Array.from(new Set(traces.map((mark: any) => mark.agent_trace?.stage).filter(Boolean))).join(', ') || 'none'}</div> : null}
                         <div className='mt-2 grid grid-cols-3 gap-1'>
                           <Button className='text-xs' onClick={() => requestTechniqueAction(r, '试写一句', 'med')} disabled={!canStartWriting()}>试写</Button>
@@ -4567,7 +4567,7 @@ export default function App() {
                         <Badge>{r.payload?.category || '工具'}</Badge>
                       </div>
                       <div className='mt-1 text-muted'>{r.payload?.description || r.id}</div>
-                      <div className='mt-1 text-muted'>自动写入：{r.payload?.auto_apply_allowed ? '允许' : '关闭'} · 证据：{r.payload?.evidence_required ? '必须' : '可选'}</div>
+                      <div className='mt-1 text-muted'>自动写入：{r.payload?.auto_apply_allowed ? '允许' : '关闭'} · 正文依据：{r.payload?.evidence_required ? '必须' : '可选'}</div>
                     </button>
                   ))}
                   {!toolRows.length && <p className='text-sm text-muted'>暂无写作工具。可以用快捷入口创建：+ tool_skill 小说问题检查 --category checker</p>}
