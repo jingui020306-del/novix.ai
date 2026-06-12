@@ -130,7 +130,7 @@ export function ChapterAlignmentPanel({
             />
             <div className='mt-2 flex flex-wrap gap-2'>
               <Button onClick={onSendMessage}>发送</Button>
-              <Button onClick={onGenerateUnderstanding}>让 AI 生成理解</Button>
+              <Button onClick={onGenerateUnderstanding}>让 AI 整理理解</Button>
             </div>
           </div>
         </div>

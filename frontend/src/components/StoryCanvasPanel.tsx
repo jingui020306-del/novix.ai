@@ -181,12 +181,12 @@ export function StoryCanvasPanel({
                   className='mt-1 min-h-[92px]'
                   value={selectedNode.author_decision || ''}
                   onChange={(e) => onUpdateNode(selectedNode.id, { author_decision: e.target.value, status: 'pending_author' })}
-                  placeholder='写下你最终采用、修改或拒绝的原因。'
+                  placeholder='写下你最终采用、修改或先不用的原因。'
                 />
               </div>
               <div className='grid grid-cols-2 gap-2'>
                 <Button onClick={() => onConfirmNode(selectedNode)}>确认</Button>
-                <Button onClick={() => onGenerateDraft(selectedNode)}>生成草案</Button>
+                <Button onClick={() => onGenerateDraft(selectedNode)}>起草草案</Button>
                 <Button onClick={() => onGenerateLocalSuggestion(selectedNode)}>本地建议</Button>
                 <Button onClick={() => onApplyToStory(selectedNode)}>写回表格</Button>
                 <Button onClick={() => onMarkRisk(selectedNode)}>标记风险</Button>

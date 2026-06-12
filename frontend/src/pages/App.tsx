@@ -1812,7 +1812,7 @@ export default function App() {
     const now = new Date().toISOString()
     const version = { version_id: `ai_${Date.now()}`, text: understanding, created_at: now, source: 'AI 整理' }
     const nextVersions = [version, ...alignmentUnderstandingVersions].slice(0, 6)
-    const aiMessage = { role: 'ai', text: `我生成了一版新的理解，放在右侧缓存里。你可以继续修正我，也可以挑一版带入最终确认稿。`, created_at: now }
+    const aiMessage = { role: 'ai', text: `我整理了一版新的理解，放在右侧缓存里。你可以继续修正我，也可以挑一版带入最终确认稿。`, created_at: now }
     const nextMessages = [...alignmentMessages, aiMessage].slice(-12)
     setAlignmentUnderstanding(understanding)
     setAlignmentUnderstandingVersions(nextVersions)
@@ -3227,7 +3227,7 @@ export default function App() {
         ai_suggestion: suggestionByType[node.type] || node.ai_suggestion || '请让 AI 给出备选，作者再确认。',
         suggestion_source: 'local_canvas_assistant',
       })
-      push(`${node.label} 已生成一条待确认建议`)
+      push(`${node.label} 已起草一条待确认建议`)
     }
     const canvasDraftKindFor = (node: any) => {
       if (node.type === 'character') return 'character_seed'
@@ -3320,7 +3320,7 @@ export default function App() {
       if (!buildDraft) {
         return (
           <div className='flex h-56 items-center justify-center rounded-ui border border-dashed border-border bg-surface-2 text-sm text-muted'>
-            选择左侧环节生成待确认草案
+            选择左侧环节起草待确认草案
           </div>
         )
       }

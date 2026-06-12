@@ -82,7 +82,7 @@ export function BookTimelinePanel({ nodes, selectedNodeId, onAccept, onGenerateA
                 <Button className='text-xs' onClick={() => onAccept(selectedNode)}>接受建议</Button>
                 <Button className='text-xs' onClick={selectedNode.run}>修改</Button>
                 <Button className='text-xs' onClick={() => onSkip(selectedNode)}>跳过</Button>
-                <Button className='text-xs' onClick={() => onGenerateAlternative(selectedNode)}>生成备选</Button>
+                <Button className='text-xs' onClick={() => onGenerateAlternative(selectedNode)}>起草备选</Button>
               </div>
             </div>
           </div>
