@@ -106,6 +106,17 @@ const CHAPTER_MATRIX_FIELDS: StoryRowField[] = [
   { key: 'foreshadowing', label: '伏笔/回收', span: 'col-span-3' },
 ]
 
+const FIELD_SPAN_CLASSES: Record<string, string> = {
+  'col-span-2': 'col-span-12 sm:col-span-6 lg:col-span-2',
+  'col-span-3': 'col-span-12 sm:col-span-6 lg:col-span-3',
+  'col-span-4': 'col-span-12 sm:col-span-6 lg:col-span-4',
+  'col-span-6': 'col-span-12 sm:col-span-6 lg:col-span-6',
+}
+
+function fieldSpanClass(span?: string) {
+  return span ? FIELD_SPAN_CLASSES[span] || span : 'col-span-12 sm:col-span-6'
+}
+
 export function StoryPlanningPanel({
   activeTab,
   payload,
@@ -243,7 +254,7 @@ function StoryRows({
         <div key={`${section}-${index}`} className='rounded-ui border border-border bg-surface p-3'>
           <div className='grid grid-cols-12 gap-2'>
             {fields.map((field) => (
-              <div key={field.key} className={field.span || 'col-span-6'}>
+              <div key={field.key} className={fieldSpanClass(field.span)}>
                 <label className='text-xs text-muted'>{field.label}</label>
                 <Input value={String(row?.[field.key] || '')} onChange={(event) => onUpdateRow(section, index, field.key, event.target.value)} />
               </div>
@@ -273,7 +284,7 @@ function LineTraceCard({
   getTraceSummary: (rows: unknown[]) => string
 }) {
   return (
-    <Card title='脉络调用痕迹' extra={<Badge>{selectedChapter}</Badge>}>
+    <Card title='脉络正文命中' extra={<Badge>{selectedChapter}</Badge>}>
       <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
         {items.map((item, index) => {
           const traces = getTraceRows(item.type, item.candidates)
@@ -283,7 +294,7 @@ function LineTraceCard({
                 <span className='font-medium'>{item.label}</span>
                 <Badge tone={getTraceTone(traces) as any}>{getTraceSummary(traces)}</Badge>
               </div>
-              <div className='mt-1 text-muted'>{item.type} · 当前章节证据记录</div>
+              <div className='mt-1 text-muted'>{item.type} · 当前章节正文记录</div>
             </div>
           )
         })}
