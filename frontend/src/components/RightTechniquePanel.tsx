@@ -80,7 +80,7 @@ export function RightTechniquePanel({
                 </div>
               ) : null}
               {unsuitable.length ? <div className='mt-2 text-muted'>慎用：{unsuitable.join(' / ')}</div> : null}
-              {tech?.payload?.overuse_risks?.length ? <div className='mt-2 text-amber-700 dark:text-amber-300'>风险：{tech.payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
+              {tech?.payload?.overuse_risks?.length ? <div className='mt-2 text-amber-700 dark:text-amber-300'>使用提醒：{tech.payload.overuse_risks.slice(0, 2).join(' / ')}</div> : null}
               {tech ? (
                 <div className='mt-2 grid grid-cols-3 gap-1'>
                   <Button className='text-xs' onClick={() => onRequestTechniqueAction(tech, '试写一句', row.intensity || 'med')} disabled={!canGenerate}>试写</Button>
