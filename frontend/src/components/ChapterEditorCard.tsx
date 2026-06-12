@@ -218,10 +218,10 @@ export function ChapterEditorCard({
           <summary className='cursor-pointer px-3 py-2 font-medium'>高级写作设置</summary>
           <div className='grid grid-cols-1 gap-3 border-t border-border p-3 md:grid-cols-2'>
             <div>
-              <label className='text-xs text-muted'>AI 分工</label>
+              <label className='text-xs text-muted'>AI 角色</label>
               <label className='mb-1 flex items-center gap-2 text-xs'>
                 <input type='checkbox' checked={useAgentAssignments} onChange={(e) => setUseAgentAssignments(e.target.checked)} />
-                使用设置里的分工模型
+                使用设置里的写作角色
               </label>
               <Select value={llmProfileId} onChange={(e) => setLlmProfileId(e.target.value)} disabled={useAgentAssignments}>
                 {Object.entries(profiles).map(([k, v]: any) => (

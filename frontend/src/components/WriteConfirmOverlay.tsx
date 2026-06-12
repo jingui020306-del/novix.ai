@@ -235,15 +235,15 @@ export function WriteConfirmOverlay({
               })}
             </div>
             <div className='mt-2 text-muted'>
-              {useAgentAssignments ? '每个角色会按设置里的写作分工执行。' : '当前使用同一个模型完成全部分工。'}
-              <span className='ml-2'>模型明细已收起，作者只需要确认四个分工都可用。</span>
+              {useAgentAssignments ? '每个角色会按设置里的写作角色执行。' : '当前使用同一个模型完成全部写作角色。'}
+              <span className='ml-2'>模型明细已收起，作者只需要确认四个角色都可用。</span>
             </div>
           </div>
 
           <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
             <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>高级信息</summary>
             <div className='space-y-2 border-t border-border p-3'>
-              <div>分工方式：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 负责全部分工`}；校对建议直接写入：{autoApplyPatch ? '开启' : '关闭'}；写作长度上限：{pendingWriteJob.maxTokens}</div>
+              <div>写作角色：{useAgentAssignments ? '使用设置里的角色分配' : `${llmProfileId} 负责全部角色`}；校对建议直接写入：{autoApplyPatch ? '开启' : '关闭'}；写作长度上限：{pendingWriteJob.maxTokens}</div>
               <div className='space-y-1'>
                 {writeRouteRows.map((row: any) => (
                   <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>
@@ -252,7 +252,7 @@ export function WriteConfirmOverlay({
                     {row.is_mock || row.profile_missing || row.missing_fields?.length ? <span className='ml-2 text-amber-700 dark:text-amber-300'>需要检查</span> : null}
                   </div>
                 ))}
-                {!writeRouteRows.length ? <div>模型状态还没有读取完成。</div> : null}
+                {!writeRouteRows.length ? <div>写作模型状态还没有读取完成。</div> : null}
               </div>
               <div>本章参考包：{memoryPackCount}</div>
             </div>

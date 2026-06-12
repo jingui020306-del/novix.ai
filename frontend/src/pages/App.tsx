@@ -1493,7 +1493,7 @@ export default function App() {
     try {
       const routeRisks = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length)
       if (useAgentAssignments && !writeRouteRows.length) {
-        push('模型分工还没有读取完成，请先刷新或去设置页检查', 'error')
+        push('写作角色还没有读取完成，请先刷新或去设置页检查', 'error')
         if (!isMaintainerMode) return
       } else if (useAgentAssignments && routeRisks.length) {
         push(`写作角色还有 ${routeRisks.length} 项待补，请先接入写作模型`, 'error')
@@ -1874,7 +1874,7 @@ export default function App() {
     const readyRoutes = writeRouteRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length)
     const modelReady = writeRouteRows.length > 0 && readyRoutes.length === writeRouteRows.length
     return [
-      { label: '模型/API', done: isMaintainerMode || modelReady, detail: isMaintainerMode ? '维护者模式可测试' : writeRouteRows.length ? `${readyRoutes.length}/${writeRouteRows.length} 个分工可用` : '等待读取模型状态' },
+      { label: '写作模型', done: isMaintainerMode || modelReady, detail: isMaintainerMode ? '维护者模式可测试' : writeRouteRows.length ? `${readyRoutes.length}/${writeRouteRows.length} 个角色可用` : '等待读取写作模型' },
       { label: '书名/题材', done: hasText(storyForm?.title) && hasText(activeStoryPayload.genre), detail: `${storyForm?.title || '缺书名'} · ${activeStoryPayload.genre || '缺题材'}` },
       { label: '小故事大纲', done: hasText(activeStoryPayload.logline), detail: activeStoryPayload.logline ? '已填写' : '缺一句话故事' },
       { label: '主冲突/禁写', done: hasText(activeStoryPayload.main_conflict) && hasArrayItems(activeStoryPayload.banned_items), detail: `${hasText(activeStoryPayload.main_conflict) ? '主冲突已填' : '缺主冲突'} · 禁写 ${(activeStoryPayload.banned_items || []).length || 0}` },
@@ -2048,7 +2048,7 @@ export default function App() {
       { id: 'nav-story', title: '打开故事总控', subtitle: '设定主题、冲突、明线暗线和章节计划', group: 'Navigate', icon: BookOpen, run: () => { setActiveActivity('story'); setView('story') } },
       { id: 'nav-story-canvas', title: '打开脉络画布', subtitle: '查看结构点、卷、爆点和结局位置', group: 'Navigate', icon: Waypoints, keywords: ['canvas', 'narrative canvas', '脉络画布', '结构线', '爆点'], run: () => { setActiveActivity('story'); setStoryPlanningTab('Canvas'); setView('story') } },
       { id: 'nav-characters', title: '打开人物卡', subtitle: '编辑人物设定和本章使用情况', group: 'Navigate', icon: UserRound, run: () => { setActiveActivity('cards'); setView('characters') } },
-      { id: 'nav-settings', title: '打开设置', subtitle: '配置 API、模型分工和作者/维护模式', group: 'Navigate', icon: Settings, run: () => { setActiveActivity('settings'); setView('settings') } },
+      { id: 'nav-settings', title: '打开设置', subtitle: '接入写作模型、分配写作角色和切换作者模式', group: 'Navigate', icon: Settings, run: () => { setActiveActivity('settings'); setView('settings') } },
       { id: 'nav-chapter', title: '打开正文编辑器', group: 'Navigate', icon: FilePenLine, run: () => { setActiveActivity('explorer'); setView('chapter') } },
       { id: 'nav-canon', title: '打开作品事实', group: 'Navigate', icon: Sparkles, run: () => { setActiveActivity('canon'); setView('canon') } },
       { id: 'nav-world', title: '打开世界观查询', group: 'Navigate', icon: Globe, run: () => { setActiveActivity('cards'); setView('world') } },
@@ -3674,18 +3674,18 @@ export default function App() {
       const setupChecklist = [
         {
           id: 'api',
-          label: '配置模型 API',
+          label: '接入写作模型',
           done: realReadyProfiles.length > 0,
-          detail: realReadyProfiles.length ? `${realReadyProfiles.length} 个可用配置` : '还没有可用配置',
-          action: '去配置',
+          detail: realReadyProfiles.length ? `${realReadyProfiles.length} 个可用模型` : '还没有可用模型',
+          action: '去接入',
           run: () => setView('settings'),
         },
         {
           id: 'agents',
-          label: '分配写作模型',
+          label: '分配写作角色',
           done: agentAssignmentsReady,
-          detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 个分工可用` : '等待读取模型状态',
-          action: '分配模型',
+          detail: agentModuleRows.length ? `${agentModuleRows.filter((row: any) => !row.is_mock && !row.profile_missing && !row.missing_fields?.length).length}/${agentModuleRows.length} 个角色可用` : '等待读取写作角色',
+          action: '分配角色',
           run: () => setView('settings'),
         },
         {
