@@ -330,7 +330,7 @@ export function ChapterEditorCard({
       {analyzeResult ? <p className='mt-1 text-xs text-muted'>检查结果：新增 {analyzeResult.new_facts_count || 0} 条事实，{analyzeResult.new_proposals_count || 0} 条待确认建议。</p> : null}
       {highlightRange ? (
         <div className='mt-3 rounded-ui border border-border bg-surface-2 p-2'>
-          <div className='mb-1 text-xs font-medium'>证据定位：{selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
+          <div className='mb-1 text-xs font-medium'>正文依据：{selectedChapter} L{highlightRange.start}-L{highlightRange.end}</div>
           <pre className='editor-text mono max-h-40 overflow-auto whitespace-pre-wrap text-xs'>{highlighted || '暂无正文'}</pre>
         </div>
       ) : null}
@@ -362,7 +362,7 @@ export function ChapterEditorCard({
                 </div>
               </div>
             ))}
-            {!evidenceMarkCount && <p className='text-xs text-muted'>运行生成或“检查要求”后显示人物、技法、明线、暗线、伏笔是否真的写到。</p>}
+            {!evidenceMarkCount && <p className='text-xs text-muted'>写完或“检查要求”后显示人物、技法、明线、暗线、伏笔是否真的写到。</p>}
           </div>
         </div>
         <Textarea
