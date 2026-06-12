@@ -62,7 +62,7 @@ export function ChapterStructureLights({ nodes, getTracesForNode, onSelectEviden
         })}
         {!nodes.length ? (
           <div className='rounded-ui border border-dashed border-border bg-surface-2 p-3 text-sm text-muted md:col-span-3'>
-            先在“本次写作控制”里勾选本章结构点。生成或检查正文后，这里会显示哪些真的被正文点亮。
+            先在“本次写作控制”里勾选本章结构点。起草或检查正文后，这里会显示哪些真的被正文点亮。
           </div>
         ) : null}
       </div>

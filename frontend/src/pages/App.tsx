@@ -1561,18 +1561,18 @@ export default function App() {
           mutateJobs()
           mutateChapterReviews()
           mutatePatchReviews()
-          push('本章生成完成')
+          push('本章初稿已完成')
         }
         if (evt.event === 'MARK_EXTRACTION' && Array.isArray(evt.data?.marks)) {
           void applyCanvasEvidenceStatuses(evt.data.marks).then(() => push('本章结构点状态已根据证据更新'))
         }
       }
     } catch {
-      push('本章生成失败', 'error')
+      push('本章起草失败', 'error')
     }
   }
 
-  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '生成本章', techniqueAction: any = null) => {
+  const requestRunJob = (maxTokens = 2400, range: { start: number; end: number } | null = null, label = '起草本章', techniqueAction: any = null) => {
     const missing = getWriteReadinessItems().filter((item) => !item.done)
     if (missing.length) {
       push(`请先补齐开写检查：${missing.slice(0, 3).map((item) => item.label).join('、')}`, 'error')
@@ -3506,16 +3506,16 @@ export default function App() {
       const runningEvent = events.length > 0 && events.slice(-1)[0]?.event !== 'DONE'
       const pendingPatchCount = pendingPatchReviews.length || latestPatch?.ops?.length || 0
       const authorJobStatus = (status?: string) => {
-        if (runningEvent) return '生成中'
+        if (runningEvent) return '起草中'
         if (status === 'completed') return '已完成'
         if (status === 'failed') return '有问题'
         if (status === 'awaiting_review') return '待确认'
-        if (status === 'running') return '生成中'
+        if (status === 'running') return '起草中'
         return pendingPatchCount ? '待确认' : '空闲'
       }
       const authorJobStep = (eventName?: string) => {
         const raw = eventName || ''
-        if (!raw) return '暂无生成记录'
+        if (!raw) return '暂无写作记录'
         if (raw.includes('PRE_REVIEW')) return '检查写作要求'
         if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
         if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
@@ -3575,7 +3575,7 @@ export default function App() {
         {
           id: 'cards',
           label: '大重要 · 卡片资产',
-          detail: '人物、风格、技法、工具 skill 会成为章节生成约束。',
+          detail: '人物、风格、技法、工具 skill 会成为章节写作约束。',
             items: [
             { id: 'characters', label: '人物卡', done: Array.isArray(chars) && chars.length > 0, detail: `${Array.isArray(chars) ? chars.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('characters') } },
             { id: 'style_cards', label: '文风卡', done: Array.isArray(styles) && styles.length > 0, detail: `${Array.isArray(styles) ? styles.length : 0} 张`, run: () => { setActiveActivity('cards'); setView('style') } },
@@ -3737,7 +3737,7 @@ export default function App() {
           >
             <div className='grid grid-cols-1 gap-3 md:grid-cols-5'>
               <div className='metric-card metric-blue rounded-ui border p-3'>
-                <div className='text-xs text-muted'>生成状态</div>
+                <div className='text-xs text-muted'>初稿状态</div>
                 <div className='font-display mt-1 text-lg font-semibold'>{authorJobStatus(latestJob?.status)}</div>
                 <div className='text-xs text-muted'>{authorJobStep(events.slice(-1)[0]?.event || latestJob?.last_event)}</div>
               </div>
@@ -4097,7 +4097,7 @@ export default function App() {
           id: 'review',
           label: '确认 AI 草稿',
           done: acceptedChapterReviews.length > 0 || (chapterReviewList.length > 0 && pendingChapterReviews.length === 0),
-          detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 草稿待确认` : chapterReviewList.length ? 'AI 草稿已处理' : '生成后这里会出现待审草稿',
+          detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 草稿待确认` : chapterReviewList.length ? 'AI 草稿已处理' : '开始写初稿后这里会出现待审草稿',
           action: pendingChapterReviews.length ? '确认第一条' : '查看草稿',
           disabled: !pendingChapterReviews.length,
           run: () => {
@@ -4347,7 +4347,7 @@ export default function App() {
                         <span className='text-xs'>{row.technique_id} <span className='text-muted'>({row.intensity || 'med'}, {row.source})</span></span>
                         <Button className='text-xs' onClick={() => toPinnedFromAuto(row)}>挂到本章</Button>
                       </div>
-                    )) : <p className='text-xs text-muted'>暂无自动推荐（先挂载技法分类，再运行生成）。</p>}
+                    )) : <p className='text-xs text-muted'>暂无自动推荐（先挂载技法分类，再起草或检查）。</p>}
                   </div>
                 </div>
               </div>
@@ -5012,7 +5012,7 @@ export default function App() {
                   <div className='text-muted'>证据 {p.summary?.evidence_count || 0} · 压缩 {p.summary?.compression_steps || 0}</div>
                 </button>
               ))}
-              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>还没有本章记忆。生成或检查章节后会出现。</p> : null}
+              {!Array.isArray(memoryPacks) || !memoryPacks.length ? <p className='text-sm text-muted'>还没有本章记忆。起草或检查章节后会出现。</p> : null}
             </div>
             <div className='rounded-ui border border-border bg-surface-2 p-3'>
               {selectedMemoryPack ? (
@@ -5051,7 +5051,7 @@ export default function App() {
                 <span className='ml-2 text-xs text-muted'>{e.source?.path}</span>
               </button>
             ))}
-            {!evidence.length && <p className='text-sm text-muted'>还没有证据。生成或检查章节后会出现。</p>}
+            {!evidence.length && <p className='text-sm text-muted'>还没有正文依据。起草或检查章节后会出现。</p>}
           </div>
         </Card>
       </div>
