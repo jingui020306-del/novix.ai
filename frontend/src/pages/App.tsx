@@ -148,7 +148,7 @@ const BUILD_WIZARD_STEPS = [
   { id: 'characters', label: '人物初设', draftKind: 'character_seed', checks: ['人物卡', '动机', '边界', '小传'] },
   { id: 'scenes', label: '重要场景', draftKind: 'story_overview', checks: ['开篇', '转折', '高潮', '回收'] },
   { id: 'lines', label: '明线暗线伏笔', draftKind: 'lines', checks: ['明线', '暗线', '伏笔'] },
-  { id: 'confirm', label: '确认写入', draftKind: '', checks: ['局部接受', '保存故事卡', '拒绝草案'] },
+  { id: 'confirm', label: '确认写入', draftKind: '', checks: ['部分接受', '保存故事卡', '先不用'] },
 ]
 
 const TASK_AI_MODULES = [
@@ -196,7 +196,7 @@ const CANVAS_STATUS_LABELS: Record<string, string> = {
   pending_author: '待作者确认',
   confirmed: '作者已确认',
   written_supported: '已写入正文',
-  written_pending: '待证据确认',
+  written_pending: '待正文确认',
   missing_in_chapter: '本章未写到',
   risk: '有结构风险',
   skipped: '已跳过',

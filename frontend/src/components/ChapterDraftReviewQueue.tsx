@@ -37,7 +37,7 @@ export function ChapterDraftReviewQueue({ pendingCount, reviews, onAccept, onRej
             {review.status === 'pending_author_review' ? (
               <div className='mt-2 flex gap-2'>
                 <Button className='text-xs' onClick={() => onAccept(review)}>确认草稿</Button>
-                <Button className='text-xs' onClick={() => onReject(review)}>拒绝草稿</Button>
+                <Button className='text-xs' onClick={() => onReject(review)}>先不用</Button>
               </div>
             ) : null}
           </div>

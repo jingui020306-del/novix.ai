@@ -122,7 +122,7 @@ export function WriteConfirmOverlay({
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'>
-                <span className='font-medium'>生成控制</span>
+                <span className='font-medium'>本次写作控制</span>
                 <Badge>{generationScopeLabel}</Badge>
               </div>
               <div>生成范围：{generationScopeLabel}</div>
@@ -152,7 +152,7 @@ export function WriteConfirmOverlay({
                 {selectedCanvasConstraints.map((node: any) => (
                   <Badge key={node.id}>{node.label}</Badge>
                 ))}
-                {!selectedCanvasConstraints.length ? <span className='text-muted'>还没有选择结构点。补齐后才能正式生成。</span> : null}
+                {!selectedCanvasConstraints.length ? <span className='text-muted'>还没有选择结构点。补齐后才能开始写初稿。</span> : null}
               </div>
             </div>
           </div>
@@ -209,8 +209,8 @@ export function WriteConfirmOverlay({
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>安全规则</span><Badge>{autoApplyPatch ? '需注意' : '默认安全'}</Badge></div>
               <div className='text-muted'>AI 草稿不会直接覆盖作者正文。</div>
-              <div className='mt-1 text-muted'>校对建议默认进入待确认，作者可以接受或拒绝。</div>
-              <div className='mt-1 text-muted'>没有正文证据的判断不会显示为已命中。</div>
+              <div className='mt-1 text-muted'>校对建议默认进入待确认，作者可以确认或标为先不用。</div>
+              <div className='mt-1 text-muted'>没有正文原句的判断不会显示为已命中。</div>
             </div>
           </div>
 
