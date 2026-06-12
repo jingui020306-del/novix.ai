@@ -61,14 +61,14 @@ type StoryBuildWizardPanelProps = {
 const HISTORY_FILTERS = [
   ['all', '全部'],
   ['accepted', '已接受'],
-  ['partially_accepted', '局部'],
-  ['rejected', '已拒绝'],
+  ['partially_accepted', '部分接受'],
+  ['rejected', '先不用'],
 ]
 
 const DRAFT_STATUS_LABELS: Record<string, string> = {
   accepted: '已接受',
   partially_accepted: '局部接受',
-  rejected: '已拒绝',
+  rejected: '先不用',
   pending: '待确认',
   pending_author_review: '待确认',
   processed: '已处理',
@@ -119,10 +119,10 @@ export function StoryBuildWizardPanel({
   return (
     <Card
       title='小说建设向导 / 待确认草案'
-      extra={<Badge>单环节生成 · 可刷新 · 可编辑 · 确认后写入</Badge>}
+      extra={<Badge>按步骤起草 · 可刷新 · 可编辑 · 确认后写入</Badge>}
     >
       <div className='grid grid-cols-12 gap-3'>
-        <div className='col-span-5 space-y-2'>
+        <div className='col-span-12 space-y-2 lg:col-span-5'>
           <div className='grid grid-cols-2 gap-2'>
             {steps.map((step) => (
               <button
@@ -149,9 +149,9 @@ export function StoryBuildWizardPanel({
               {activeStep.draftKind ? (
                 <div className='flex flex-col gap-1'>
                   <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft(activeStep.draftKind || 'story_overview')}>
-                    {busy ? '生成中...' : '生成此步草案'}
+                    {busy ? '起草中...' : '起草这一步'}
                   </Button>
-                  {activeStepId === 'lines' && <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft('foreshadowing')}>生成伏笔草案</Button>}
+                  {activeStepId === 'lines' && <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft('foreshadowing')}>起草伏笔</Button>}
                 </div>
               ) : (
                 <Button className='text-xs' onClick={onSaveStory}>保存故事卡</Button>
@@ -159,7 +159,7 @@ export function StoryBuildWizardPanel({
             </div>
           </div>
           <div className='rounded-ui border border-border bg-surface-2 p-2 text-xs text-muted'>
-            草案不会自动覆盖卡片。你可以按步骤生成、在右侧结构化修改，也可以局部确认某几条内容。
+            草案不会自动覆盖卡片。你可以按步骤起草、在右侧修改，也可以只确认其中几条内容。
           </div>
           <DraftQueue
             drafts={pendingDrafts}
@@ -177,13 +177,13 @@ export function StoryBuildWizardPanel({
             getAcceptedScopeLabels={getAcceptedScopeLabels}
           />
         </div>
-        <div className='col-span-7'>
+        <div className='col-span-12 lg:col-span-7'>
           {selectedDraft ? (
             <div className='space-y-2'>
               <div className='flex items-center justify-between gap-2'>
                 <div className='text-sm font-medium'>{selectedDraft.title} <span className='text-xs text-muted'>版本 {selectedDraft.revision || 1}</span></div>
                 <div className='flex gap-2'>
-                  <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft(selectedDraft.kind || 'story_overview', selectedDraft.source_node || null)}>{busy ? '生成中...' : '刷新这一环节'}</Button>
+                  <Button className='text-xs' disabled={busy} onClick={() => onGenerateDraft(selectedDraft.kind || 'story_overview', selectedDraft.source_node || null)}>{busy ? '起草中...' : '重写这一版'}</Button>
                   <Button className='text-xs' variant='primary' onClick={onAcceptDraft}>确认写入</Button>
                 </div>
               </div>
@@ -192,7 +192,7 @@ export function StoryBuildWizardPanel({
                 <Badge>{draftSourceLabel(selectedDraft.source)}</Badge>
                 {getAcceptedScopeLabels(selectedDraft).length ? <Badge tone='success'>已接受: {getAcceptedScopeLabels(selectedDraft).join(', ')}</Badge> : null}
                 {selectedDraft.accepted_target ? <Badge>写入：{selectedDraft.accepted_target}</Badge> : null}
-                {selectedDraft.rejection_reason ? <Badge tone='warn'>拒绝：{selectedDraft.rejection_reason}</Badge> : null}
+                {selectedDraft.rejection_reason ? <Badge tone='warn'>先不用：{selectedDraft.rejection_reason}</Badge> : null}
                 {selectedDraft.source_node?.label ? <Badge>来源节点：{selectedDraft.source_node.label}</Badge> : null}
               </div>
               {selectedDraft.generation_reason ? <div className='text-xs text-muted'>{selectedDraft.generation_reason}</div> : null}
@@ -233,8 +233,8 @@ function DraftQueue({
             <div className='mt-1 flex items-center justify-between gap-2 text-muted'>
               <span>{draftSourceLabel(draft.source)} · {draftChapterLabel(draft.selected_chapter)}</span>
               <div className='flex gap-1'>
-                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
-                <Button className='text-xs' onClick={() => onRejectDraft(draft)}>拒绝</Button>
+                <Button className='text-xs' onClick={() => onOpenDraft(draft)}>查看</Button>
+                <Button className='text-xs' onClick={() => onRejectDraft(draft)}>先不用</Button>
               </div>
             </div>
             {draft.source_node?.label ? (
@@ -294,8 +294,8 @@ function DraftHistory({
               {draft.rejection_reason ? <span>{draft.rejection_reason}</span> : null}
             </div>
             <div className='mt-1 flex gap-1'>
-              <Button className='text-xs' onClick={() => onOpenDraft(draft)}>打开</Button>
-              <Button className='text-xs' onClick={() => onRestoreDraft(draft)}>恢复待确认</Button>
+              <Button className='text-xs' onClick={() => onOpenDraft(draft)}>查看</Button>
+              <Button className='text-xs' onClick={() => onRestoreDraft(draft)}>重新确认</Button>
             </div>
           </div>
         ))}
