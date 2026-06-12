@@ -19,7 +19,7 @@ export function ChapterDraftReviewQueue({ pendingCount, reviews, onAccept, onRej
   return (
     <details className='rounded-ui border border-border bg-surface'>
       <summary className='cursor-pointer px-3 py-2 text-sm font-medium'>
-        AI 草稿待确认 <span className='text-xs text-muted'>({pendingCount})</span>
+        AI 初稿待确认 <span className='text-xs text-muted'>({pendingCount})</span>
       </summary>
       <div className='space-y-2 border-t border-border p-3'>
         {reviews.slice(0, 4).map((review) => (
@@ -36,13 +36,13 @@ export function ChapterDraftReviewQueue({ pendingCount, reviews, onAccept, onRej
             <div className='mt-2 text-muted'>{review.preview || '无预览'}</div>
             {review.status === 'pending_author_review' ? (
               <div className='mt-2 flex gap-2'>
-                <Button className='text-xs' onClick={() => onAccept(review)}>确认草稿</Button>
+                <Button className='text-xs' onClick={() => onAccept(review)}>确认初稿</Button>
                 <Button className='text-xs' onClick={() => onReject(review)}>先不用</Button>
               </div>
             ) : null}
           </div>
         ))}
-        {!reviews.length && <p className='text-sm text-muted'>开始写初稿后，AI 草稿会先进入这里等待作者确认。</p>}
+        {!reviews.length && <p className='text-sm text-muted'>开始写初稿后，AI 初稿会先进入这里等待作者确认。</p>}
       </div>
     </details>
   )

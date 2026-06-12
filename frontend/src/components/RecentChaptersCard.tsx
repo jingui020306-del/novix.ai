@@ -22,7 +22,7 @@ const STATUS_LABELS: Record<string, string> = {
   done: '已完成',
   completed: '已完成',
   generating: '起草中',
-  awaiting_review: '待审稿',
+  awaiting_review: '待确认',
   saved: '已保存',
   risky: '有风险',
 }

@@ -1909,9 +1909,9 @@ export default function App() {
       await mutateChapterReviews()
       await mutateDraft()
       await mutateDraftDetails()
-      push(status === 'accepted' ? 'AI 草稿已确认' : 'AI 草稿已标为先不用')
+      push(status === 'accepted' ? 'AI 初稿已确认' : 'AI 初稿已标为先不用')
     } catch {
-      push('AI 草稿状态更新失败', 'error')
+      push('AI 初稿状态更新失败', 'error')
     }
   }
 
@@ -3747,7 +3747,7 @@ export default function App() {
                 <div className='text-xs text-muted'>AI 改动默认需确认</div>
               </div>
               <div className='metric-card metric-green rounded-ui border p-3'>
-                <div className='text-xs text-muted'>待审 AI 草稿</div>
+                <div className='text-xs text-muted'>待确认 AI 初稿</div>
                 <div className='font-display mt-1 text-lg font-semibold'>{pendingChapterReviews.length}</div>
                 <div className='text-xs text-muted'>确认后才视为作者稿</div>
               </div>
@@ -4095,10 +4095,10 @@ export default function App() {
       const chapterWorkflowSteps = [
         {
           id: 'review',
-          label: '确认 AI 草稿',
+          label: '确认 AI 初稿',
           done: acceptedChapterReviews.length > 0 || (chapterReviewList.length > 0 && pendingChapterReviews.length === 0),
-          detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 草稿待确认` : chapterReviewList.length ? 'AI 草稿已处理' : '开始写初稿后这里会出现待审草稿',
-          action: pendingChapterReviews.length ? '确认第一条' : '查看草稿',
+          detail: pendingChapterReviews.length ? `${pendingChapterReviews.length} 个 AI 初稿待确认` : chapterReviewList.length ? 'AI 初稿已处理' : '开始写初稿后这里会出现待确认草稿',
+          action: pendingChapterReviews.length ? '确认第一条' : '查看初稿',
           disabled: !pendingChapterReviews.length,
           run: () => {
             if (pendingChapterReviews[0]) void updateChapterReview(pendingChapterReviews[0], 'accepted')
@@ -4768,7 +4768,7 @@ export default function App() {
                   <Badge tone={autoApplyPatch ? 'warn' : 'success'}>{autoApplyPatch ? '直接写入' : '手动确认'}</Badge>
                 </div>
                 <div className='space-y-1 text-muted'>
-                  <div>AI 草稿默认进入待确认，作者确认后才视为作者稿。</div>
+                  <div>AI 初稿默认进入待确认，作者确认后才视为作者稿。</div>
                   <div>校对建议默认应由作者确认或标为先不用。</div>
                   <div>没有正文原句的位置，不能显示为已命中。</div>
                 </div>
