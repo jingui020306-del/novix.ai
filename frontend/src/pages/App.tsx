@@ -157,7 +157,7 @@ const TASK_AI_MODULES = [
   { id: 'setup_lines', label: '明暗线/脉络草案', group: '设定建设' },
   { id: 'outline_research', label: '大纲调研', group: '设定建设' },
   { id: 'chapter_writer', label: '章节正文生成', group: '章节生成' },
-  { id: 'chapter_reviewer', label: '章节审查', group: '章节生成' },
+  { id: 'chapter_reviewer', label: '故事检查', group: '章节生成' },
   { id: 'proofreader', label: '基础校对', group: '章节生成' },
   { id: 'canon_extractor', label: '事实抽取', group: '可信检查' },
   { id: 'timeline_checker', label: '时间线检查', group: '可信检查' },
@@ -3606,7 +3606,7 @@ export default function App() {
             { id: 'marks', label: '正文依据', done: hasQuotedMarks, detail: `${evidenceMarkRows.length} 个`, run: () => { setView('chapter'); void analyzeMarks() } },
             { id: 'supported', label: '已证实命中', done: supportedMarks.length > 0, detail: `${supportedMarks.length} 个`, run: () => setView('chapter') },
             { id: 'risks', label: '未证实风险', done: unsupportedMarks.length === 0 && evidenceMarkRows.length > 0, detail: `${unsupportedMarks.length} 个风险`, run: () => setView('chapter') },
-            { id: 'pending_reviews', label: '待确认稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `草稿 ${pendingChapterReviews.length} · 校对 ${pendingPatchCount}`, run: () => setView('chapter') },
+            { id: 'pending_reviews', label: '待确认稿件', done: pendingChapterReviews.length === 0 && pendingPatchCount === 0, detail: `初稿 ${pendingChapterReviews.length} · 校对 ${pendingPatchCount}`, run: () => setView('chapter') },
           ],
         },
       ]

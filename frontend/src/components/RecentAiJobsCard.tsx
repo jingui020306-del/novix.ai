@@ -36,7 +36,7 @@ function labelForStatus(status?: string) {
 
 function labelForStage(stage?: string) {
   const raw = stage || ''
-  if (raw.includes('PRE_REVIEW')) return '审查写作要求'
+  if (raw.includes('PRE_REVIEW')) return '确认写作要求'
   if (raw.includes('WRITER') || raw.includes('DRAFT')) return '扩展正文'
   if (raw.includes('PROOFREAD') || raw.includes('PATCH')) return '校对建议'
   if (raw.includes('TRUST') || raw.includes('VERIFICATION') || raw.includes('MARK')) return '检查正文依据'

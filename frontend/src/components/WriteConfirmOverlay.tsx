@@ -208,7 +208,7 @@ export function WriteConfirmOverlay({
             </div>
             <div className='rounded-ui border border-border bg-surface p-3 text-xs'>
               <div className='mb-2 flex items-center justify-between gap-2'><span className='font-medium'>安全规则</span><Badge>{autoApplyPatch ? '需注意' : '默认安全'}</Badge></div>
-              <div className='text-muted'>AI 草稿不会直接覆盖作者正文。</div>
+              <div className='text-muted'>AI 初稿不会直接覆盖作者正文。</div>
               <div className='mt-1 text-muted'>校对建议默认进入待确认，作者可以确认或标为先不用。</div>
               <div className='mt-1 text-muted'>没有正文原句的判断不会显示为已命中。</div>
             </div>
@@ -243,7 +243,7 @@ export function WriteConfirmOverlay({
           <details className='mt-3 rounded-ui border border-border bg-surface-2 text-xs text-muted'>
             <summary className='cursor-pointer px-3 py-2 font-medium text-foreground'>高级信息</summary>
             <div className='space-y-2 border-t border-border p-3'>
-              <div>分工方式：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 负责全部分工`}；校对建议自动写入：{autoApplyPatch ? '开启' : '关闭'}；写作长度上限：{pendingWriteJob.maxTokens}</div>
+              <div>分工方式：{useAgentAssignments ? '使用设置里的写作分工' : `${llmProfileId} 负责全部分工`}；校对建议直接写入：{autoApplyPatch ? '开启' : '关闭'}；写作长度上限：{pendingWriteJob.maxTokens}</div>
               <div className='space-y-1'>
                 {writeRouteRows.map((row: any) => (
                   <div key={row.module} className='rounded-ui border border-border bg-surface px-2 py-1'>

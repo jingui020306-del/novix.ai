@@ -232,7 +232,7 @@ export function ChapterEditorCard({
             </div>
             <label className='flex items-center gap-2 text-sm'>
               <input type='checkbox' checked={autoApplyPatch} onChange={(e) => setAutoApplyPatch(e.target.checked)} />
-              自动写入 AI 校对建议
+              校对建议直接写入正文（谨慎）
             </label>
           </div>
         </details>
