@@ -190,9 +190,39 @@ class EvidenceService:
             quote = ev.get("quote") or issue.get("summary") or issue.get("issue")
             hit = self._line_span_for_quote(text, str(quote or ""))
             marks.append(self._make_mark(chapter_id, "canon_fact", issue.get("id") or f"issue_{_hash_short(str(issue))}", issue.get("summary") or issue.get("issue") or "风险", "partial" if hit else "unsupported", hit, confidence=0.55 if hit else 0.12, method="llm_extractor", matched_signals=[hit[2]] if hit else [], job_id=job_id, stage="CLAIM_VERIFICATION", model=model, note=issue.get("summary") or issue.get("issue") or "审查风险"))
+            if issue.get('information_id'):
+                marks[-1]['information_id'] = issue['information_id']
 
         verified = [self.verify_mark(project_id, m) for m in marks]
-        return verified
+        return self._arrangements(project_id, chapter_id, verified)
+
+    def _arrangements(self, project_id, chapter_id, marks):
+        from services.information_service import InformationService
+        service = InformationService(self.store)
+        decisions = [(item, decision) for item in service.list(project_id) for decision in service.decisions(project_id, item['id'], chapter_id)
+                     if decision['status'] == 'active' and decision['action'] in {'intentional', 'defer'}]
+        for mark in marks:
+            detection = mark.setdefault('detection', {})
+            if mark.pop('author_arrangement', None):
+                detection.pop('ignored_by_author', None)
+            if mark.get('target_type') not in {'canon_fact', 'information'} or detection.get('support_level') == 'supported':
+                continue
+            quote = str(mark.get('span', {}).get('quote') or '')
+            for item, decision in decisions:
+                linked = mark.get('information_id') == item['id'] or mark.get('target_id') == item['id'] or bool(item.get('fact_ref') and mark.get('target_id') == item['fact_ref'])
+                bound_quote = str(decision.get('quote') or '')
+                if not linked and not (len(bound_quote) >= 2 and quote and bound_quote in quote):
+                    continue
+                if decision.get('quote_source'):
+                    context = service.quote_context(project_id, decision['quote_source'], quote) if quote else {}
+                    if context.get('matches') != 1 or context != service.quote_context(project_id, decision['quote_source'], bound_quote):
+                        continue
+                mark['author_arrangement'] = {'information_id': item['id'], 'decision_id': decision['id'], 'signature': decision['signature'],
+                                              'action': decision['action'], 'reason': decision.get('reason')}
+                detection['ignored_by_author'] = True
+                detection['note'] = '作者已确认有意安排' if decision['action'] == 'intentional' else '作者选择暂不处理'
+                break
+        return marks
 
     def save_marks(self, project_id: str, chapter_id: str, marks: list[dict[str, Any]]) -> None:
         rel = f"meta/evidence_marks/{chapter_id}.jsonl"
@@ -203,7 +233,7 @@ class EvidenceService:
             self.store.append_jsonl(project_id, rel, mark)
 
     def list_marks(self, project_id: str, chapter_id: str) -> list[dict[str, Any]]:
-        return self.store.read_jsonl(project_id, f"meta/evidence_marks/{chapter_id}.jsonl")
+        return self._arrangements(project_id, chapter_id, self.store.read_jsonl(project_id, f"meta/evidence_marks/{chapter_id}.jsonl"))
 
     def update_mark_feedback(self, project_id: str, chapter_id: str, mark_id: str, action: str, note: str = "") -> dict[str, Any]:
         if action not in AUTHOR_FEEDBACK_ACTIONS:

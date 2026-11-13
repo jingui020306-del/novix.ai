@@ -92,6 +92,14 @@ def _save_card(project_id, card_id, card, s, background_tasks, change_service, *
         comparable = lambda value: {key: item for key, item in value.items() if key != 'updated_at'}
         if comparable(before) == comparable(card):
             return {**decorate(s, project_id, _card_path(card_id), before), 'change_suggestions': {'queued_count': 0, 'task_ids': []}}
+        payload = card.get('payload', {})
+        origins = payload.get('field_provenance', {})
+        if not isinstance(origins, dict) or any(kind not in {'material_fact', 'character_statement', 'inference', 'ai_addition', 'author_edit'} for kind in origins.values()):
+            raise HTTPException(400, '字段来源分类不正确。')
+        previous = before.get('payload', {})
+        changed_fields = {key for key, value in payload.items() if key not in {'field_provenance', 'sources', 'import_source_keys'} and previous.get(key) != value}
+        if changed_fields:
+            payload['field_provenance'] = {**previous.get('field_provenance', {}), **origins, **{key: 'ai_addition' if origins.get(key) == 'ai_addition' else 'author_edit' for key in changed_fields}}
         card['updated_at'] = now_iso()
         s.write_yaml(project_id, _card_path(card_id), card)
         IncrementalMemoryService(s).mark(project_id, _card_path(card_id))
@@ -125,8 +133,12 @@ def update_card(project_id: str, card_id: str, card: dict, s: FSStore = Depends(
 
 @router.delete('/cards/{card_id}')
 def delete_card(project_id: str, card_id: str, s: FSStore = Depends(get_store)):
-    path = s._safe_path(project_id, _card_path(card_id))
-    if path.exists():
-        path.unlink()
-        IncrementalMemoryService(s).mark(project_id, _card_path(card_id))
+    from services.author_control_service import AuthorControlService
+    controls = AuthorControlService(s)
+    with controls.lock(project_id):
+        path = s._safe_path(project_id, _card_path(card_id))
+        controls.assert_write(project_id, _card_path(card_id), s.read_yaml(project_id, _card_path(card_id)), None)
+        if path.exists():
+            path.unlink()
+            IncrementalMemoryService(s).mark(project_id, _card_path(card_id))
     return {"deleted": True}

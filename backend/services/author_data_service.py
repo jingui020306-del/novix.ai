@@ -114,6 +114,8 @@ class AuthorDataService:
         from services.incremental_memory_service import IncrementalMemoryService
         source = f"cards/{card['id']}.yaml"
         clean = {key: value for key, value in card.items() if key not in {'_revision', 'change_suggestions'}}
+        from services.author_control_service import AuthorControlService
+        AuthorControlService(self.store).assert_write(project_id, source, before, clean)
         SharedMaterialService(self.store).validate_card(project_id, card['id'], clean, before)
         clean['updated_at'] = now_iso()
         self.store.write_yaml(project_id, source, clean)
@@ -302,6 +304,11 @@ class AuthorDataService:
         if status == 'confirmed' and not self.world.has_time(scope):
             raise ValueError('已确认阶段须注明发生时间或事件锚点；时间未定可先保存计划。')
         for item in knowledge:
+            if item.get('state', 'knows') not in {'knows', 'believes', 'suspects', 'misunderstands', 'conceals'}:
+                raise ValueError('认知状态请选择知道、相信、怀疑、误解或隐瞒。')
+            if item.get('information_id') and (extra_entities or {}).get(item['information_id']) != 'information':
+                from services.information_service import InformationService
+                InformationService(self.store).get(project_id, item['information_id'])
             if item.get('learned_at'):
                 self.world.validate_context(project_id, {'time': item['learned_at']})
             if item.get('known_by') and (not isinstance(item['known_by'], list) or any(not isinstance(cid, str) for cid in item['known_by'])):
@@ -340,6 +347,8 @@ class AuthorDataService:
         with self._lock(project_id):
             self._check_version(project_id, STAGES_PATH, body.get('_revision'))
             row = self.prepare_stage(project_id, entity_type, target_id, body)
+            from services.author_control_service import AuthorControlService
+            AuthorControlService(self.store).assert_stage(project_id, entity_type, target_id, row['changes'], row['status'])
             previous = self.stages(project_id, entity_type, target_id)
             existing = next((item for item in previous if item['id'] == row['id']), None)
             if existing:
@@ -432,7 +441,7 @@ class AuthorDataService:
                 fields[key] = row
         return state, uncertain
 
-    def character_state(self, project_id, character_id, **scope_args):
+    def character_state(self, project_id, character_id, *, _information_snapshot=None, **scope_args):
         entity_id(character_id, '人物')
         card = self.store.read_yaml(project_id, f'cards/{character_id}.yaml')
         if card.get('type') != 'character':
@@ -464,8 +473,11 @@ class AuthorDataService:
                     continue
                 if item.get('learned_at') and not self.world.applies(project_id, {**row['scope'], 'time': item['learned_at']}, scope, dynamic=True)[0]:
                     continue
-                knowledge.append({**copy.deepcopy(item), 'source': row['source'], 'stage_id': row['id']})
-        return {'id': character_id, 'base': card, 'state': state, 'knowledge': knowledge, 'age': self.world.age(card.get('payload', {}), scope),
+                knowledge.append({**copy.deepcopy(item), 'state': item.get('state', 'knows'), 'scope': row['scope'], 'source': row['source'], 'stage_id': row['id']})
+        from services.information_service import InformationService
+        information = _information_snapshot or InformationService(self.store).state(project_id, world_context=scope)
+        awareness = [record for item in information['items'] for record in item['awareness'] if record['data'].get('character_id') == character_id]
+        return {'id': character_id, 'base': card, 'state': state, 'knowledge': knowledge, 'information_awareness': awareness, 'age': self.world.age(card.get('payload', {}), scope),
                 'changes': applied, 'names': names, 'scope': scope, 'sources': sources, 'uncertainties': [*resolved['warnings'], *uncertainties]}
 
     def world_state(self, project_id, world_id, **scope_args):
@@ -481,12 +493,14 @@ class AuthorDataService:
     def author_state(self, project_id, **scope_args):
         resolved = self.world.resolve(project_id, **scope_args)
         scope = resolved['scope']
+        from services.information_service import InformationService
+        information = InformationService(self.store).state(project_id, world_context=scope)
         characters, worlds, sources = [], [], list(resolved['sources'])
         for card, source in self._cards(project_id):
             if not self.world.card_visible(project_id, card, scope):
                 continue
             if card.get('type') == 'character':
-                item = self.character_state(project_id, card['id'], world_context=scope)
+                item = self.character_state(project_id, card['id'], _information_snapshot=information, world_context=scope)
                 characters.append(item)
             if card.get('type') in {'world', 'worldview', 'world_rule', 'lore'}:
                 if scope.get('world_id') and not self.world.belongs_to_world(project_id, card, scope['world_id']):
@@ -494,7 +508,8 @@ class AuthorDataService:
                 changes, uncertain = self._active_stages(project_id, 'world', card['id'], scope)
                 state, conflicts = self._apply_changes(project_id, card.get('payload', {}), changes)
                 uncertain.extend(conflicts)
-                worlds.append({'id': card['id'], 'base': card, 'state': state, 'changes': changes, 'uncertainties': uncertain, 'sources': [{'path': source}, *[{'path': STAGES_PATH, 'record_id': row['id']} for row in changes]]})
+                state, local_changes = self.world.apply_overrides(project_id, card, state, scope)
+                worlds.append({'id': card['id'], 'base': card, 'state': state, 'changes': changes, 'local_changes': local_changes, 'uncertainties': uncertain, 'sources': [{'path': source}, *[{'path': STAGES_PATH, 'record_id': row['id']} for row in changes]]})
         relations = []
         for relation in self.relationships(project_id):
             if not self.world.applies(project_id, relation.get('scope'), scope)[0]:
@@ -513,5 +528,6 @@ class AuthorDataService:
                 continue
             relation = self.world.compare_time(project_id, {**event_scope.get('time', {}), 'event_ref': self.world.event_ref(event['id'])}, scope.get('time'))
             events.append({**event, 'temporal_status': 'past_or_current' if relation is not None and relation <= 0 else 'planned_or_unlocated'})
+        options = self.world.options(project_id, scope['world_id']) if scope.get('world_id') else {'branches': [], 'periods': [], 'regions': []}
         return {**resolved, 'characters': characters, 'worlds': worlds, 'relations': relations, 'events': events,
-                'branches': self.world.branches(project_id, scope['world_id']) if scope.get('world_id') else [], 'sources': sources}
+                'information_items': information['items'], **{key: options[key] for key in ['branches', 'periods', 'regions']}, 'sources': sources}

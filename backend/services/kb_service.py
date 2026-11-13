@@ -190,18 +190,24 @@ class KBService:
             text = str(data.get("payload", {}))
             chunk_id = f"{y.stem}_c0000"
             rows.append({"chunk_id": chunk_id, "kb_id": "kb_world", "asset_id": None, "ordinal": 0, "text": text, "cleaned_text": text, "features": text_features(text), "source": {"path": f"cards/{y.name}", "kind": "world_card", "card_id": data.get("id", y.stem), "field_path": "payload"}})
-        for fact in self.store.read_jsonl(project_id, "canon/facts.jsonl"):
-            if fact.get("scope") not in {"world_state", "world_event", "world_rule"}:
+        rows.extend(self.world_fact_rows(project_id))
+        self.store.write_md(project_id, _kb_rel("kb_world", "chunks.jsonl"), "")
+        for r in rows:
+            self.store.append_jsonl(project_id, _kb_rel("kb_world", "chunks.jsonl"), r)
+        return {"ok": True, "kb_id": "kb_world", "chunks": len(rows)}
+
+    def world_fact_rows(self, project_id):
+        from routers.canon import _compose_facts_with_revisions
+        rows = []
+        for fact in _compose_facts_with_revisions(self.store, project_id):
+            if not isinstance(fact.get('scope'), str) or fact['scope'] not in {"world_state", "world_event", "world_rule"}:
                 continue
             txt = str(fact.get("value") or fact.get("fact") or "")
             if not txt:
                 continue
             cid = fact.get("id") or f"worldfact_{len(rows):04d}"
-            rows.append({"chunk_id": f"{cid}_c0000", "kb_id": "kb_world", "asset_id": None, "ordinal": len(rows), "text": txt, "cleaned_text": txt, "features": text_features(txt), "source": {"path": "canon/facts.jsonl", "kind": "world_fact", "fact_id": fact.get("id", cid), "field_path": "value"}})
-        self.store.write_md(project_id, _kb_rel("kb_world", "chunks.jsonl"), "")
-        for r in rows:
-            self.store.append_jsonl(project_id, _kb_rel("kb_world", "chunks.jsonl"), r)
-        return {"ok": True, "kb_id": "kb_world", "chunks": len(rows)}
+            rows.append({"chunk_id": f"{cid}_c0000", "kb_id": "kb_world", "asset_id": None, "ordinal": len(rows), "text": txt, "cleaned_text": txt, "features": text_features(txt), "source": {"path": "canon/revisions.jsonl" if fact.get('_revised') else "canon/facts.jsonl", "kind": "world_fact", "fact_id": fact.get("id", cid), "field_path": "value"}})
+        return rows
     def reindex_manuscript(self, project_id: str) -> dict[str, Any]:
         drafts_dir = self.store._safe_path(project_id, "drafts")
         rows: list[dict[str, Any]] = []

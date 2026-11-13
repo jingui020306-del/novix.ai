@@ -46,6 +46,11 @@ def _chapter_meta(s: FSStore, project_id: str, chapter_id: str) -> dict:
 
 
 def _validate_author_meta(store, project_id, body):
+    if 'information_ids' in body:
+        values = body['information_ids']
+        existing = {row['id'] for row in store.read_yaml(project_id, 'cards/outline_author_registry.yaml').get('payload', {}).get('information_registry', [])}
+        if not isinstance(values, list) or len(values) > 200 or any(not isinstance(value, str) or value not in existing for value in values):
+            raise ValueError('请选择本作品中已有的关联信息。')
     if 'world_context' in body:
         from services.world_scope_service import WorldScopeService
         WorldScopeService(store).validate_context(project_id, body['world_context'])
@@ -192,6 +197,16 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         old = s.read_md(project_id, f'drafts/{chapter_id}.md')
+        from services.author_control_service import AuthorControlService
+        controls = AuthorControlService(s)
+        controls.assert_write(project_id, f'drafts/{chapter_id}.md', old, body.get('content', ''))
+        current_meta = s.read_json(project_id, f'drafts/{chapter_id}.meta.json')
+        proposed_meta = {**current_meta, **{key: body[key] for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index', 'world_context', 'pov', 'pov_character_id', 'information_ids'] if key in body}}
+        if 'title' in body and 'chapter_title' not in body:
+            proposed_meta['chapter_title'] = body['title']
+        if 'chapter_title' in body and 'title' not in body:
+            proposed_meta['title'] = body['chapter_title']
+        controls.assert_write(project_id, f'drafts/{chapter_id}.meta.json', current_meta, proposed_meta)
         if old:
             _save_snapshot(s, project_id, chapter_id, old, reason='manual_save')
         s.write_md(project_id, f'drafts/{chapter_id}.md', body.get('content', ''))
@@ -200,7 +215,7 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
             order.append(chapter_id)
             _write_chapter_order(s, project_id, order)
         meta = _chapter_meta(s, project_id, chapter_id)
-        for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index', 'world_context', 'pov', 'pov_character_id']:
+        for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index', 'world_context', 'pov', 'pov_character_id', 'information_ids']:
             if key in body:
                 meta[key] = body[key]
         if 'title' in body and 'chapter_title' not in body:
@@ -267,6 +282,8 @@ def rollback(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(
         if not content:
             raise HTTPException(status_code=404, detail='version not found')
         current = s.read_md(project_id, f'drafts/{chapter_id}.md')
+        from services.author_control_service import AuthorControlService
+        AuthorControlService(s).assert_write(project_id, f'drafts/{chapter_id}.md', current, content)
         if current:
             _save_snapshot(s, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}')
         s.write_md(project_id, f'drafts/{chapter_id}.md', content)
@@ -329,9 +346,11 @@ def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depen
 
         _validate_selection_bounds(accepted, body.get('selection_range'))
 
-        _save_snapshot(s, project_id, chapter_id, original, reason='before_apply_patch', patch_id=body.get('patch_id'))
         apply_ops = [o['raw'] for o in accepted]
         updated, diff = apply_patch_ops(original, apply_ops)
+        from services.author_control_service import AuthorControlService
+        AuthorControlService(s).assert_write(project_id, f'drafts/{chapter_id}.md', original, updated)
+        _save_snapshot(s, project_id, chapter_id, original, reason='before_apply_patch', patch_id=body.get('patch_id'))
         s.write_md(project_id, f'drafts/{chapter_id}.md', updated)
 
         rec = {

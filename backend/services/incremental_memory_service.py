@@ -53,9 +53,10 @@ class IncrementalMemoryService:
         drafts = self.store._safe_path(project_id, 'drafts')
         cards = self.store._safe_path(project_id, 'cards')
         paths = [*drafts.glob('*.md'), *drafts.glob('*.meta.json'), *cards.glob('*.yaml'), *cards.glob('blueprint_*.json')]
-        facts = self.store._safe_path(project_id, 'canon/facts.jsonl')
-        if facts.exists():
-            paths.append(facts)
+        for rel in ['canon/facts.jsonl', 'canon/revisions.jsonl']:
+            source = self.store._safe_path(project_id, rel)
+            if source.exists():
+                paths.append(source)
         root = self.store._project_dir(project_id)
         return {str(path.relative_to(root)): [path.stat().st_mtime_ns, path.stat().st_size] for path in paths}
 
@@ -86,7 +87,7 @@ class IncrementalMemoryService:
         world_rows = self.store.read_jsonl(project_id, 'meta/kb/kb_world/chunks.jsonl')
         indexed_world_paths = {row.get('source', {}).get('path') for row in world_rows if row.get('source', {}).get('kind') == 'world_card'}
         world_paths = [path for path in changed if path.startswith('cards/') and (path in indexed_world_paths or self.store.read_yaml(project_id, path).get('type') in {'world', 'world_rule', 'lore'})]
-        facts_changed = 'canon/facts.jsonl' in changed
+        facts_changed = bool({'canon/facts.jsonl', 'canon/revisions.jsonl'} & set(changed))
         rebuilt = []
         for path in chapters:
             chapter_id = path.removeprefix('drafts/').removesuffix('.md')
@@ -118,13 +119,7 @@ class IncrementalMemoryService:
                 cid = card.get('id') or path.split('/')[-1].removesuffix('.yaml')
                 rows.append(self._row(f'{cid}_c0000', text, {'path': path, 'kind': 'world_card', 'card_id': cid, 'field_path': 'payload'}))
             if facts_changed:
-                for index, fact in enumerate(self.store.read_jsonl(project_id, 'canon/facts.jsonl')):
-                    if fact.get('scope') not in {'world_state', 'world_event', 'world_rule'}:
-                        continue
-                    text = str(fact.get('value') or fact.get('fact') or '')
-                    if text:
-                        cid = fact.get('id') or f'worldfact_{index:04d}'
-                        rows.append(self._row(f'{cid}_c0000', text, {'path': 'canon/facts.jsonl', 'kind': 'world_fact', 'fact_id': cid, 'field_path': 'value'}))
+                rows.extend(self.kb.world_fact_rows(project_id))
             self._save_rows(project_id, 'kb_world', rows)
         # External writes may happen while derivatives are prepared. Never bless a stale snapshot.
         latest_inventory = self._sources(project_id)

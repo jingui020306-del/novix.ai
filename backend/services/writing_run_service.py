@@ -106,6 +106,9 @@ class WritingRunService:
         if any(record['status'] in {'running', 'pausing', 'paused'} for record in self.list(project_id)):
             raise ValueError('已有写作任务，请先继续或结束它。')
         units = self._units(project_id, body)
+        from services.author_control_service import AuthorControlService
+        for unit in units:
+            AuthorControlService(self.store).assert_unlocked(project_id, f"drafts/{unit['chapter_id']}.md")
         run_id = f'run_{uuid.uuid4().hex[:10]}'
         self._save(project_id, run_id, status='running', next_index=0, units=units, request=body, child_job_id='', pause_requested=False, message='正在准备第一段。', created_at=now_iso())
         self._start(project_id, run_id)

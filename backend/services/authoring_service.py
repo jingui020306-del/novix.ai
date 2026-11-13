@@ -25,7 +25,7 @@ class AuthoringService:
         self.manager = manager
         self.store = manager.store
 
-    async def complete(self, project_id: str, body: dict, module: str, system: str, prompt: str, *, max_tokens: int = 3000, usage_callback=None) -> str:
+    async def complete(self, project_id: str, body: dict, module: str, system: str, prompt: str, *, max_tokens: int = 3000, usage_callback=None, prepare_memory=True) -> str:
         _, profile, _ = self.manager._resolve_profile(project_id, body, module)
         if profile.get('provider') == 'mock':
             raise ValueError('请先在设置中为这项任务选择真实模型，或关闭分工模型并选择已配置的模型。')
@@ -33,7 +33,8 @@ class AuthoringService:
             raise ValueError('模型名称或服务地址尚未填写完整，请到设置中补全。')
         if profile.get('provider') == 'openai_compat' and not profile.get('api_key'):
             raise ValueError('这个模型尚未配置密钥，请到设置中填写。')
-        IncrementalMemoryService(self.store, self.manager.context_engine.kb).prepare(project_id)
+        if prepare_memory:
+            IncrementalMemoryService(self.store, self.manager.context_engine.kb).prepare(project_id)
         messages = [{'role': 'system', 'content': system + CHARACTER_PORTRAYAL_GUIDANCE}, {'role': 'user', 'content': prompt}]
         reported, result = {}, {}
         try:
@@ -248,12 +249,14 @@ class AuthoringService:
         with ChangeSuggestionService(self.store).lock(project_id):
             source, text = body['source_text'], body['text']
             start, end = body['start'], body['end']
-            if not 0 <= start < end <= len(source) or not text.strip():
+            if not 0 <= start <= end <= len(source) or not text.strip():
                 raise ValueError('修改内容或范围无效。')
             original = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
             if self.content_hash(original) != body['base_hash']:
                 raise FileExistsError('正文已经发生变化，请重新润色，避免覆盖新修改。')
             updated = source[:start] + text + source[end:]
+            from services.author_control_service import AuthorControlService
+            AuthorControlService(self.store).assert_write(project_id, f'drafts/{chapter_id}.md', original, updated)
             patch_id = f'revision_{uuid.uuid4().hex[:10]}'
             ops = [{'op_id': 'paragraph_revision', 'type': 'replace', 'target_range': {'start': 0, 'end': len(source.splitlines())}, 'before': source, 'after': updated, 'rationale': '日常润色' if body.get('mode') == 'polish' else '清晰自然改写'}]
             diff = '\n'.join(unified_diff(source.splitlines(), updated.splitlines(), fromfile='before', tofile='after', lineterm=''))

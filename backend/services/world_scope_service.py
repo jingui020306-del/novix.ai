@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import re
 from datetime import date
+from services.edit_version_service import check_revision
 
 
 def entity_id(value, label='资料'):
@@ -102,9 +103,9 @@ class WorldScopeService:
     def validate_context(self, project_id, value, *, extra_entities=None):
         if not isinstance(value, dict):
             raise ValueError('世界与发生时间须为对象。')
-        if set(value) - {'world_id', 'branch_id', 'story_card_id', 'time', 'base_setting_ids', 'local_adjustments', 'pov_character_id', 'chapter_id', 'event_ref'}:
+        if set(value) - {'world_id', 'branch_id', 'story_card_id', 'time', 'base_setting_ids', 'local_adjustments', 'pov_character_id', 'chapter_id', 'event_ref', 'period_id', 'region_ids', 'overrides'}:
             raise ValueError('世界与时间范围含有未知字段。')
-        for key in ['world_id', 'branch_id', 'story_card_id', 'pov_character_id', 'chapter_id']:
+        for key in ['world_id', 'branch_id', 'story_card_id', 'pov_character_id', 'chapter_id', 'period_id']:
             if value.get(key):
                 entity_id(value[key])
         if value.get('world_id'):
@@ -114,10 +115,33 @@ class WorldScopeService:
             branches = self.branches(project_id, value['world_id']) if world else [{'id': 'main'}]
             if value.get('branch_id', 'main') not in {row['id'] for row in branches}:
                 raise ValueError('所选世界的事件分支不存在。')
+            options = self.options(project_id, value['world_id']) if world else {'periods': [], 'regions': []}
+            if value.get('period_id') and value['period_id'] not in {row['id'] for row in options['periods']} and value['period_id'] not in (extra_entities or {}):
+                raise ValueError('所选时期不属于这个世界，请从原资料重新选择。')
+            regions = value.get('region_ids', [])
+            if not isinstance(regions, list) or any(not isinstance(region, str) for region in regions) or len(set(regions)) != len(regions):
+                raise ValueError('地区须选择不重复的已有地区。')
+            valid_regions = {row['id'] for row in options['regions']} | set(extra_entities or {})
+            if any(region not in valid_regions for region in regions):
+                raise ValueError('所选地区不属于这个世界，请重新选择。')
+        elif value.get('period_id') or value.get('region_ids'):
+            raise ValueError('选择时期或地区前，请先明确所属世界。')
         if 'base_setting_ids' in value and (not isinstance(value['base_setting_ids'], list) or any(not isinstance(item, str) for item in value['base_setting_ids'])):
             raise ValueError('基础设定须选择资料编号列表。')
         if 'local_adjustments' in value and (not isinstance(value['local_adjustments'], str) or len(value['local_adjustments']) > 6000):
             raise ValueError('局部调整须为6000字以内的文字。')
+        overrides = value.get('overrides', [])
+        if not isinstance(overrides, list) or len(overrides) > 100:
+            raise ValueError('局部改动须为至多100项的具体字段改动。')
+        for override in overrides:
+            if not isinstance(override, dict) or not isinstance(override.get('path'), list) or len(override['path']) < 2 or any(not isinstance(key, str) for key in override['path']):
+                raise ValueError('局部改动须关联原设定和具体字段。')
+            target = entity_id(override.get('target_id'))
+            card = self.store.read_yaml(project_id, f'cards/{target}.yaml')
+            if card.get('type') not in {'world', 'worldview', 'world_rule', 'lore'} or not value.get('world_id') or not self.belongs_to_world(project_id, card, value['world_id']):
+                raise ValueError('局部改动只能引用当前世界的原设定，不能混用其他世界。')
+            if override['path'][0] != 'payload' or any(key in {'id', 'world_context', 'branches'} for key in override['path']):
+                raise ValueError('局部改动仅修改设定内容，不改变身份、所属世界或分支定义。')
         if value.get('event_ref'):
             self.event(project_id, value['event_ref'])
         time = value.get('time', {})
@@ -150,6 +174,31 @@ class WorldScopeService:
         if not any(row.get('id') == 'main' for row in rows if isinstance(row, dict)):
             rows.insert(0, {'id': 'main', 'label': '主世界', 'parent_branch_id': None, 'fork_event_ref': None})
         return rows
+
+    def options(self, project_id, world_id):
+        entity_id(world_id, '世界')
+        root = self.store.read_yaml(project_id, f'cards/{world_id}.yaml')
+        if root.get('type') not in {'world', 'worldview', 'world_rule', 'lore'}:
+            raise FileNotFoundError('世界资料不存在。')
+        periods, regions = [], []
+        for path in sorted(self.store._safe_path(project_id, 'cards').glob('*.yaml')):
+            card = self.store.read_yaml(project_id, f'cards/{path.name}')
+            payload = card.get('payload') or {}
+            if card.get('id') == world_id or not self.belongs_to_world(project_id, card, world_id):
+                continue
+            kind = payload.get('entry_type')
+            item = {'id': card['id'], 'label': card.get('title') or '未命名条目', 'source': f'cards/{path.name}',
+                    'time': payload.get('time') or payload.get('world_context', {}).get('time') or {}}
+            if kind in {'period', 'history'}:
+                periods.append(item)
+            elif kind in {'place', 'region', 'location'}:
+                regions.append(item)
+        voids = {sid for row in self.store.read_jsonl(project_id, 'canon/author_stages.jsonl') if row.get('kind') == 'void' for sid in row.get('voids', [])}
+        for row in self.store.read_jsonl(project_id, 'canon/author_stages.jsonl'):
+            if row.get('entity_type') == 'world' and row.get('entity_id') == world_id and row.get('status') != 'retracted' and row.get('id') not in voids:
+                periods.append({'id': row['id'], 'label': row.get('label') or row.get('changes', {}).get('summary') or '世界阶段',
+                                'time': row.get('scope', {}).get('time', {}), 'source': f"canon/author_stages.jsonl#{row['id']}", 'status': row.get('status')})
+        return {'world_id': world_id, 'periods': periods, 'regions': regions, 'branches': self.branches(project_id, world_id)}
 
     def resolve(self, project_id, *, story_card_id=None, chapter_id=None, event_ref=None, branch_id=None, world_context=None, pov_character_id=None, pov=None):
         scope, inherited, sources, warnings = {}, {}, [], []
@@ -184,6 +233,8 @@ class WorldScopeService:
             for key, child in value.items():
                 if child in (None, ''):
                     continue
+                if key == 'time' and not isinstance(child, dict):
+                    raise ValueError('发生时间须为对象；未确定可留空。')
                 if key == 'time' and isinstance(child, dict):
                     # A new event anchor replaces the prior anchor's phase, not its old "after".
                     if child.get('event_ref') and child['event_ref'] != scope.get('time', {}).get('event_ref'):
@@ -203,6 +254,10 @@ class WorldScopeService:
         if scene_owner is not None:
             merge(scene_row.get('world_context'), f"cards/{scene_owner['id']}.yaml#payload.important_scenes.{index}.world_context")
         merge(world_context, 'request.world_context')
+        if scope.get('period_id') and scope.get('world_id') and not self.has_time(scope):
+            period = next((row for row in self.options(project_id, scope['world_id'])['periods'] if row['id'] == scope['period_id']), None)
+            if period and period.get('time'):
+                merge({'time': {**period['time'], **scope.get('time', {})}}, period['source'])
         if canonical:
             scope['event_ref'] = canonical
             scope.setdefault('time', {}).setdefault('event_ref', canonical)
@@ -254,6 +309,42 @@ class WorldScopeService:
             warnings.append('发生时间未定；不按章节号或最新记录猜测年龄和动态状态。')
         self.validate_context(project_id, scope)
         return {'scope': scope, 'narrative_pov': narrative_pov, 'inherited_from': inherited, 'sources': sources, 'warnings': warnings}
+
+    def apply_overrides(self, project_id, card, state, scope):
+        result, applied = copy.deepcopy(state), []
+        for change in scope.get('overrides', []) or []:
+            if change['target_id'] != card.get('id') or not self.card_visible(project_id, card, scope):
+                continue
+            check_revision(self.store, project_id, f"cards/{card['id']}.yaml", change.get('base_revision'))
+            keys = change['path'][1:]
+            original, target = card.get('payload', {}), result
+            for key in keys[:-1]:
+                if isinstance(original, list) and key.isdigit() and int(key) < len(original):
+                    original = original[int(key)]
+                elif isinstance(original, dict):
+                    original = original.get(key, {})
+                else:
+                    raise ValueError('原设定字段位置已经变化，请重新核对局部改动。')
+                if isinstance(target, list) and key.isdigit() and int(key) < len(target):
+                    target = target[int(key)]
+                elif isinstance(target, dict):
+                    target = target.setdefault(key, {})
+                else:
+                    raise ValueError('局部改动字段位置已经变化。')
+            final = keys[-1]
+            before = original.get(final) if isinstance(original, dict) else original[int(final)] if final.isdigit() and int(final) < len(original) else None
+            if 'before' in change and change['before'] != before:
+                raise FileExistsError('局部改编依据的原设定已经变化，请先核对原值，正式世界未被覆盖。')
+            if 'after' not in change:
+                raise ValueError('局部改动须写明修改后的内容。')
+            if isinstance(target, list):
+                if not final.isdigit() or int(final) >= len(target):
+                    raise ValueError('局部改动的列表位置不存在。')
+                target[int(final)] = copy.deepcopy(change['after'])
+            else:
+                target[final] = copy.deepcopy(change['after'])
+            applied.append({**copy.deepcopy(change), 'scope': 'story_local', 'source': f"cards/{card['id']}.yaml"})
+        return result, applied
 
     @staticmethod
     def has_time(scope):
@@ -321,6 +412,11 @@ class WorldScopeService:
         for key in ['world_id', 'story_card_id']:
             if source.get(key) and source[key] != target.get(key):
                 return False, f'{key}不在当前范围'
+        if not dynamic:
+            if source.get('period_id') and source['period_id'] != target.get('period_id'):
+                return False, '不属于当前采用时期'
+            if source.get('region_ids') and not set(source['region_ids']) & set(target.get('region_ids') or []):
+                return False, '不属于当前采用地区'
         source_branch = source.get('branch_id', 'main')
         target_branch = target.get('branch_id', 'main')
         if source_branch != target_branch and (source.get('branch_id') or dynamic or self.has_time(source)):
@@ -393,6 +489,10 @@ class WorldScopeService:
         return value
 
     def fact_visible(self, project_id, fact, scope):
+        if fact.get('id'):
+            from services.information_service import InformationService
+            if not InformationService(self.store).fact_allowed(project_id, fact['id'], scope):
+                return False
         context = fact.get('world_context') or (fact.get('scope') if isinstance(fact.get('scope'), dict) else {})
         context = {**context}
         reference = fact.get('event_ref') or (fact.get('evidence') or {}).get('event_ref')

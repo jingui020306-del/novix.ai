@@ -103,7 +103,7 @@ async def import_project_zip(file: UploadFile = File(...), s: FSStore = Depends(
         rel = PurePosixPath(name).relative_to(PurePosixPath(root_prefix))
         if rel.name == 'novix_backup_manifest.json':
             continue
-        if any(part.startswith('.') for part in rel.parts):
+        if any(part.startswith('.') for part in rel.parts) and rel.as_posix() != 'drafts/.chapter_order':
             continue
         restore_members.append((name, rel))
 
@@ -122,6 +122,14 @@ async def import_project_zip(file: UploadFile = File(...), s: FSStore = Depends(
     project['restored_from_project_id'] = old_project_id
     project['restore_source_file'] = file.filename or ''
     s.write_yaml(new_project_id, 'project.yaml', project)
+    # Restored work can be inspected/retried, never automatically call a previous model task.
+    for directory in ['meta/jobs', 'meta/writing_runs', 'sessions/trials']:
+        for path in s._safe_path(new_project_id, directory).glob('*.json'):
+            value = s.read_json(new_project_id, f'{directory}/{path.name}')
+            if value.get('status') in {'queued', 'running', 'generating'}:
+                value.update(status='needs_retry' if directory == 'sessions/trials' else 'failed',
+                             error='从备份恢复；原任务没有自动继续，请核对资料后手动重试。')
+                s.write_json(new_project_id, f'{directory}/{path.name}', value)
     return {
         'project_id': new_project_id,
         'restored_from_project_id': old_project_id,
@@ -156,7 +164,7 @@ def export_project_zip(project_id: str, s: FSStore = Depends(get_store)):
             if not path.is_file():
                 continue
             rel = path.relative_to(project_dir)
-            if any(part.startswith('.') for part in rel.parts):
+            if any(part.startswith('.') for part in rel.parts) and rel.as_posix() != 'drafts/.chapter_order':
                 continue
             zf.write(path, f'{project_id}/{rel.as_posix()}')
             file_count += 1

@@ -211,8 +211,10 @@ def apply_selected_patch(store: FSStore, project_id: str, chapter_id: str, patch
     accept = set(accept_op_ids or [o['op_id'] for o in norm])
     accepted = [o for o in norm if o['op_id'] in accept]
     rejected = [o for o in norm if o['op_id'] not in accept]
-    save_snapshot(store, project_id, chapter_id, original, reason='before_apply_patch', patch_id=patch_id)
     updated, diff = apply_patch_ops(original, [o['raw'] for o in accepted])
+    from services.author_control_service import AuthorControlService
+    AuthorControlService(store).assert_write(project_id, f'drafts/{chapter_id}.md', original, updated)
+    save_snapshot(store, project_id, chapter_id, original, reason='before_apply_patch', patch_id=patch_id)
     store.write_md(project_id, f'drafts/{chapter_id}.md', updated)
     rec = {'patch_id': patch_id, 'patch_ops': norm, 'accept_op_ids': list(accept), 'accepted_op_ids': [o['op_id'] for o in accepted], 'rejected_op_ids': [o['op_id'] for o in rejected], 'diff': diff}
     store.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', rec)
@@ -225,6 +227,8 @@ def rollback_version(store: FSStore, project_id: str, chapter_id: str, version_i
     if not content:
         raise FileNotFoundError(version_id)
     current = store.read_md(project_id, f'drafts/{chapter_id}.md')
+    from services.author_control_service import AuthorControlService
+    AuthorControlService(store).assert_write(project_id, f'drafts/{chapter_id}.md', current, content)
     if current:
         save_snapshot(store, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}')
     store.write_md(project_id, f'drafts/{chapter_id}.md', content)

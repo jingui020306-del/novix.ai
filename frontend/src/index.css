@@ -249,3 +249,9 @@ html[data-editor-size='large'] .editor-text { font-size: 16px; }
 .character-overview-entry > span { display: block; margin-top: 12px; color: rgb(var(--c-muted)); font-size: 11px; }
 .manuscript-sheet { max-width: 82ch; margin: 0 auto 28px; }
 .manuscript-sheet .form-control { background: rgb(var(--c-panel)); min-height: 580px; border-width: 0; padding: 24px 20px; font-size: 16px; line-height: 2; }
+
+.author-controls, .information-panel, .trial-tools { margin-block: 12px; padding-block: 9px; }
+.world-context-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; padding-block: 8px 24px; }
+.graph-controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.graph-controls-grid > :last-child { grid-column: 1 / -1; }
+@media (max-width: 599px) { .world-context-overview, .graph-controls-grid { grid-template-columns: minmax(0, 1fr); } }

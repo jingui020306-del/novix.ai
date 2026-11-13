@@ -97,6 +97,12 @@ class SharedMaterialService:
         world_scope = WorldScopeService(self.store)
         if 'world_context' in payload:
             world_scope.validate_context(project_id, payload['world_context'])
+        if 'information_ids' in payload:
+            from services.information_service import InformationService
+            refs = payload['information_ids']
+            available = {row['id'] for row in InformationService(self.store).list(project_id)}
+            if not isinstance(refs, list) or any(not isinstance(ref, str) or ref not in available for ref in refs):
+                raise ValueError('关联信息须选择已保存的信息条目，不复制秘密或事件。')
         if card.get('type') == 'character':
             if payload.get('detail_level') not in {None, 'brief', 'detailed'}:
                 raise ValueError('人物资料请选择简略或详细。')
@@ -132,6 +138,11 @@ class SharedMaterialService:
                     target = entity_id(row['pov_character_id'], '视角人物')
                     if self.store.read_yaml(project_id, f'cards/{target}.yaml').get('type') != 'character':
                         raise ValueError('视角人物不存在，请选择已有角色。')
+                if isinstance(row, dict) and 'information_ids' in row:
+                    from services.information_service import InformationService
+                    available = {item['id'] for item in InformationService(self.store).list(project_id)}
+                    if not isinstance(row['information_ids'], list) or any(not isinstance(ref, str) or ref not in available for ref in row['information_ids']):
+                        raise ValueError('事件须引用已保存的信息编号。')
             if any(isinstance(row, dict) and 'causal_event_refs' in row for row in scenes):
                 world_scope.validate_event_links(project_id, card)
         if card.get('type') in {'story', 'outline'} and isinstance(scenes, list) and any(isinstance(row, dict) and ('causal_scene_ids' in row or 'relationship_changes' in row) for row in scenes):

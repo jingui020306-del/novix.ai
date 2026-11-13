@@ -6,6 +6,7 @@ import hashlib
 from services.writing_reference_service import WritingReferenceService
 from services.world_scope_service import WorldScopeService
 from services.author_data_service import AuthorDataService, STAGES_PATH
+from services.information_service import InformationService, REGISTRY_PATH
 
 
 class ContextPackService:
@@ -19,6 +20,11 @@ class ContextPackService:
         return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
 
     def build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000):
+        from services.change_suggestion_service import ChangeSuggestionService
+        with ChangeSuggestionService(self.store).lock(project_id):
+            return self._build(project_id, chapter_id, manifest, requirements, previous_end=previous_end, current_end=current_end, max_chars=max_chars)
+
+    def _build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000):
         if not 2000 <= max_chars <= 100000:
             raise ValueError('取材范围必须在 2000 至 100000 字符之间。')
         order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
@@ -109,7 +115,15 @@ class ContextPackService:
         add('本章已写结尾', current_end[-3500:], required=bool(current_end))
         add('文风要求', fixed.get('style_guide', {}), 'cards/style_001.yaml', 'style_001', required=True)
         rehearsals = manifest.get('scene_rehearsals', {})
-        rehearsal_dependencies = {STAGES_PATH}
+        rehearsal_dependencies = {STAGES_PATH, 'drafts/.chapter_order'}
+        information = manifest.get('information_materials') or InformationService(self.store).materials(
+            project_id, scope, actor_ids=requirements.get('场景', {}).get('cast', []), max_chars=min(5000, max_chars // 3))
+        if information.get('omitted_count'):
+            raise ValueError('本场关键的信息边界超过取材预算，请减少关联信息或扩大本次范围，不能静默丢弃认知限制。')
+        for source in information.get('sources', []):
+            rehearsal_dependencies.add(source)
+        if information.get('items'):
+            add('人物信息边界与读者展示（表达和相信不是真相）', information, STAGES_PATH, 'information_context', required=True)
         for source in resolved.get('sources', []):
             if source.startswith(('cards/', 'drafts/')):
                 rehearsal_dependencies.add(source.split('#', 1)[0])
@@ -168,6 +182,9 @@ class ContextPackService:
                 deduplicated += 1
                 continue
             seen_cards.add(cid)
+            saved_card = self.store.read_yaml(project_id, f'cards/{cid}.yaml')
+            if saved_card:
+                card = {**saved_card, 'source': card.get('source') or f'cards/{cid}.yaml'}
             if not scope_service.card_visible(project_id, card, scope):
                 dropped += 1
                 continue
@@ -221,7 +238,7 @@ class ContextPackService:
                 continue
             pov = scope.get('pov_character_id')
             if character['knowledge'] and (not pov or cid == pov):
-                add('此人物此刻明确已知（不能转给其他人物）', {'人物': cid, '已知': character['knowledge']}, STAGES_PATH, f'knowledge:{cid}', required=cid == pov)
+                add('此人物的信息状态（知道、相信与怀疑分开，不能转给他人）', {'人物': cid, '认知及原阶段依据': character['knowledge']}, STAGES_PATH, f'knowledge:{cid}', required=cid == pov)
             if character['age'].get('value') is not None:
                 add('人物此时年龄（有明确依据）', {'人物': cid, **character['age']}, f'cards/{cid}.yaml', f'age:{cid}')
         selected_entities = set(character_states) & (cast | seen_ids)
@@ -271,7 +288,7 @@ class ContextPackService:
                 add('过去章节摘要', item.get('summary', ''), item.get('source', ''), item.get('chapter_id', ''))
         for item in manifest.get('evidence', []):
             source = item.get('source', {})
-            if source.get('path') in {'canon/facts.jsonl', STAGES_PATH}:
+            if source.get('path') in {'canon/facts.jsonl', 'canon/revisions.jsonl', STAGES_PATH}:
                 continue
             if source.get('card_id'):
                 source_card = self.store.read_yaml(project_id, f"cards/{source['card_id']}.yaml")
@@ -325,8 +342,7 @@ class ContextPackService:
         for source in {citation['source'].split('#', 1)[0] for citation in citations} | rehearsal_dependencies:
             if source.startswith(('cards/', 'drafts/', 'canon/')):
                 path = self.store._safe_path(project_id, source)
-                if path.exists() or source == STAGES_PATH:
-                    versions[source] = hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest()
+                versions[source] = hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest()
         return text, {'used_chars': len(text), 'max_chars': max_chars, 'used_ids': used_ids,
                       'dropped_count': dropped, 'deduplicated_count': deduplicated, 'citations': citations,
                       'source_versions': versions, 'rehearsal_ids': rehearsal_ids, 'author_scope': resolved}
@@ -334,6 +350,7 @@ class ContextPackService:
     def sources_unchanged(self, project_id, versions):
         for source, digest in versions.items():
             path = self.store._safe_path(project_id, source)
-            if hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest() != digest:
+            actual = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ''
+            if actual != digest and not (not path.exists() and digest == hashlib.sha256(b'').hexdigest()):
                 return False
         return True

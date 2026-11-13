@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import unified_diff
@@ -31,6 +32,16 @@ EXT_SUBDIRS = [
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        temporary.write_text(text, encoding='utf-8')
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _parse_simple_yaml_scalar(raw: str) -> Any:
@@ -150,9 +161,13 @@ class FSStore:
             return _read_simple_yaml(text)
 
     def write_yaml(self, project_id: str, rel: str, data: dict[str, Any]) -> None:
-        path = self._safe_path(project_id, rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        from services.author_control_service import AuthorControlService
+        controls = AuthorControlService(self)
+        with controls.lock(project_id):
+            if controls.active(project_id, rel):
+                controls.assert_write(project_id, rel, self.read_yaml(project_id, rel), data)
+            path = self._safe_path(project_id, rel)
+            _atomic_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def read_json(self, project_id: str, rel: str) -> dict[str, Any]:
         path = self._safe_path(project_id, rel)
@@ -162,18 +177,26 @@ class FSStore:
         return json.loads(text) if text else {}
 
     def write_json(self, project_id: str, rel: str, data: Any) -> None:
-        path = self._safe_path(project_id, rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        from services.author_control_service import AuthorControlService
+        controls = AuthorControlService(self)
+        with controls.lock(project_id):
+            if controls.active(project_id, rel):
+                controls.assert_write(project_id, rel, self.read_json(project_id, rel), data)
+            path = self._safe_path(project_id, rel)
+            _atomic_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def read_md(self, project_id: str, rel: str) -> str:
         path = self._safe_path(project_id, rel)
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
     def write_md(self, project_id: str, rel: str, text: str) -> None:
-        path = self._safe_path(project_id, rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        from services.author_control_service import AuthorControlService
+        controls = AuthorControlService(self)
+        with controls.lock(project_id):
+            if controls.active(project_id, rel):
+                controls.assert_write(project_id, rel, self.read_md(project_id, rel), text)
+            path = self._safe_path(project_id, rel)
+            _atomic_text(path, text)
 
     def read_jsonl(self, project_id: str, rel: str) -> list[dict[str, Any]]:
         path = self._safe_path(project_id, rel)
@@ -186,11 +209,15 @@ class FSStore:
         return out
 
     def append_jsonl(self, project_id: str, rel: str, item: dict[str, Any]) -> None:
-        path = self._safe_path(project_id, rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {**item, "ts": item.get("ts", now_iso())}
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        from services.author_control_service import AuthorControlService
+        controls = AuthorControlService(self)
+        with controls.lock(project_id):
+            controls.assert_append(project_id, rel, item)
+            path = self._safe_path(project_id, rel)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {**item, "ts": item.get("ts", now_iso())}
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     def list_projects(self) -> list[dict[str, Any]]:
         rows = []

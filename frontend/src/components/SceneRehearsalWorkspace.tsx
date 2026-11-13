@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { mutate as mutateCache } from 'swr'
 import { api } from '../api/client'
 import { rehearsalDraft, rehearsalKey, rehearsalSourcesChanged, RehearsalDraft } from '../lib/sceneRehearsal'
 import { useDraftRecovery } from '../lib/editorDrafts'
+import { InformationPanel } from './InformationPanel'
+import { AuthorControls } from './AuthorControls'
 import { referenceLabel } from '../lib/writingReferences'
 import { OpenMaterial } from './MaterialReferences'
 import { WritingReferencePanel, WritingReferencePicker } from './WritingReferencePicker'
@@ -28,6 +30,7 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
   const [proposal, setProposal] = useState<any>(null)
   const [editing, setEditing] = useState(false)
   const [referencesOpen, setReferencesOpen] = useState(false)
+  const [informationSelection, setInformationSelection] = useState<string[] | null>(null)
   const [instructions, setInstructions] = useState('')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -45,8 +48,9 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
   }, [data, cacheKey, working])
   useEffect(() => () => { requestNumber.current++ }, [cacheKey])
   useEffect(() => { document.getElementById('scene-rehearsal-workspace')?.scrollIntoView({ block: 'start' }) }, [cacheKey])
-  const localDraft = useDraftRecovery(cacheKey, working ? { ...working, instructions } : null, working ? JSON.stringify({ ...working, draft: working.baseline, instructions: '' }) : '', (value) => { const { instructions: restoredInstructions, ...copy } = value; setWorking(copy); setInstructions(restoredInstructions || ''); setEditing(true) })
+  const localDraft = useDraftRecovery(cacheKey, working ? { ...working, instructions } : null, working ? JSON.stringify({ ...working, draft: working.baseline, instructions }) : '', (value) => { const { instructions: restoredInstructions, ...copy } = value; setWorking(copy); setInstructions(restoredInstructions || ''); setEditing(true) })
   const context = data?.context || {}
+  const rehearsalPointer = `/payload/important_scenes/${context.scene?.values?.id ? `@${context.scene.values.id}` : Number(String(data?.scene_id || sceneId).replace('index_', ''))}/rehearsal`
   const changedSources = Boolean(working && data?.base_hash && (data.base_hash !== working.remoteHash || rehearsalSourcesChanged(working.remoteVersions, data.source_versions)))
   const needsReview = conflict || changedSources
   const draft = working?.draft || rehearsalDraft()
@@ -80,7 +84,7 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
         const saved = rehearsalDraft(result.saved || result.draft)
         const editedWhileSaving = rehearsalKey(latest.current?.draft) !== before
         setWorking((current) => ({ draft: editedWhileSaving && current ? current.draft : saved, baseline: saved, baseHash: result.base_hash, remoteHash: refreshed?.base_hash || result.base_hash, versions: result.source_versions || {}, remoteVersions: refreshed?.source_versions || result.source_versions || {}, origin: editedWhileSaving ? 'manual' : 'saved' }))
-        localStorage.removeItem(`novix:draft:${cacheKey}`)
+        localDraft.markSaved({ ...working, instructions }, { ...working, draft: saved, baseline: saved, instructions })
         setPreview(null); setProposal(null); setConflict(false); setEditing(editedWhileSaving)
         const queued = result.change_suggestions?.queued_count || 0
         const savedMessage = result.change_suggestions?.error ? `本场安排已保存；${result.change_suggestions.error}` : queued ? `本场安排已采用，已排队 ${queued} 项正文修改建议，仍需逐项确认。` : '本场安排已采用，章节会引用同一份摘要。已有正文保持原样。'
@@ -129,6 +133,9 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
           {preview && <section className='space-y-4 border-t border-border pt-4' aria-label='本次变化与影响'><h2 className='text-base font-semibold'>本次修改牵动哪里</h2>{preview.input !== rehearsalKey(draft) && <p className='text-xs text-muted'>你在预览后又修改了手稿，请重新预览再确认。</p>}<details open><summary className='cursor-pointer text-sm font-medium'>已有引用能够确定的关联范围</summary>{preview.response.impacts?.saved_links?.length ? <ul className='mt-3 space-y-2 text-sm'>{preview.response.impacts.saved_links.map((item: any) => <li key={item.id}>{sourceLink(item.id, item.label || '关联章节', item.type)}<p className='mt-1 text-xs text-muted'>{item.reason || '已有作者引用'}</p></li>)}</ul> : <p className='mt-3 text-sm text-muted'>没有定位到已保存的章节引用；不代表文学上没有影响。</p>}</details><details open><summary className='cursor-pointer text-sm font-medium'>仍需作者判断的文学后果</summary>{preview.response.impacts?.literary?.length ? <ul className='mt-3 space-y-2 text-sm leading-7 text-muted'>{preview.response.impacts.literary.map((item: any, index: number) => <li key={index}>{item.text}</li>)}</ul> : <p className='mt-3 text-sm text-muted'>本地预览只比较已有安排，没有替你编写新的反应与后果。</p>}</details><p className='text-xs leading-6 text-muted'>{preview.response.impacts?.notice}</p><details><summary className='cursor-pointer text-sm text-brand-600'>比较采用版与当前手稿</summary><div className='rehearsal-comparison mt-4'><section><h3 className='text-sm font-medium'>原采用版</h3><div className='mt-2 whitespace-pre-wrap text-sm leading-7 text-muted'>{rehearsalDraft(preview.response.baseline).text || '还没有已采用的推演。'}</div><p className='mt-3 text-xs leading-6 text-muted'>场景结果：{preview.response.baseline?.outcome || '未写明'}<br />下场问题：{preview.response.baseline?.next_question || '未写明'}</p>{compareTechniques(preview.response.baseline)}</section><section><h3 className='text-sm font-medium'>本次手稿</h3><div className='mt-2 whitespace-pre-wrap text-sm leading-7'>{draft.text}</div><p className='mt-3 text-xs leading-6 text-muted'>场景结果：{draft.outcome || '未写明'}<br />下场问题：{draft.next_question || '未写明'}</p>{compareTechniques(draft)}</section></div></details></section>}
         </section>
         <aside className='rehearsal-context space-y-5' aria-label='本场已有资料'>
+          <InformationPanel key={`${cacheKey}:info`} project={project} storyId={context.story?.id} chapterId={context.scene?.values?.chapter} eventRef={{ owner_card_id: data.owner_card_id || ownerCardId, scene_id: data.scene_id || sceneId }} value={informationSelection || context.scene?.values?.information_ids || []} onChange={setInformationSelection} title='这场的透露、隐瞒与认知' />
+          {informationSelection && <Button className='text-xs' disabled={Boolean(busy)} onClick={async () => { setBusy('info'); try { const owner = data.owner_card_id || ownerCardId, scene = data.scene_id || sceneId; await api.put(`/api/projects/${project}/events/${owner}/${scene}`, { values: { ...context.scene.values, information_ids: informationSelection }, base_revision: data._revision }); setInformationSelection(null); await mutate(); void mutateCache((key: any) => typeof key === 'string' && key.startsWith(`/api/projects/${project}/`) && /cards|events|information-state/.test(key)); setMessage('本场信息关联已保存。原场景安排仍保留，依据有变化时请重新预览确认。') } catch (cause) { setError(cause instanceof Error ? cause.message : '信息关联未保存，选择保留。') } finally { setBusy('') } }}>保存本场信息关联</Button>}
+          {data.saved && <AuthorControls key={`${cacheKey}:control`} project={project} target={`cards/${data.owner_card_id || ownerCardId}.yaml`} pathPrefix={rehearsalPointer} label='已采用场景安排' value={data.saved || draft} revision={data._revision} dirty={false} suggestedChanges={{ [rehearsalPointer]: { ...(data.saved || {}), ...draft } }} onChanged={async (value, result) => { const row = value.payload?.important_scenes?.find((item: any) => item.id === (data.scene_id || sceneId)); if (row?.rehearsal) onConfirmed({ saved: row.rehearsal, owner_card_id: data.owner_card_id || ownerCardId, scene_id: data.scene_id || sceneId, _revision: result.base_revision }); await mutate() }} />}
           <section><h2 className='text-sm font-semibold'>这场已有的根据</h2><p className='mt-2 text-xs leading-6 text-muted'>这里只关联作者材料。资料能限定人物与世界，不能自动保证新的文学走法合理。</p>{context.scene?.values?.purpose && <p className='mt-3 text-sm leading-7'>{context.scene.values.purpose}</p>}</section>
           {context.previous_scene && <section className='border-t border-border pt-4'><h3 className='text-sm font-medium'>前场留下什么</h3><p className='mt-2 text-sm leading-7 text-muted'>{context.previous_scene.outcome || context.previous_scene.plot || context.previous_scene.label}</p>{context.previous_scene.next_question && <p className='mt-2 text-xs leading-6 text-muted'>留下的问题：{context.previous_scene.next_question}</p>}{context.previous_scene.stale && <p className='mt-2 text-xs text-muted'>前场采用版待核对，不能直接视为已确定后果。</p>}</section>}
           {Array.isArray(context.characters) && context.characters.length > 0 && <section className='space-y-3 border-t border-border pt-4'><h3 className='text-sm font-medium'>人物各自正在维护什么</h3>{context.characters.map((person: any) => { const line = (context.storylines || []).find((item: any) => item.values?.character_id === person.id)?.values || {}; return <div key={person.id}><h4 className='text-sm'>{sourceLink(person.id, person.label || '相关人物', 'character')}</h4><p className='mt-1 text-xs leading-6 text-muted'>{line.goal || person.payload?.core_motivation || person.payload?.identity || '资料尚未写明本场打算。'}</p>{line.choice && <p className='mt-1 text-xs leading-6 text-muted'>已有选择：{line.choice}</p>}{person.payload?.boundaries?.length > 0 && <details className='mt-2'><summary className='cursor-pointer text-xs text-muted'>人物底线</summary><ul className='mt-1 space-y-1 text-xs leading-6 text-muted'>{person.payload.boundaries.map((text: string, index: number) => <li key={index}>{text}</li>)}</ul></details>}</div> })}</section>}

@@ -22,7 +22,7 @@ import Layout from '../components/Layout'
 import { SchemaForm, fieldLabel, profileLabel } from '../components/SchemaForm'
 import { CardEditor } from '../components/CardEditor'
 import { KnowledgeGraph } from '../components/KnowledgeGraph'
-import { RevisionTools, WritingRunPanel, TokenUsage } from '../components/WritingTools'
+import { RevisionTools, TrialWritingTools, WritingRunPanel, TokenUsage } from '../components/WritingTools'
 import { WritingReferenceNotice, WritingReferencePanel, WritingReferencePicker } from '../components/WritingReferencePicker'
 import { StoryPlanningTables } from '../components/StoryPlanningTables'
 import { MaterialReferences, OpenMaterial } from '../components/MaterialReferences'
@@ -31,6 +31,8 @@ import { CharacterReferenceImage } from '../components/CharacterReferenceImage'
 import { SelectiveExportPanel } from '../components/SelectiveExportPanel'
 import { cardAfterSave, useDraftRecovery } from '../lib/editorDrafts'
 import { SharedRelationships } from '../components/SharedRelationships'
+import { AuthorControls, useAuthorControl, pointerLocked } from '../components/AuthorControls'
+import { InformationPanel } from '../components/InformationPanel'
 import { AuthorStatePanel } from '../components/AuthorStatePanel'
 import { WorldContextFields } from '../components/WorldContextFields'
 import { MaterialImportWorkspace } from '../components/MaterialImportWorkspace'
@@ -353,6 +355,10 @@ export default function App() {
   const storyFormRef = useRef(storyForm)
   storyFormRef.current = storyForm
   const [characterForm, setCharacterForm] = useState<any>({ id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} })
+  const { lockedPaths: storyLockedPaths } = useAuthorControl(project, storyForm.id && storyForm.id !== 'story_new' ? `cards/${storyForm.id}.yaml` : undefined)
+  const { lockedPaths: chapterLockedPaths } = useAuthorControl(project, selectedChapter ? `drafts/${selectedChapter}.md` : undefined)
+  const { lockedPaths: characterLockedPaths } = useAuthorControl(project, characterForm.id && characterForm.id !== 'character_new' ? `cards/${characterForm.id}.yaml` : undefined)
+  const [informationFocus, setInformationFocus] = useState('')
   const [sharedRelationshipFocus, setSharedRelationshipFocus] = useState('')
   const [characterEditorOpen, setCharacterEditorOpen] = useState(false)
   const [worldNavigationRequest, setWorldNavigationRequest] = useState<{ section: 'overview' | 'places'; requestId: number } | null>(null)
@@ -392,7 +398,8 @@ export default function App() {
   const chapterScopeKey = `${project}:${selectedChapter}`
   const cachedChapterContext = cardDraftCache.current[`${chapterScopeKey}:contextDraft`]
   const hasChapterContextDraft = chapterContextDraft?.key === chapterScopeKey || Boolean(cachedChapterContext)
-  const chapterContext = chapterContextDraft?.key === chapterScopeKey ? chapterContextDraft : cachedChapterContext || { key: chapterScopeKey, world_context: draft?.meta?.world_context, pov: draft?.meta?.pov || '', pov_character_id: draft?.meta?.pov_character_id || '', meta_revision: draft?.meta?._revision || '' }
+  const chapterContextSource = chapterContextDraft?.key === chapterScopeKey ? chapterContextDraft : cachedChapterContext || { key: chapterScopeKey, world_context: draft?.meta?.world_context, pov: draft?.meta?.pov || '', pov_character_id: draft?.meta?.pov_character_id || '', information_ids: draft?.meta?.information_ids || [], meta_revision: draft?.meta?._revision || '' }
+  const chapterContext = { ...chapterContextSource, world_context: chapterContextSource.world_context || {} }
   const updateChapterContext = (patch: any) => { const next = { ...chapterContext, ...patch }; cardDraftCache.current[`${chapterScopeKey}:contextDraft`] = next; setChapterContextDraft(next) }
   const [chapterSaving, setChapterSaving] = useState(false)
   const [alignmentIdea, setAlignmentIdea] = useState('')
@@ -762,9 +769,13 @@ export default function App() {
     sceneDirectionSavedRef.current = { key, value: JSON.stringify(scene) }
   }, [draft, selectedChapter, project])
 
+  const alignmentEditor = alignmentSavedRef.current.key === chapterScopeKey ? { idea: alignmentIdea, understanding: alignmentUnderstanding, agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed, messages: alignmentMessages, scene_direction: sceneDirection, base_revision: alignmentSavedRef.current.revision } : null
+  const savedAlignment = draft?.meta?.writing_alignment || {}
+  const alignmentLocal = useDraftRecovery(`${chapterScopeKey}:alignment`, alignmentEditor, JSON.stringify({ idea: savedAlignment.idea || '', understanding: savedAlignment.understanding || '', agreed_draft: savedAlignment.agreed_draft || '', confirmed: Boolean(savedAlignment.confirmed), messages: savedAlignment.messages || [], scene_direction: { shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '', ...(savedAlignment.scene_direction || {}) }, base_revision: draft?.meta?._revision || '' }), (value) => { setAlignmentIdea(value.idea || ''); setAlignmentUnderstanding(value.understanding || ''); setAlignmentAgreedDraft(value.agreed_draft || ''); setAlignmentConfirmed(Boolean(value.confirmed)); setAlignmentMessages(value.messages || []); if (value.scene_direction) setSceneDirection(value.scene_direction); alignmentSavedRef.current.revision = value.base_revision || ''; setAgreementEditingKey(chapterScopeKey) })
+
   const storyLocal = useDraftRecovery(`${project}:story:${storyForm.id}`, cardDraftCache.current.__formProject === project ? storyForm : null, JSON.stringify((Array.isArray(storyCards) ? storyCards : []).find((card: any) => card.id === storyForm.id) ? normalizeStoryCard((storyCards as any[]).find((card: any) => card.id === storyForm.id)) : normalizeStoryCard(null)), setStoryForm)
   const characterLocal = useDraftRecovery(`${project}:character:${characterForm.id}`, cardDraftCache.current.__formProject === project ? characterForm : null, JSON.stringify((Array.isArray(chars) ? chars : []).find((card: any) => card.id === characterForm.id) || { id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} }), setCharacterForm)
-  const chapterLocal = useDraftRecovery(`${project}:chapter:${selectedChapter}`, editorSnapshotRef.current.key === `${project}:${selectedChapter}` ? { content: chapterEditorText, title: chapterTitleDraft, base_revision: editorSnapshotRef.current.revision, meta_revision: editorSnapshotRef.current.metaRevision, context: hasChapterContextDraft ? chapterContext : undefined } : null, JSON.stringify({ content: draft?.content || '', title: draft?.meta?.chapter_title || draft?.meta?.title || chapterTitleDraft, base_revision: draft?.revision || '', meta_revision: draft?.meta?._revision || '', ...(hasChapterContextDraft ? { context: { key: chapterScopeKey, world_context: draft?.meta?.world_context || {}, pov: draft?.meta?.pov || '', pov_character_id: draft?.meta?.pov_character_id || '', meta_revision: draft?.meta?._revision || '' } } : {}) }), (value) => { setChapterEditorText(value.content || ''); setChapterTitleDraft(value.title || ''); editorSnapshotRef.current.revision = value.base_revision || ''; editorSnapshotRef.current.metaRevision = value.meta_revision || ''; if (value.context) setChapterContextDraft({ ...value.context, key: chapterScopeKey }) })
+  const chapterLocal = useDraftRecovery(`${project}:chapter:${selectedChapter}`, editorSnapshotRef.current.key === `${project}:${selectedChapter}` ? { content: chapterEditorText, title: chapterTitleDraft, base_revision: editorSnapshotRef.current.revision, meta_revision: editorSnapshotRef.current.metaRevision, context: hasChapterContextDraft ? chapterContext : undefined } : null, JSON.stringify({ content: draft?.content || '', title: draft?.meta?.chapter_title || draft?.meta?.title || chapterTitleDraft, base_revision: draft?.revision || '', meta_revision: draft?.meta?._revision || '', ...(hasChapterContextDraft ? { context: { key: chapterScopeKey, world_context: draft?.meta?.world_context || {}, pov: draft?.meta?.pov || '', pov_character_id: draft?.meta?.pov_character_id || '', information_ids: draft?.meta?.information_ids || [], meta_revision: draft?.meta?._revision || '' } } : {}) }), (value) => { setChapterEditorText(value.content || ''); setChapterTitleDraft(value.title || ''); editorSnapshotRef.current.revision = value.base_revision || ''; editorSnapshotRef.current.metaRevision = value.meta_revision || ''; if (value.context) setChapterContextDraft({ ...value.context, key: chapterScopeKey }) })
 
   const lazyLoadPaletteData = async (force = false) => {
     const cache = paletteCacheRef.current
@@ -1472,7 +1483,7 @@ export default function App() {
   const runJob = async (maxTokens = 2400, _range: { start: number; end: number } | null = null) => {
     if (!draft || draftReadError) { push('请先重新读取当前正文，再开始生成。', 'error'); return }
     if (chapterEditorText !== (draft?.content || '')) { push('请先保存正文，再开始生成。', 'error'); return }
-    if (pendingChapterReferences || pendingChapterMaterials || hasChapterContextDraft && (JSON.stringify(chapterContext.world_context || {}) !== JSON.stringify(draft?.meta?.world_context || {}) || chapterContext.pov !== (draft?.meta?.pov || '') || chapterContext.pov_character_id !== (draft?.meta?.pov_character_id || ''))) { push('请先保存正文、世界 / 视角选择与关联参考，再开始生成。', 'error'); return }
+    if (pendingChapterReferences || pendingChapterMaterials || hasChapterContextDraft && (JSON.stringify(chapterContext.world_context || {}) !== JSON.stringify(draft?.meta?.world_context || {}) || chapterContext.pov !== (draft?.meta?.pov || '') || chapterContext.pov_character_id !== (draft?.meta?.pov_character_id || '') || JSON.stringify(chapterContext.information_ids || []) !== JSON.stringify(draft?.meta?.information_ids || []))) { push('请先保存正文、世界 / 视角选择与关联参考，再开始生成。', 'error'); return }
     if (activeWritingRun) { push('已有任务正在生成，可以先暂停或结束它。', 'error'); return }
     try {
       const result = await api.post(`/api/projects/${project}/writing-runs`, {
@@ -1594,12 +1605,13 @@ export default function App() {
     if (!selectedChapter) return false
     if (!draft || draftReadError) { push('正文尚未成功读取，当前编辑保留。请先重新读取。', 'error'); return false }
     const heldScope = chapterScopeKey
+    const recoveryBefore = { content: chapterEditorText, title: chapterTitleDraft, base_revision: editorSnapshotRef.current.revision, meta_revision: editorSnapshotRef.current.metaRevision, context: hasChapterContextDraft ? chapterContext : undefined }
     try {
       setChapterSaving(true)
       const body = {
         base_revision: editorSnapshotRef.current.key === `${project}:${selectedChapter}` ? editorSnapshotRef.current.revision : '',
         meta_revision: hasChapterContextDraft ? chapterContext.meta_revision : editorSnapshotRef.current.key === `${project}:${selectedChapter}` ? editorSnapshotRef.current.metaRevision : '',
-        ...(hasChapterContextDraft ? { world_context: chapterContext.world_context || {}, pov: chapterContext.pov || '', pov_character_id: chapterContext.pov_character_id || '' } : {}),
+        ...(hasChapterContextDraft ? { world_context: chapterContext.world_context || {}, pov: chapterContext.pov || '', pov_character_id: chapterContext.pov_character_id || '', information_ids: chapterContext.information_ids || [] } : {}),
         content: chapterEditorText,
         title: chapterTitleDraft || selectedChapter,
         chapter_title: chapterTitleDraft || selectedChapter,
@@ -1612,7 +1624,7 @@ export default function App() {
       if (editorSnapshotRef.current.key !== heldScope) return false
       if (editorSnapshotRef.current.key === `${project}:${selectedChapter}`) { editorSnapshotRef.current = { ...editorSnapshotRef.current, content: body.content, title: body.chapter_title, revision: saved.revision || '', metaRevision: saved.meta?._revision || '' }; alignmentSavedRef.current.revision = saved.meta?._revision || alignmentSavedRef.current.revision }
       if (hasChapterContextDraft) { cardDraftCache.current[`${heldScope}:contextDraft`] = { ...chapterContext, meta_revision: saved.meta?._revision || '' }; setChapterContextDraft((current: any) => current?.key === heldScope ? { ...current, meta_revision: saved.meta?._revision || '' } : current) }
-      localStorage.removeItem(`novix:draft:${project}:chapter:${selectedChapter}`)
+      chapterLocal.markSaved(recoveryBefore, { ...recoveryBefore, base_revision: saved.revision || '', meta_revision: saved.meta?._revision || '', ...(hasChapterContextDraft ? { context: { ...chapterContext, meta_revision: saved.meta?._revision || '' } } : {}) })
       if (pendingChapterReferences || pendingChapterMaterials) {
         const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
         if (meta.detail) throw new Error('章节资料读取失败')
@@ -1678,6 +1690,10 @@ export default function App() {
   const saveWritingAlignment = async (overrides: Record<string, any> = {}) => {
     if (!selectedChapter) return false
     const heldScope = chapterScopeKey
+    const submittedAlignment = alignmentEditor
+    const submittedChapter = { content: chapterEditorText, title: chapterTitleDraft, base_revision: editorSnapshotRef.current.revision, meta_revision: editorSnapshotRef.current.metaRevision, context: hasChapterContextDraft ? chapterContext : undefined }
+    const bodyWasSaved = chapterEditorText === editorSnapshotRef.current.content && chapterTitleDraft === editorSnapshotRef.current.title
+    const submittedPayload = buildWritingAlignmentPayload(overrides)
     try {
       const meta = await api.get(`/api/projects/${project}/drafts/${selectedChapter}/meta`)
       if (editorSnapshotRef.current.key !== heldScope) return false
@@ -1685,12 +1701,16 @@ export default function App() {
       const result = await api.put(`/api/projects/${project}/drafts/${selectedChapter}/meta`, {
         ...meta,
         _revision: hasChapterContextDraft ? chapterContext.meta_revision : alignmentSavedRef.current.revision,
-        ...(hasChapterContextDraft ? { world_context: chapterContext.world_context || {}, pov: chapterContext.pov || '', pov_character_id: chapterContext.pov_character_id || '' } : {}),
-        writing_alignment: buildWritingAlignmentPayload(overrides),
+        ...(hasChapterContextDraft ? { world_context: chapterContext.world_context || {}, pov: chapterContext.pov || '', pov_character_id: chapterContext.pov_character_id || '', information_ids: chapterContext.information_ids || [] } : {}),
+        writing_alignment: submittedPayload,
       })
       if (result.detail) throw new Error('写法保存失败')
       if (editorSnapshotRef.current.key !== heldScope) return false
-      if (hasChapterContextDraft) { cardDraftCache.current[`${heldScope}:contextDraft`] = { ...chapterContext, meta_revision: result._revision || '' }; setChapterContextDraft((current: any) => current?.key === heldScope ? { ...current, meta_revision: result._revision || '' } : current) }
+      const savedMetaRevision = result._revision || editorSnapshotRef.current.metaRevision
+      if (bodyWasSaved) chapterLocal.markSaved(submittedChapter, { ...submittedChapter, meta_revision: savedMetaRevision, context: hasChapterContextDraft ? { ...chapterContext, meta_revision: savedMetaRevision } : undefined })
+      const pendingContext = cardDraftCache.current[`${heldScope}:contextDraft`]
+      if (hasChapterContextDraft || pendingContext?.key === heldScope) { cardDraftCache.current[`${heldScope}:contextDraft`] = { ...(pendingContext?.key === heldScope ? pendingContext : chapterContext), meta_revision: savedMetaRevision }; setChapterContextDraft((current: any) => current?.key === heldScope ? { ...current, meta_revision: savedMetaRevision } : current) }
+      alignmentLocal.markSaved(submittedAlignment, { ...submittedAlignment, ...Object.fromEntries(Object.entries(submittedPayload).filter(([key]) => key !== 'updated_at')), base_revision: result._revision || '' })
       alignmentSavedRef.current.revision = result._revision || alignmentSavedRef.current.revision
       editorSnapshotRef.current.metaRevision = result._revision || editorSnapshotRef.current.metaRevision
       await mutateDraft()
@@ -1924,6 +1944,7 @@ export default function App() {
   const openMaterial: OpenMaterial = async (target) => {
     const id = target.id || target.source_id
     if (!id) return
+    if (target.type === 'information' || String(id).startsWith('information_')) { setInformationFocus(id); setActiveActivity('canon'); setView('canon'); return }
     if (target.type === 'relationship') { setSharedRelationshipFocus(id); setActiveActivity('cards'); setView('relationships'); return }
     if (target.type === 'chapter' || chapterRows.some((chapter: any) => chapter.chapter_id === id)) { setSelectedChapter(id); setActiveActivity('explorer'); setView('chapter'); return }
     const parts = id.split(':')
@@ -2002,7 +2023,7 @@ export default function App() {
       const cacheKey = `${project}:character:${id}`
       cardDraftCache.current[cacheKey] = cardAfterSave(cardDraftCache.current[cacheKey] || characterForm, body, result, snapshot)
       if (cardDraftCache.current.__formProject === project) setCharacterForm((current: any) => cardAfterSave(current, body, result, snapshot))
-      localStorage.removeItem(`novix:draft:${project}:character:${characterForm.id}`)
+      characterLocal.markSaved(characterForm, cardAfterSave(characterForm, body, result, snapshot))
       setCardSaveState((value) => ({ ...value, [key]: '已保存', [`${project}:${id}`]: '已保存' })); void mutateCards(); refreshSharedMaterials()
       push(result.change_suggestions?.error ? `人物已保存；${result.change_suggestions.error}` : '人物已保存，初始资料与共享引用保留。')
     } catch (error) { const message = error instanceof Error ? error.message : '保存未完成，编辑保留。'; setCardSaveState((value) => ({ ...value, [key]: `保存失败：${message}` })); push(message, 'error') }
@@ -2212,7 +2233,7 @@ export default function App() {
         }}><Icon size={17} strokeWidth={1.7} /><span>{label}</span></button>)}
       </nav>
       {view === 'chapter' && <section className='sidebar-context'><button className='sidebar-context-link flex items-center gap-2' aria-expanded={chapterReferencesOpen} onClick={() => setChapterReferencesOpen(true)}><Brush size={15} />写法参考{selectedChapterReferenceIds.length ? `（${selectedChapterReferenceIds.length}）` : ''}{pendingChapterReferences ? ' · 未保存' : ''}</button></section>}
-      <button className={`sidebar-world-link ${view === 'world' && worldNavigationRequest?.section !== 'places' ? 'is-current' : ''}`} onClick={() => { setWorldNavigationRequest({ section: 'overview', requestId: Date.now() }); setActiveActivity('cards'); setView('world') }}><Globe size={15} strokeWidth={1.7} />世界总览</button>
+      {activeActivity !== 'cards' && <button className={`sidebar-world-link ${view === 'world' && worldNavigationRequest?.section !== 'places' ? 'is-current' : ''}`} onClick={() => { setWorldNavigationRequest({ section: 'overview', requestId: Date.now() }); setActiveActivity('cards'); setView('world') }}><Globe size={15} strokeWidth={1.7} />世界总览</button>}
       {activeActivity === 'story' && <section className='sidebar-context'><div className='sidebar-context-heading'>故事策划</div><div className='sidebar-context-links'>{[['Overview', '故事摘要'], ['Lines', '场景与情节'], ['Foreshadowings', '伏笔安排'], ['Chapter Matrix', '章节计划']].map(([id, label]) => <button key={id} className={`sidebar-context-link ${storyPlanningTab === id ? 'is-current' : ''}`} onClick={() => { setStoryPlanningTab(id); setView('story') }}>{label}</button>)}</div></section>}
       {activeActivity === 'cards' && <section className='sidebar-context'><div className='sidebar-context-heading'>作品设定</div><div className='sidebar-context-links'><button className={`sidebar-context-link ${view === 'world' && worldNavigationRequest?.section !== 'places' ? 'is-current' : ''}`} onClick={() => { setWorldNavigationRequest({ section: 'overview', requestId: Date.now() }); setView('world') }}>世界总览</button><button className={`sidebar-context-link ${view === 'world' && worldNavigationRequest?.section === 'places' ? 'is-current' : ''}`} onClick={() => { setWorldNavigationRequest({ section: 'places', requestId: Date.now() }); setView('world') }}>地图与地点</button><button className={`sidebar-context-link ${view === 'characters' ? 'is-current' : ''}`} onClick={() => { setCharacterEditorOpen(false); setView('characters') }}>人物与组织</button><button className={`sidebar-context-link ${view === 'style' ? 'is-current' : ''}`} onClick={() => setView('style')}>文风</button></div></section>}
       {activeActivity === 'techniques' && <section className='sidebar-context'><div className='sidebar-context-heading'>写作参考</div><div className='sidebar-context-links'><button className='sidebar-context-link' onClick={() => { setTechniqueLibraryTab('叙事技法'); setView('techniques') }}>浏览叙事技法</button><button className='sidebar-context-link' onClick={() => { setTechniqueLibraryTab('写作工具'); setView('techniques') }}>写作工具</button>{(Array.isArray(techniqueCategories) ? techniqueCategories : []).filter((category: any) => !category.payload?.parent_id).map((category: any) => <button key={category.id} className={`sidebar-context-link ${selectedTechniqueCategoryId === category.id ? 'is-current' : ''}`} onClick={() => { setCategoryForm(category); setSelectedTechniqueCategoryId(category.id); setTechniqueLibraryTab('叙事技法'); setView('techniques') }}>{category.title || '未命名分类'}</button>)}</div></section>}
@@ -2281,14 +2302,17 @@ export default function App() {
   const center = useMemo(() => {
     if (cardDraftCache.current.__formProject !== project) return <p role='status' className='text-sm text-muted'>正在读取当前作品资料…</p>
     const updateStoryRoot = (key: string, value: any) => {
+      if (pointerLocked(storyLockedPaths, `/${key}`)) { push('这项已锁定，请使用指定范围修改。', 'error'); return }
       setStoryForm((prev: any) => normalizeStoryCard({ ...prev, [key]: value, payload: { ...prev.payload, ...(key === 'title' && prev[key] !== value ? { framework_confirmed: false } : {}) } }))
     }
 
     const updateStoryPayload = (key: string, value: any) => {
+      if (pointerLocked(storyLockedPaths, `/payload/${key}`)) { push('这项已锁定，请使用指定范围修改。', 'error'); return }
       setStoryForm((prev: any) => normalizeStoryCard({ ...prev, payload: { ...(prev?.payload || {}), [key]: value, framework_confirmed: false } }))
     }
 
     const updateStoryArrayItem = (section: string, index: number, key: string, value: any) => {
+      const currentRow = storyForm.payload?.[section]?.[index]; if (pointerLocked(storyLockedPaths, `/payload/${section}/${currentRow?.id ? `@${currentRow.id}` : index}/${key}`)) { push('这项已锁定，请使用指定范围修改。', 'error'); return }
       setStoryForm((prev: any) => {
         const payload = { ...(prev?.payload || {}) }
         const rows = Array.isArray(payload[section]) ? [...payload[section]] : []
@@ -2325,7 +2349,7 @@ export default function App() {
         if (result.detail) throw new Error('故事保存失败，请检查后重试。')
         const editedDuringSave = JSON.stringify(storyFormRef.current) !== before
         setStoryForm((current: any) => cardDraftCache.current.__formProject === project ? cardAfterSave(current, normalizeStoryCard(body), result, before) : current)
-        localStorage.removeItem(`novix:draft:${project}:story:${storyForm.id}`)
+        storyLocal.markSaved(storyForm, cardAfterSave(storyForm, normalizeStoryCard(body), result, before))
         setCardSaveState((current) => ({ ...current, [`${project}:${id}`]: editedDuringSave ? '提交稿已保存，仍有后续编辑' : '已保存' }))
         mutateStoryCards()
         refreshSharedMaterials()
@@ -2590,17 +2614,15 @@ export default function App() {
           <div key={`${section}-${index}`} className='story-row'>
             {section === 'foreshadowings' && <h4 className='mb-3 text-sm font-medium'>伏笔 {index + 1} · 作者计划</h4>}
             <div className='grid grid-cols-12 gap-2'>
-              {fields.filter((field) => field.key !== 'id').map((field) => (
+              {fields.filter((field) => field.key !== 'id' && !(section === 'chapter_plan' && field.key === 'chapter')).map((field) => (
                 <div key={field.key} className={`col-span-12 sm:col-span-6 ${(field.span || 'col-span-6').replace('col-span-', 'xl:col-span-')}`}>
                   <label className='text-xs text-muted'>{field.label}</label>
-                  <Input
-                    value={row?.[field.key] || ''}
-                    onChange={(e) => updateStoryArrayItem(section, index, field.key, e.target.value)}
-                  />
+                  {['chapter', 'chapter_id', 'first_chapter', 'payoff_chapter'].includes(field.key) ? <Select value={row?.[field.key] || (section === 'chapter_plan' && field.key === 'chapter_id' ? row.chapter : '') || ''} onChange={(e) => updateStoryArrayItem(section, index, field.key, e.target.value)}><option value=''>暂不安排章节</option>{row?.[field.key] && !chapterRows.some((chapter: any) => chapter.chapter_id === row[field.key]) && <option value={row[field.key]}>原计划关联（尚未对应现有章节）</option>}{chapterRows.map((chapter: any) => <option key={chapter.chapter_id} value={chapter.chapter_id}>{chapter.chapter_title || chapter.title || '未命名章节'}</option>)}</Select> : <Input value={row?.[field.key] || ''} onChange={(e) => updateStoryArrayItem(section, index, field.key, e.target.value)} />}
                 </div>
               ))}
             </div>
             {section === 'foreshadowings' && <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2'>{[['first_event_ref', '在哪件事埋设'], ['payoff_event_ref', '在哪件事回收']].map(([key, label]) => { const selected = row[key]?.owner_card_id && row[key]?.scene_id ? `${row[key].owner_card_id}:${row[key].scene_id}` : ''; return <div key={key}><label className='mb-1 block text-xs text-muted' htmlFor={`foreshadow-${index}-${key}`}>{label}</label><Select id={`foreshadow-${index}-${key}`} value={selected} onChange={(e) => { const [owner_card_id, scene_id] = e.target.value.split(':'); updateStoryArrayItem(section, index, key, e.target.value ? { owner_card_id, scene_id } : undefined) }}><option value=''>暂未安排事件</option>{selected && !eventRefOptions.some((item: any) => item.value === selected) && <option value={selected}>原关联事件暂不可用（保留）</option>}{eventRefOptions.map((item: any) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></div> })}</div>}
+            <InformationPanel key={`${project}:${storyForm.id}:${section}:${row.id || index}`} project={project} storyId={storyForm.id} value={row.information_ids || []} onChange={(ids) => updateStoryArrayItem(section, index, 'information_ids', ids)} eventRef={section === 'important_scenes' && row.id ? { owner_card_id: storyForm.id, scene_id: row.id } : row.first_event_ref} chapterId={row.chapter_id || row.chapter || row.first_chapter} title={section === 'foreshadowings' ? '线索涉及的信息与揭示' : section === 'chapter_plan' ? '本章计划展示的信息' : '关键透露、隐瞒与认知'} />
             <div className='mt-2 flex justify-end'>
               <Button className='text-xs' onClick={() => removeStoryArrayItem(section, index)}>删除</Button>
             </div>
@@ -3426,6 +3448,7 @@ export default function App() {
             <div className='story-heading-copy'><input className='story-title' aria-label='作品名' value={storyForm?.title || ''} onChange={(e) => updateStoryRoot('title', e.target.value)} placeholder='为你的故事起个名字' /><p>{storyPayload.framework_confirmed ? '框架已确认。可以继续安排场景，或修改现有设定。' : '先理清这本书要讲什么，再把故事推进到每一场。'}</p></div>
             <div className='space-y-2'><Button variant='primary' disabled={cardSaveState[`${project}:${storyForm.id}`] === '保存中…'} onClick={saveStoryCard}>保存故事设定</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${storyForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${storyForm.id}`] === '保存中…' ? cardSaveState[`${project}:${storyForm.id}`] : storyLocal.dirty ? '有尚未保存的编辑' : cardSaveState[`${project}:${storyForm.id}`] || '已读取保存版'}</p></div>
           </header>
+          {storyForm.id !== 'story_new' && <AuthorControls key={`${project}:${storyForm.id}:lock`} project={project} target={`cards/${storyForm.id}.yaml`} label='故事设定' value={storyForm} revision={storyForm._revision} dirty={storyLocal.dirty} batch onChanged={(value, result) => { const next = normalizeStoryCard({ ...value, _revision: result.base_revision }); setStoryForm(next); storyLocal.markSaved(storyForm, next); refreshSharedMaterials() }} />}
           <nav className='story-task-nav' aria-label='故事工作区'>{[['Overview', '故事摘要'], ['Lines', '场景与情节'], ['Foreshadowings', '伏笔安排'], ['Chapter Matrix', '章节计划']].map(([id, label]) => <button key={id} aria-current={storyTab === id ? 'page' : undefined} onClick={() => setStoryPlanningTab(id)}>{label}</button>)}</nav>
           {storyTab === 'Overview' && <section className='story-section space-y-4'><h2 className='text-xl font-semibold'>故事摘要</h2><details><summary className='cursor-pointer text-sm text-brand-600'>导入或整理摘要：文字、文件、图片与 URL</summary><div className='mt-4'><MaterialImportWorkspace project={project} purpose='story' isTargetDirty={isSettingDirty} storyId={storyForm.id !== 'story_new' ? storyForm.id : undefined} worldContext={storyPayload.world_context} profileId={useAgentAssignments ? undefined : llmProfileId} onApplied={refreshSharedMaterials} /></div></details><details><summary className='cursor-pointer text-sm text-muted'>故事使用的世界与时间</summary><div className='mt-4'><WorldContextFields project={project} storyId={storyForm.id} value={storyPayload.world_context} onChange={(world_context) => updateStoryPayload('world_context', world_context)} /></div></details></section>}
           {storyTab === 'Overview' && <div className='story-overview-layout'>
@@ -3434,6 +3457,7 @@ export default function App() {
               <div><label htmlFor='story-main_conflict' className='story-field-label'>这个故事的主要冲突</label><Textarea id='story-main_conflict' className='min-h-28' value={storyPayload.main_conflict || ''} onChange={(e) => updateStoryPayload('main_conflict', e.target.value)} placeholder='主角的愿望，和什么力量发生冲突？' /></div>
               <div className='story-secondary-grid'>{[['theme', '你想讲的主题'], ['worldview', '世界与背景']].map(([key, label]) => <div key={key}><label htmlFor={`story-${key}`} className='story-field-label'>{label}</label><Textarea id={`story-${key}`} value={storyPayload[key] || ''} onChange={(e) => updateStoryPayload(key, e.target.value)} /></div>)}</div>
               {storyPayload.writing_references?.length > 0 && <details><summary className='cursor-pointer text-xs text-muted'>既有故事技法关联（兼容保留）</summary><WritingReferencePicker project={project} value={storyPayload.writing_references || []} onChange={(ids) => setStoryForm((current: any) => normalizeStoryCard({ ...current, payload: { ...current.payload, writing_references: ids } }))} saveHint='已有选择保留。日常技法入口在章节正文，修改旧关联后保存故事设定生效。' /></details>}
+              <InformationPanel project={project} storyId={storyForm.id} value={storyPayload.information_ids || []} onChange={(information_ids) => updateStoryPayload('information_ids', information_ids)} title='故事中的关键信息' />
               <MaterialReferences project={project} sourceId={storyForm.id !== 'story_new' ? storyForm.id : undefined} value={storyForm.links || []} onChange={(links) => setStoryForm((current: any) => ({ ...current, links }))} onOpen={openMaterial} />
               <details className='border-t border-border pt-4'><summary className='cursor-pointer text-xs text-muted'>题材、读者与写作边界</summary><div className='mt-5 grid grid-cols-1 gap-5 md:grid-cols-2'>{[['genre', '题材'], ['target_reader', '目标读者'], ['platform_style', '平台风格']].map(([key, label]) => <div key={key}><label htmlFor={`story-pref-${key}`} className='story-field-label'>{label}</label><Input id={`story-pref-${key}`} value={storyPayload[key] || ''} onChange={(e) => updateStoryPayload(key, e.target.value)} /></div>)}<div><label htmlFor='story-keywords' className='story-field-label'>关键词</label><Input id='story-keywords' value={(storyPayload.keywords || []).join(',')} onChange={(e) => updateStoryPayload('keywords', e.target.value.split(','))} /></div><div><label htmlFor='story-tags' className='story-field-label'>故事标签</label><Input id='story-tags' value={(storyForm?.tags || []).join(',')} onChange={(e) => updateStoryRoot('tags', e.target.value.split(','))} /></div><div><label htmlFor='story-banned' className='story-field-label'>不能写的内容</label><Textarea id='story-banned' value={(storyPayload.banned_items || []).join('\n')} onChange={(e) => updateStoryPayload('banned_items', e.target.value.split('\n'))} placeholder='每行写一条。' /></div></div></details>
               <div className='story-confirmation'><Button variant='primary' onClick={confirmStoryFramework}>保存框架并安排场景</Button><span>{storyPayload.framework_confirmed ? '当前框架已保存，仍可继续修订。概要、场景、伏笔与章节均可随时调整。' : '概要、场景、伏笔与章节均可随时调整，无需按固定顺序完成。'}</span></div>
@@ -3518,7 +3542,7 @@ export default function App() {
           {(storyTab === 'Chapter Matrix') && <section className='story-section space-y-4 border-t border-border pt-6'><h3 className='text-lg font-semibold'>章节计划</h3>
             {renderStoryRows('chapter_plan', storyPayload.chapter_plan || [], [
               { key: 'chapter', label: '计划编号', span: 'col-span-2' },
-              { key: 'chapter_id', label: '绑定章节', span: 'col-span-2' },
+              { key: 'chapter_id', label: '对应章节', span: 'col-span-2' },
               { key: 'title', label: '章节标题', span: 'col-span-2' },
               { key: 'focus', label: '本章重点', span: 'col-span-3' },
               { key: 'key_events', label: '发生的事', span: 'col-span-4' },
@@ -3708,13 +3732,14 @@ export default function App() {
             <SchemaForm schema={charSchema} value={parsedBuildDraft} onChange={writeBuildDraftBody} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} />
             <div className='flex gap-2'><Button variant='primary' onClick={acceptBuildDraft}>确认保存人物</Button><Button onClick={() => setBuildDraft(null)}>暂不采用</Button></div>
           </section>}
-          <section className='space-y-4 border-y border-border py-4'><h2 className='text-base font-semibold'>人物在故事中的位置</h2><div className='grid grid-cols-1 gap-4 sm:grid-cols-2'><div><label className='mb-1 block text-sm text-muted' htmlFor='character-role'>人物角色</label><Select id='character-role' value={payload.role || 'other'} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, role: e.target.value } })}><option value='protagonist'>主角</option><option value='supporting'>配角</option><option value='antagonist'>对手</option><option value='other'>其他人物</option></Select></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-age'>初始年龄（可选）</label><Input id='character-initial-age' type='number' min={0} value={payload.initial_age ?? payload.age ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age: e.target.value === '' ? undefined : Number(e.target.value) } })} placeholder='未知时留空' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-year'>这个年龄对应哪一年</label><Input id='character-initial-year' type='number' step={1} value={payload.initial_age_time?.year ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age_time: { ...payload.initial_age_time, year: e.target.value === '' ? undefined : Number(e.target.value) } } })} placeholder='不清楚时不推算过去 / 未来年龄' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-birth-date'>明确的出生日期（可选）</label><Input id='character-birth-date' type='date' value={payload.birth_date || ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, birth_date: e.target.value || undefined } })} /></div></div></section>
-          <details className='border-y border-border py-3'><summary className='cursor-pointer text-xs text-muted'>旧检索排序（兼容）</summary><div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'><div><label className='text-xs text-muted'>卡片星级</label><Input type='number' min={0} max={5} value={characterForm.stars ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, stars: e.target.value === '' ? undefined : Number(e.target.value) })} /></div><div><label className='text-xs text-muted'>检索优先程度</label><Input type='number' min={1} max={5} value={characterForm.importance ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, importance: e.target.value === '' ? undefined : Number(e.target.value) })} /></div></div></details>
-          <CharacterReferenceImage key={`${project}:${characterForm.id}`} project={project} characterId={characterForm.id} value={payload.reference_image} appearance={payload.appearance || ''} profileId={useAgentAssignments ? undefined : llmProfileId} onImageChange={(image) => setCharacterForm((current: any) => { if (current.id !== characterForm.id) return current; const next = { ...current.payload }; if (image) next.reference_image = image; else delete next.reference_image; return { ...current, payload: next } })} onApplyAppearance={(appearance) => setCharacterForm((current: any) => current.id === characterForm.id ? { ...current, payload: { ...current.payload, appearance } } : current)} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
-          <SchemaForm hiddenFields={['age', 'initial_age', 'initial_age_time', 'birth_date', 'role']} schema={charSchema} value={characterForm} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} onChange={(next) => setCharacterForm({ ...next, title: next.payload?.name || next.title })} />
+          <details className='py-2'><summary className='cursor-pointer text-sm font-medium'>人物角色与年龄{payload.role ? `（${({protagonist:'主角',supporting:'配角',antagonist:'对手'} as Record<string,string>)[payload.role] || '其他'}${payload.initial_age !== undefined ? `，初始 ${payload.initial_age} 岁` : ''}）` : ''}</summary><section className='mt-4 space-y-4'><h2 className='sr-only'>人物在故事中的位置</h2><div className='grid grid-cols-1 gap-4 sm:grid-cols-2'><div><label className='mb-1 block text-sm text-muted' htmlFor='character-role'>人物角色</label><Select id='character-role' value={payload.role || 'other'} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, role: e.target.value } })}><option value='protagonist'>主角</option><option value='supporting'>配角</option><option value='antagonist'>对手</option><option value='other'>其他人物</option></Select></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-age'>初始年龄（可选）</label><Input id='character-initial-age' type='number' min={0} value={payload.initial_age ?? payload.age ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age: e.target.value === '' ? undefined : Number(e.target.value) } })} placeholder='未知时留空' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-year'>这个年龄对应哪一年</label><Input id='character-initial-year' type='number' step={1} value={payload.initial_age_time?.year ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age_time: { ...payload.initial_age_time, year: e.target.value === '' ? undefined : Number(e.target.value) } } })} placeholder='不清楚时不推算过去 / 未来年龄' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-birth-date'>明确的出生日期（可选）</label><Input id='character-birth-date' type='date' value={payload.birth_date || ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, birth_date: e.target.value || undefined } })} /></div></div></section>
+          </details>
+          <CharacterReferenceImage key={`${project}:${characterForm.id}`} project={project} characterId={characterForm.id} value={payload.reference_image} appearance={payload.appearance || ''} profileId={useAgentAssignments ? undefined : llmProfileId} onImageChange={(image) => setCharacterForm((current: any) => { if (current.id !== characterForm.id) return current; const next = { ...current.payload }; if (image) next.reference_image = image; else delete next.reference_image; return { ...current, payload: next } })} onApplyAppearance={(appearance) => setCharacterForm((current: any) => current.id === characterForm.id ? { ...current, payload: { ...current.payload, appearance, field_provenance: { ...current.payload?.field_provenance, appearance: 'ai_addition' } } } : current)} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
+          <SchemaForm lockedPaths={characterLockedPaths} hiddenFields={['age', 'initial_age', 'initial_age_time', 'birth_date', 'role', 'relationships']} schema={charSchema} value={characterForm} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} onChange={(next) => setCharacterForm({ ...next, title: next.payload?.name || next.title })} />
           <div className='space-y-2'><Button variant='primary' disabled={cardSaveState[`${project}:${characterForm.id}`] === '保存中…'} onClick={saveCurrentCharacter}>保存人物</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${characterForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${characterForm.id}`] === '保存中…' ? cardSaveState[`${project}:${characterForm.id}`] : characterLocal.dirty ? '有尚未保存的编辑' : cardSaveState[`${project}:${characterForm.id}`] || '已读取保存版'}</p></div>
+          {characterForm.id !== 'character_new' && <><AuthorControls key={`${project}:${characterForm.id}:lock`} project={project} target={`cards/${characterForm.id}.yaml`} label='人物' value={characterForm} revision={characterForm._revision} dirty={characterLocal.dirty} onChanged={(value, result) => { const next = { ...value, _revision: result.base_revision }; setCharacterForm(next); characterLocal.markSaved(characterForm, next); refreshSharedMaterials() }} /><InformationPanel key={`${project}:${characterForm.id}:information`} project={project} characterId={characterForm.id} storyId={storyForm.id} title='经历中的关键信息与认知变化' value={payload.information_ids || []} onChange={(information_ids) => setCharacterForm({ ...characterForm, payload: { ...payload, information_ids } })} /></>}
           {characterForm.id && characterForm.id !== 'character_new' && <details open={materialFocusRequest?.id === characterForm.id && !materialFocusRequest?.editPath} className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>人物关系与阶段变化</summary><div className='mt-4'><KnowledgeGraph project={project} focusId={characterForm.id} onOpen={openMaterial} showStages title={`${payload.name || characterForm.title || '此人'}的共享关系`} /></div></details>}
-          {characterForm.id !== 'character_new' && <><SharedRelationships key={`${project}:${characterForm.id}`} project={project} entityId={characterForm.id} storyId={storyForm.id} onOpen={openMaterial} /><AuthorStatePanel key={`${project}:${characterForm.id}:state`} project={project} entityId={characterForm.id} storyId={storyForm.id} /></>}
+          {characterForm.id !== 'character_new' && <><details className='py-3'><summary className='cursor-pointer text-sm font-medium'>编辑共享关系</summary><div className='mt-4'><SharedRelationships key={`${project}:${characterForm.id}`} project={project} entityId={characterForm.id} storyId={storyForm.id} onOpen={openMaterial} /></div></details><details className='py-3'><summary className='cursor-pointer text-sm font-medium'>初始资料与后续阶段</summary><div className='mt-4'><AuthorStatePanel key={`${project}:${characterForm.id}:state`} project={project} entityId={characterForm.id} storyId={storyForm.id} /></div></details></>}
           <details><summary className='cursor-pointer text-xs text-muted'>旧章节引用与检查记录</summary><Card title='已有人物' extra={<Badge>{selectedChapter}</Badge>}>
             <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
               {(Array.isArray(chars) ? chars : []).map((card: any) => {
@@ -3740,7 +3765,7 @@ export default function App() {
     if (view === 'style') {
       return (
         <div className='space-y-3 density-space'>
-          <CardEditor key={`${project}:style`} project={project} type='style' pendingCandidate={styleCandidate} onCandidateCleared={() => setStyleCandidate(null)} profileId={useAgentAssignments ? undefined : llmProfileId} onSaved={() => { mutateStyles(); refreshSharedMaterials() }} draftCache={cardDraftCache} referenceRequest={cardReferenceRequest} onOpenMaterial={openMaterial} focusRequest={materialFocusRequest} />
+          <CardEditor sampleIds={activeStyleAssets} key={`${project}:style`} project={project} type='style' pendingCandidate={styleCandidate} onCandidateCleared={() => setStyleCandidate(null)} profileId={useAgentAssignments ? undefined : llmProfileId} onSaved={() => { mutateStyles(); refreshSharedMaterials() }} draftCache={cardDraftCache} referenceRequest={cardReferenceRequest} onOpenMaterial={openMaterial} focusRequest={materialFocusRequest} />
           <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>导入文风参考：文字、文件、图片或链接</summary><div className='mt-4'><MaterialImportWorkspace project={project} purpose='style' isTargetDirty={isSettingDirty} storyId={storyForm.id} profileId={useAgentAssignments ? undefined : llmProfileId} onApplied={refreshSharedMaterials} /></div></details>
           <details><summary className='cursor-pointer text-sm font-medium'>从作者原样本文字分析文风</summary>
           <Card title='文风样本'>
@@ -3824,15 +3849,17 @@ export default function App() {
           <section className='manuscript-sheet space-y-3' aria-label='章节正文编辑'>{draftReadError && <div className='space-y-2'><p role='alert' className='text-sm text-red-700 dark:text-red-300'>正文暂时未能读取，当前编辑仍保留。重新读取成功后再保存或生成。</p><Button onClick={() => { void mutateDraft().catch(() => undefined) }}>重新读取正文</Button></div>}<div className='flex flex-wrap items-center justify-between gap-3'><h2 className='text-lg font-semibold'>正文</h2><Button variant='primary' disabled={chapterSaving} onClick={saveChapterDraft}>{chapterSaving ? '保存中…' : '保存正文'}</Button></div>
               <Textarea
                 id='chapter-manuscript-editor'
-                readOnly={isChapterGenerating}
+                readOnly={isChapterGenerating || pointerLocked(chapterLockedPaths, '/')}
                 className='editor-text col-span-12 min-h-[560px] resize-y whitespace-pre-wrap font-serif leading-7'
                 value={chapterEditorText}
                 onChange={(e) => setChapterEditorText(e.target.value)}
                 placeholder='开始写这一章...'
               />
           </section>
-            <WritingRunPanel project={project} hasUnsavedChanges={chapterEditorText !== (draft?.content || '') || Boolean(pendingChapterReferences || pendingChapterMaterials)} onProgress={refreshWritingOutputs} />
+            <AuthorControls key={`${project}:${selectedChapter}:bodylock`} project={project} target={`drafts/${selectedChapter}.md`} label='正文' value={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} onChanged={(content, result) => { setChapterEditorText(content); editorSnapshotRef.current.revision = result.base_revision; void mutateDraft(); void mutateVersions() }} />
+          <WritingRunPanel project={project} hasUnsavedChanges={chapterEditorText !== (draft?.content || '') || Boolean(pendingChapterReferences || pendingChapterMaterials)} onProgress={refreshWritingOutputs} />
           <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>本章准备、场景安排与写法</summary><div className='mt-4'>
+          {alignmentLocal.recovery && <div className='mb-4 space-y-2'><p className='text-sm'>找到本章尚未保存的补充与写法。</p><div className='flex gap-2'><Button onClick={alignmentLocal.restore}>恢复本章写法</Button><Button variant='ghost' onClick={alignmentLocal.dismiss}>保留保存版</Button></div></div>}
           <Card title='本章准备' extra={<Badge tone={alignmentReady ? 'success' : 'default'}>{alignmentReady ? '写法已确认' : '确认后生成'}</Badge>}>
             <div className='space-y-2'>
               <label htmlFor='chapter-changes' className='story-field-label'>本章补充与变化（可选）</label>
@@ -3840,6 +3867,7 @@ export default function App() {
               <p className='text-xs leading-5 text-muted'>章节计划、情节工作表、人物和世界设定继续沿用保存版。没有新增变化时，这里可以留空。</p>
               <details className='border-y border-border py-3'><summary className='cursor-pointer text-sm text-muted'>本章世界、发生时间与视角（默认继承故事）</summary><div className='mt-3 space-y-3'><WorldContextFields project={project} storyId={storyForm.id} value={chapterContext.world_context} onChange={(world_context) => updateChapterContext({ world_context })} inherited='本章默认沿用故事背景；事件 / 场景可以进一步覆盖。讲述的先后不等于事情发生的先后。' /><label className='block text-xs text-muted' htmlFor='chapter-pov'>本章叙述视角</label><Input id='chapter-pov' value={chapterContext.pov} onChange={(e) => updateChapterContext({ pov: e.target.value })} placeholder='留空沿用文风默认；事件更具体的选择仍优先。' /><label className='block text-xs text-muted' htmlFor='chapter-pov-character'>谁的认知限制本章叙述</label><Select id='chapter-pov-character' value={chapterContext.pov_character_id} onChange={(e) => updateChapterContext({ pov_character_id: e.target.value })}><option value=''>未指定 / 继承</option>{(Array.isArray(chars) ? chars : []).map((person: any) => <option key={person.id} value={person.id}>{person.payload?.name || person.title || '未命名人物'}</option>)}</Select><p className='text-xs text-muted'>视角人物用于筛选其所知；不会从“第三人称”等文字猜测人物知道什么。与正文一起保存后生效。</p></div></details>
             </div>
+            <InformationPanel key={`${project}:${selectedChapter}:info`} project={project} chapterId={selectedChapter} storyId={storyForm.id} text={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} value={chapterContext.information_ids || []} onChange={(information_ids) => updateChapterContext({ information_ids })} title='本章透露的信息与读者已见' />
             <ChapterSceneRehearsals project={project} chapterId={selectedChapter} storyId={storyForm?.id} selectedScene={selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm?.id}` ? selectedSceneAnchor : undefined} onSelectScene={(row) => setSelectedSceneAnchor(row ? { key: `${project}:${selectedChapter}:${storyForm?.id}`, owner_card_id: row.owner_card_id, scene_id: row.scene_id } : null)} onOpen={openSceneRehearsal} onOpenPlanning={() => { setActiveActivity('planning'); setView('planning') }} />
             <details className='mt-5 border-t border-border pt-4'><summary className='cursor-pointer text-sm font-medium'>这一段怎么写（可选）</summary><section className='mt-4 space-y-4' aria-label='场景写法'>
               <div><p className='text-sm text-muted'>从人的感受出发，想清楚这段在故事中的作用。下面都可选，不必填满；最终仍写成小说正文。</p></div>
@@ -3856,6 +3884,7 @@ export default function App() {
 
             </section></details>
             <div className='my-4'><Button onClick={() => { setAlignmentConfirmed(false); void saveWritingAlignment({ confirmed: false }) }}>保存本章补充</Button></div>
+            <TrialWritingTools key={`${project}:${selectedChapter}:trial`} storyId={storyForm.id} project={project} chapterId={selectedChapter} text={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} isGenerating={isChapterGenerating} profileId={useAgentAssignments ? undefined : llmProfileId} onApplied={(content) => { setChapterEditorText(content); void mutateDraft(); void mutateVersions() }} />
             <RevisionTools project={project} chapterId={selectedChapter} text={chapterEditorText} profileId={useAgentAssignments ? undefined : llmProfileId} storyCardId={storyForm?.id} onChange={setChapterEditorText} onApplied={() => { void mutateDraft(); void mutateVersions(); void mutateDraftDetails() }} />
             <section className='chapter-agreement' aria-label='本章写法预览'>
               <div className='flex flex-wrap items-baseline justify-between gap-2'><h3 className='text-base font-semibold'>本章写法</h3><span className='text-xs text-muted'>{alignmentAgreedDraft && alignmentAgreedDraft !== alignmentUnderstanding ? '保留你的修订' : '根据已保存策划整理'}</span></div>
@@ -4160,6 +4189,7 @@ export default function App() {
       return (
         <div className='space-y-3 density-space'>
           <KnowledgeGraph project={project} onOpen={openMaterial} title='全书人物、事件与事实' showStages />
+          <InformationPanel key={`${project}:fact-information`} project={project} storyId={storyForm.id} title='事实中的关键信息与不同说法' focusId={informationFocus} />
           <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>从材料整理关系</summary><div className='mt-4'><MaterialImportWorkspace project={project} purpose='relations' storyId={storyForm.id} profileId={useAgentAssignments ? undefined : llmProfileId} isTargetDirty={isSettingDirty} onApplied={refreshSharedMaterials} /></div></details>
           <Card title='作品事实'>
             <div className='space-y-2'>
@@ -4222,7 +4252,7 @@ export default function App() {
 
     if (view === 'world') {
       return <div className='space-y-5'>
-        <WorldWiki project={project} navigationRequest={worldNavigationRequest} profileId={useAgentAssignments ? undefined : llmProfileId} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} projectTitle={projectInfo?.title || storyForm?.title || '当前作品'} chapters={chapterRows} draftCache={cardDraftCache} onOpenMaterial={openMaterial} focusRequest={materialFocusRequest} referenceRequest={cardReferenceRequest} legacyEditor={<div className='space-y-5'>
+        <WorldWiki storyCard={storyForm} project={project} navigationRequest={worldNavigationRequest} profileId={useAgentAssignments ? undefined : llmProfileId} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} projectTitle={projectInfo?.title || storyForm?.title || '当前作品'} chapters={chapterRows} draftCache={cardDraftCache} onOpenMaterial={openMaterial} focusRequest={materialFocusRequest} referenceRequest={cardReferenceRequest} legacyEditor={<div className='space-y-5'>
           <CardEditor key={`${project}:world`} project={project} type='world' profileId={useAgentAssignments ? undefined : llmProfileId} onSaved={() => { mutateWorldCards(); refreshSharedMaterials() }} draftCache={cardDraftCache} onOpenMaterial={openMaterial} />
           <details className='border-t border-border pt-4'><summary className='cursor-pointer text-sm font-medium'>检索已有世界资料</summary>
             <div className='mt-3 flex gap-2'><Input aria-label='世界资料关键词' value={worldQuery} onChange={(event) => setWorldQuery(event.target.value)} /><Button onClick={async () => { const result = await api.post(`/api/projects/${project}/world/query`, { query: worldQuery, top_k: 10, include_global: false }); setWorldRows(result) }}>查找资料</Button></div>
@@ -4532,7 +4562,6 @@ export default function App() {
               <div className='rounded-ui border border-border bg-surface-2 p-3 text-xs md:col-span-2'>
                 <div className='mb-2 flex items-center justify-between gap-2'>
                   <span className='font-medium'>项目备份与导出</span>
-                  <Badge>{project}</Badge>
                 </div>
                 <div className='flex flex-wrap gap-2'>
                   <Button onClick={downloadProjectBackup}>导出项目备份</Button>
@@ -4720,6 +4749,7 @@ export default function App() {
             {(Array.isArray(toolSkillCards) ? toolSkillCards : []).filter((tool: any) => (currentChapterMeta.tool_skill_ids || []).includes(tool.id)).map((tool: any) => { const referenced = (Array.isArray(currentChapterMeta.tool_skill_ids) ? currentChapterMeta.tool_skill_ids : []).includes(tool.id); return <div key={tool.id} className='flex flex-wrap items-center justify-between gap-3 py-3'><div className='min-w-0 flex-1'><div className='text-sm font-medium'>{referenceLabel(tool)}</div><p className='mt-1 text-xs text-muted'>{tool.payload?.description || (tool.payload?.check_rules || []).join('；') || '为本章提供写作参考。'}</p></div><Button className='text-xs' aria-pressed={referenced} onClick={() => toggleToolReference(tool.id)}>{referenced ? '取消引用' : '本章引用'}</Button></div> })}
             {!(currentChapterMeta.tool_skill_ids || []).length && <p className='py-3 text-sm text-muted'>本章没有旧工具引用。</p>}
           </div></details>
+          <details className='border-y border-border py-3'><summary className='cursor-pointer text-xs text-muted'>旧检索排序（兼容）</summary><div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'><div><label className='text-xs text-muted'>卡片星级</label><Input type='number' min={0} max={5} value={characterForm.stars ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, stars: e.target.value === '' ? undefined : Number(e.target.value) })} /></div><div><label className='text-xs text-muted'>检索优先程度</label><Input type='number' min={1} max={5} value={characterForm.importance ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, importance: e.target.value === '' ? undefined : Number(e.target.value) })} /></div></div></details>
         <Card title='Memory Packs'>
           <div className='grid grid-cols-2 gap-3'>
             <div className='space-y-2 max-h-64 overflow-auto'>
@@ -4778,7 +4808,7 @@ export default function App() {
     view,
     projects,
     storyCards,
-    storyForm, characterEditorOpen, worldNavigationRequest, cardSaveState, sharedRelationshipFocus, storyLocal.recovery, characterLocal.recovery, chapterLocal.recovery,
+    storyForm, storyLockedPaths, characterLockedPaths, chapterLockedPaths, characterEditorOpen, worldNavigationRequest, cardSaveState, sharedRelationshipFocus, informationFocus, storyLocal.recovery, characterLocal.recovery, chapterLocal.recovery, alignmentLocal.recovery,
     charSchema,
     characterForm,
     chars,
@@ -4981,57 +5011,8 @@ export default function App() {
 
   const right = (
     <div className='space-y-3 density-space'>
-      <div className='rounded-ui border border-border bg-surface p-2'>
-        <div className='grid grid-cols-3 gap-2'>
-          {agentSteps.map((step) => {
-            const done = Boolean(step.data)
-            return (
-              <div key={step.event} className='flex items-center justify-center gap-1.5 rounded-ui bg-surface-2 px-2 py-1.5 text-xs'>
-                <span className={`h-2.5 w-2.5 rounded-full ${done ? 'bg-emerald-500' : 'bg-muted/40'}`} />
-                <span className={done ? 'font-medium text-foreground' : 'text-muted'}>{step.name}</span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <Card title='本章技法' extra={<Badge>{rightPinnedTechniqueRows.length}</Badge>}>
-        <WritingReferenceNotice usage={currentManifest?.writing_references || (draft?.meta || {}).context_manifest?.writing_references} />
-        <div className='space-y-2 text-xs'>
-          {rightPinnedTechniqueRows.map((row: any) => {
-            const tech = (Array.isArray(techniqueCards) ? techniqueCards : []).find((x: any) => x.id === row.technique_id)
-            return (
-              <div key={row.technique_id} className='rounded-ui border border-border bg-surface px-2 py-1.5'>
-                <div className='flex items-start justify-between gap-2'>
-                  <div>
-                    <div className='font-medium'>{referenceLabel(tech, row.technique_id)}</div>
-                    <div className='mt-1 text-muted'>{row.notes || tech?.payload?.purpose || '用于本章写法'}</div>
-                  </div>
-                  <Badge>{row.intensity || 'med'}</Badge>
-                </div>
-                <Button className='mt-2 w-full text-xs' onClick={() => unpinTechniqueFromChapter({ id: row.technique_id, title: referenceLabel(tech, row.technique_id) })}>移除</Button>
-              </div>
-            )
-          })}
-          {!rightPinnedTechniqueRows.length && <p className='text-muted'>本章还没有挂载技法。</p>}
-          <div className='grid grid-cols-2 gap-1'>
-            {(rightAutoRecommendedTechniques.length ? rightAutoRecommendedTechniques.slice(0, 4) : rightQuickTechniqueRows.slice(0, 4)).map((row: any) => {
-              const isAuto = Boolean(row.technique_id)
-              const id = isAuto ? row.technique_id : row.id
-              return (
-                <button
-                  key={`${id}:${row.source || 'right'}`}
-                  className='rounded-ui border border-border bg-surface-2 px-2 py-1 text-left hover:bg-surface'
-                  onClick={() => isAuto ? pinRightAutoTechnique(row) : pinTechniqueToChapter(row, 'med').then((out) => push(out.message || '已挂载技法'))}
-                >
-                  {isAuto ? techniqueTitleById(row.technique_id) : referenceLabel(row)}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </Card>
-
+      <Button className='text-xs' onClick={() => setChapterReferencesOpen(true)}>本章写法参考（{selectedChapterReferenceIds.length}）</Button>
+      <InformationPanel key={`${project}:${selectedChapter}:inspector-info`} project={project} chapterId={selectedChapter} storyId={storyForm.id} text={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} title='人物所知与读者已见' />
       <ContextMaterialSummary project={project} chapterId={selectedChapter} pack={(draft?.meta || {}).context_manifest?.context_pack} onOpen={openMaterial} />
       <Card title='本章上下文' extra={<Badge>{chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章'}</Badge>}>
         <div className='space-y-2 text-xs'>
@@ -5145,6 +5126,23 @@ export default function App() {
 </div></details>
       </section>
 
+      {assetViewer.open && (
+        <Card title={`Asset Viewer: ${assetViewer.title}`} extra={<Button className='text-xs' onClick={() => navigator.clipboard.writeText(assetViewer.content)}>复制片段</Button>}>
+          <Input value={assetFind} onChange={(e) => setAssetFind(e.target.value)} placeholder='Find in asset...' />
+          <pre className={`mono mt-2 text-xs overflow-auto rounded-ui bg-surface-2 p-3 ${settings.evidenceWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
+            {assetViewer.content
+              .split('\n')
+              .map((line, idx) => `${idx + 1}: ${line}`)
+              .filter((line) => !assetFind || line.includes(assetFind))
+              .join('\n')}
+          </pre>
+          <Button className='mt-2 text-xs' onClick={() => setAssetViewer({ open: false, title: '', content: '' })}>关闭</Button>
+        </Card>
+      )}
+    </div>
+  )
+
+  const technicalDetails = <div className='mt-6 space-y-4'>
       <details className='rounded-ui border border-border bg-surface'>
         <summary className='cursor-pointer px-2 py-1.5 text-sm font-medium'>维护记录 <span className='text-xs text-muted'>开源维护 / 调试</span></summary>
         <div className='space-y-2 border-t border-border p-2'>
@@ -5259,21 +5257,7 @@ export default function App() {
         </div>
       </details>
 
-      {assetViewer.open && (
-        <Card title={`Asset Viewer: ${assetViewer.title}`} extra={<Button className='text-xs' onClick={() => navigator.clipboard.writeText(assetViewer.content)}>复制片段</Button>}>
-          <Input value={assetFind} onChange={(e) => setAssetFind(e.target.value)} placeholder='Find in asset...' />
-          <pre className={`mono mt-2 text-xs overflow-auto rounded-ui bg-surface-2 p-3 ${settings.evidenceWrap ? 'whitespace-pre-wrap' : 'whitespace-pre'}`}>
-            {assetViewer.content
-              .split('\n')
-              .map((line, idx) => `${idx + 1}: ${line}`)
-              .filter((line) => !assetFind || line.includes(assetFind))
-              .join('\n')}
-          </pre>
-          <Button className='mt-2 text-xs' onClick={() => setAssetViewer({ open: false, title: '', content: '' })}>关闭</Button>
-        </Card>
-      )}
-    </div>
-  )
+  </div>
 
   const confirmRouteRiskCount = writeRouteRows.filter((row: any) => row.is_mock || row.profile_missing || row.missing_fields?.length).length
   const confirmPinnedTechniques = Array.isArray(currentChapterMeta?.pinned_techniques) ? currentChapterMeta.pinned_techniques : []
@@ -5433,7 +5417,7 @@ export default function App() {
 
   return (
     <>
-      <Layout left={left} center={center} right={['chapter', 'scene-rehearsal'].includes(view) ? right : <div className='space-y-4'><h3 className='font-semibold'>本页资料</h3><p className='text-xs leading-6 text-muted'>只显示与当前工作区有关的作者资料。章节检查和模型记录在正文工作区查看。</p><ul className='space-y-3'>{(Array.isArray(allCards) ? allCards : []).filter((card: any) => view === 'story' || view === 'planning' ? ['story', 'outline', 'character', 'world'].includes(card.type) : view === 'characters' || view === 'relationships' ? ['character', 'world'].includes(card.type) : view === 'style' ? card.type === 'style' : ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)).slice(0, 18).map((card: any) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => openMaterial(card)}>{referenceLabel(card)}</button></li>)}</ul></div>} header={header} inspectorTitle={['chapter', 'scene-rehearsal'].includes(view) ? '本章材料与检查' : '本页资料'} surface={view} navigationKey={`${view}:${selectedChapter}`} />
+      <Layout left={left} center={view === 'context' ? <>{center}{technicalDetails}</> : center} right={view === 'settings' ? <p className='text-sm leading-7 text-muted'>模型按任务分工；密钥只在本机保存。连接状态与配置在当前页面查看。</p> : ['chapter', 'scene-rehearsal'].includes(view) ? right : <div className='space-y-4'><p className='text-xs leading-6 text-muted'>与当前内容有关的资料</p><ul className='space-y-3'>{(Array.isArray(allCards) ? allCards : []).filter((card: any) => view === 'story' || view === 'planning' ? ['story', 'outline', 'character', 'world'].includes(card.type) : view === 'characters' || view === 'relationships' ? ['character', 'world'].includes(card.type) : view === 'style' ? card.type === 'style' : ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)).slice(0, 18).map((card: any) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => openMaterial(card)}>{referenceLabel(card)}</button></li>)}</ul></div>} header={header} inspectorTitle={view === 'settings' ? '模型说明' : ['chapter', 'scene-rehearsal'].includes(view) ? '本章材料与检查' : '本页资料'} surface={view} navigationKey={`${view}:${selectedChapter}`} />
       <WritingReferencePanel open={chapterReferencesOpen && view === 'chapter'} onClose={() => setChapterReferencesOpen(false)} title='本章写法参考'>
         <p className='mb-4 text-xs leading-6 text-muted'>为“{chapterTitleDraft || '当前章节'}”选择需要的写法。选择和查阅不调用模型，保存后供本章写作使用。</p>
         <WritingReferencePicker project={project} value={selectedChapterReferenceIds} onChange={updateChapterReferences} onOpen={openMaterial} saveHint={pendingChapterReferences ? '参考有未保存的选择。关闭侧栏仍会保留，点击下方保存后生效。' : '已保存的参考用于本章生成与修改。'} />

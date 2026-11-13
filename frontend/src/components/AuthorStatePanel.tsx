@@ -34,7 +34,7 @@ export function AuthorStatePanel({ project, entityId, type = 'character', storyI
       const result = await api.put(`/api/projects/${project}/worlds/${entityId}/branches`, branchForm)
       if (activeScope.current !== heldScope) return
       setBranchForm((current: any) => JSON.stringify(current) === before ? result : { ...current, _revision: result._revision })
-      localStorage.removeItem(`novix:draft:${scope}:branches`); await refreshBranches(); setMessage('分支已保存；分歧前历史仍共享，之后按各自分支取用。')
+      branchRecovery.markSaved(branchForm, result); await refreshBranches(); setMessage('分支已保存；分歧前历史仍共享，之后按各自分支取用。')
     } catch (error) { if (activeScope.current === heldScope) setMessage(error instanceof Error ? error.message : '分支未保存，编辑保留。') }
     finally { if (activeScope.current === heldScope) setBusy(false) }
   }
@@ -42,7 +42,7 @@ export function AuthorStatePanel({ project, entityId, type = 'character', storyI
     const heldScope = scope
     const before = JSON.stringify(draft)
     setBusy(true); setMessage('')
-    try { const result = await api.post(`/api/projects/${project}/${path}/${entityId}/stages`, { ...draft, source: { kind: 'author', note: '作者在阶段资料中手动确认或计划' } }); if (activeScope.current !== heldScope) return; await mutate(); await refreshStages(); localStorage.removeItem(`novix:draft:${scope}:stage`); if (JSON.stringify(latestDraft.current) === before) setEditing(false); else setDraft((current: any) => ({ ...current, _revision: result._revision })); void mutateCache((key: any) => typeof key === 'string' && key.startsWith(`/api/projects/${project}/`) && /author-state|state|knowledge-graph/.test(key)); setMessage(result.change_suggestions?.queued_count ? `阶段已追加，已排队 ${result.change_suggestions.queued_count} 项受影响正文建议，仍需确认。` : '阶段记录已追加，初始资料与既有历史保留。') }
+    try { const result = await api.post(`/api/projects/${project}/${path}/${entityId}/stages`, { ...draft, source: { kind: 'author', note: '作者在阶段资料中手动确认或计划' } }); if (activeScope.current !== heldScope) return; await mutate(); await refreshStages(); localDraft.markSaved(draft, draft); if (JSON.stringify(latestDraft.current) === before) setEditing(false); else setDraft((current: any) => ({ ...current, _revision: result._revision })); void mutateCache((key: any) => typeof key === 'string' && key.startsWith(`/api/projects/${project}/`) && /author-state|state|knowledge-graph/.test(key)); setMessage(result.change_suggestions?.queued_count ? `阶段已追加，已排队 ${result.change_suggestions.queued_count} 项受影响正文建议，仍需确认。` : '阶段记录已追加，初始资料与既有历史保留。') }
     catch (error) { if (activeScope.current === heldScope) setMessage(error instanceof Error ? error.message : '阶段保存失败，编辑保留。') }
     finally { if (activeScope.current === heldScope) setBusy(false) }
   }

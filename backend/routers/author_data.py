@@ -131,6 +131,11 @@ def branches(project_id: str, world_id: str, svc=Depends(get_author_data)):
     return _call(svc.branches, project_id, world_id)
 
 
+@router.get('/worlds/{world_id}/context-options')
+def context_options(project_id: str, world_id: str, svc=Depends(get_author_data)):
+    return _call(svc.world.options, project_id, world_id)
+
+
 @router.put('/worlds/{world_id}/branches')
 def put_branches(project_id: str, world_id: str, body: dict = Body(...), svc=Depends(get_author_data)):
     return _call(svc.put_branches, project_id, world_id, body)

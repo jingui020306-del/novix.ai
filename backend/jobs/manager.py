@@ -57,6 +57,8 @@ class JobManager:
 
     async def run_write_job(self, project_id: str, payload: dict[str, Any]) -> str:
         chapter_id, _bp, scene_index = self._validate_write_payload(project_id, payload)
+        from services.author_control_service import AuthorControlService
+        AuthorControlService(self.store).assert_unlocked(project_id, f'drafts/{chapter_id}.md')
         job_id = f"job_{uuid.uuid4().hex[:10]}"
         self._write_job_record(project_id, job_id, {
             "job_id": job_id,
@@ -555,6 +557,8 @@ class JobManager:
                     if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != original_draft:
                         raise ValueError('正文在生成期间被修改，已保留作者的新内容，请重新生成。')
                 previous_draft = self.store.read_md(project_id, f"drafts/{chapter_id}.md")
+                from services.author_control_service import AuthorControlService
+                AuthorControlService(self.store).assert_write(project_id, f'drafts/{chapter_id}.md', previous_draft, draft)
                 if previous_draft:
                     save_snapshot(self.store, project_id, chapter_id, previous_draft, reason="before_ai_draft", patch_id=job_id)
                 self.store.write_md(project_id, f"drafts/{chapter_id}.md", draft)
@@ -580,6 +584,11 @@ class JobManager:
             await self.emit(project_id, job_id, "CLAIM_VERIFICATION", {"chapter_id": chapter_id, "verified_mark_ids": [m.get("mark_id") for m in supported], "unsupported_mark_ids": [m.get("mark_id") for m in unsupported], "provider": "rules", "model": "quote-verifier-v1", "input_summary": "回查 quote 和行号", "output_summary": f"{len(unsupported)} 条未证实"})
 
             critic_messages = [{'role': 'system', 'content': '你是小说审稿人，只根据当前正文、已保存设定和有来源的材料指出主要问题；明确事件阶段优先于章节讲述顺序，不把未来事件或读者已知当作人物已知；没有依据时明确未知。'}, {'role': 'user', 'content': draft[:900] + '\n本次取材（规划不能当作已发生事实）：' + writer_messages[-1]['content']}]
+            from services.information_service import InformationService
+            review_information = InformationService(self.store).materials(project_id, scope, for_review=True, actor_ids=scene.get('cast', []), max_chars=5000)
+            if review_information['items']:
+                critic_messages[-1]['content'] += '\n审查专用的信息边界（不要将私有真相写回有限视角正文）：' + json.dumps(review_information, ensure_ascii=False)
+                critic_messages[0]['content'] += '区分真实冲突、人物误信或有意说谎、不可靠叙述、未定真相和有意悬念；有意安排且依据未变时不要反复误报，不要自动把谎话修成真话或提前揭密。'
             critic_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE
             _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "chapter_reviewer")
             critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback, strict=bool(writing_run))

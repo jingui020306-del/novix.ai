@@ -57,6 +57,25 @@ def update(project_id: str, batch_id: str, body: dict, service=Depends(get_impor
         return service.update(project_id, batch_id, body)
 
 
+@router.post('/{batch_id}/sources')
+def add_source(project_id: str, batch_id: str, body: dict, service=Depends(get_imports)):
+    with user_errors():
+        return service.add_source(project_id, batch_id, body)
+
+
+@router.post('/{batch_id}/sources/upload')
+async def add_source_file(project_id: str, batch_id: str, file: UploadFile = File(...), base_revision: str = Form(...), reference_scope: str = Form(''), service=Depends(get_imports)):
+    with user_errors():
+        raw = await file.read(MAX_BYTES + 1)
+        return service.add_source(project_id, batch_id, {'base_revision': base_revision, 'reference_scope': reference_scope}, raw=raw, filename=file.filename)
+
+
+@router.post('/{batch_id}/complete')
+async def complete(project_id: str, batch_id: str, body: dict, service=Depends(get_imports)):
+    with user_errors():
+        return await service.complete(project_id, batch_id, body)
+
+
 @router.post('/{batch_id}/extract')
 async def extract(project_id: str, batch_id: str, body: dict, service=Depends(get_imports)):
     with user_errors():
@@ -117,10 +136,13 @@ def cancel(project_id: str, batch_id: str, service=Depends(get_imports)):
 
 
 @router.get('/{batch_id}/source')
-def source(project_id: str, batch_id: str, service=Depends(get_imports)):
+def source(project_id: str, batch_id: str, source_id: str | None = None, service=Depends(get_imports)):
     with user_errors():
         record = service._read(project_id, batch_id)
-        path = record['source'].get('raw_path')
+        material = next((row for row in service._sources(record) if row['id'] == source_id), None) if source_id else record['source']
+        if not material:
+            raise FileNotFoundError('这份原材料不存在。')
+        path = material.get('raw_path')
         if not path:
             raise FileNotFoundError('这份材料没有附加原文件，可在原文区查看文字。')
-        return FileResponse(service.store._safe_path(project_id, path), media_type=record['source'].get('mime_type', 'application/octet-stream'))
+        return FileResponse(service.store._safe_path(project_id, path), media_type=material.get('mime_type', 'application/octet-stream'))

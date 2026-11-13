@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
@@ -22,6 +23,7 @@ from services.wiki_import_service import WikiImportService
 from services.llm_config_service import LLMConfigService
 from services.writing_run_service import WritingRunService
 from storage.fs_store import FSStore
+from routers import author_controls, information, trials
 
 DATA_DIR = BACKEND_DIR.parents[0] / 'data'
 store = FSStore(DATA_DIR)
@@ -54,6 +56,16 @@ allowed_origins = [
 app = FastAPI(title='AI Longform Novel Workbench API')
 
 
+@app.exception_handler(FileExistsError)
+async def author_edit_conflict(request, exc):
+    return JSONResponse({'detail': str(exc)}, status_code=409)
+
+
+@app.exception_handler(OSError)
+async def author_storage_failure(request, exc):
+    return JSONResponse({'detail': '本次保存未完成。原资料或可重试工作稿已保留，请检查磁盘或连接后重试。'}, status_code=503)
+
+
 @app.middleware('http')
 async def recover_author_imports(request, call_next):
     # A restarted/interrupted multi-file import must finish before readers see it.
@@ -78,6 +90,9 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(authoring.router)
 app.include_router(author_data.router)
+app.include_router(author_controls.router)
+app.include_router(information.router)
+app.include_router(trials.router)
 app.include_router(material_imports.router)
 app.include_router(scene_rehearsals.router)
 app.include_router(character_images.router)

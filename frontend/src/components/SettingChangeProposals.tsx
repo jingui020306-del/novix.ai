@@ -22,6 +22,7 @@ export function SettingChangeProposals({ project, chapterId, hasUnsavedManuscrip
   const [editBases, setEditBases] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState('')
   const scope = `${project}:${chapterId}`
+  const latestEdits = useRef({ edits, selections, manual, bases: editBases }); latestEdits.current = { edits, selections, manual, bases: editBases }
   const activeScope = useRef(scope); activeScope.current = scope
   const taskKey = (id: string) => `${scope}:${id}`
   const selectScope = (values: any) => Object.fromEntries(Object.entries(values).filter(([key]) => key.startsWith(`${scope}:`)))
@@ -42,6 +43,14 @@ export function SettingChangeProposals({ project, chapterId, hasUnsavedManuscrip
       if (!response.ok || result.detail) throw new Error(response.status === 409 ? '依据的设定或正文已经更新，这份旧建议未应用。请重新生成后确认。' : typeof result.detail === 'string' ? result.detail : '操作未完成，请重试。')
       if (activeScope.current !== heldScope) return
       await mutate()
+      if (['apply', 'dismiss', 'cancel', 'undo'].includes(action) && JSON.stringify([latestEdits.current.edits[taskKey(task.id)], latestEdits.current.selections[taskKey(task.id)], latestEdits.current.manual[taskKey(task.id)], latestEdits.current.bases[taskKey(task.id)]]) === JSON.stringify([edits[taskKey(task.id)], selections[taskKey(task.id)], manual[taskKey(task.id)], editBases[taskKey(task.id)]])) {
+        const completed = taskKey(task.id)
+        const remove = <T,>(values: Record<string, T>): Record<string, T> => Object.fromEntries(Object.entries(values).filter(([key]) => key !== completed))
+        const submitted = { edits: selectScope(edits), selections: selectScope(selections), manual: selectScope(manual), bases: selectScope(editBases) }
+        const remaining = { edits: remove(submitted.edits), selections: remove(submitted.selections), manual: remove(submitted.manual), bases: remove(submitted.bases) }
+        localDraft.markSaved(submitted, remaining)
+        setEdits((current) => remove(current)); setSelections((current) => remove(current)); setManual((current) => remove(current)); setEditBases((current) => remove(current))
+      }
       if (action === 'apply' || action === 'undo') onApplied()
       setMessages((current) => ({ ...current, [taskKey(task.id)]: action === 'apply' ? '已应用并保存，修改记录已保留。' : action === 'dismiss' ? '已标记暂不采用，原正文保留。' : action === 'undo' ? '已撤销本次应用，后续另改的内容仍受版本保护。' : action === 'cancel' ? '任务已取消，不再采用其晚到结果。' : '已提交重试，请查看最新进度。' }))
     } catch (cause) { if (activeScope.current !== heldScope) return; setMessages((current) => ({ ...current, [taskKey(task.id)]: cause instanceof Error ? cause.message : '操作失败，请重试。' })); await mutate().catch(() => undefined) }

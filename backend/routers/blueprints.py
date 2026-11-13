@@ -51,8 +51,13 @@ def update_blueprint(project_id: str, bp: dict, s: FSStore = Depends(get_store))
 
 @router.delete('/{blueprint_id}')
 def delete_blueprint(project_id: str, blueprint_id: str, s: FSStore = Depends(get_store)):
-    path = s._safe_path(project_id, f'cards/{blueprint_id}.json')
-    if path.exists():
-        path.unlink()
-        IncrementalMemoryService(s).mark(project_id, f'cards/{blueprint_id}.json')
+    from services.author_control_service import AuthorControlService
+    controls = AuthorControlService(s)
+    with controls.lock(project_id):
+        target = f'cards/{blueprint_id}.json'
+        path = s._safe_path(project_id, target)
+        controls.assert_write(project_id, target, s.read_json(project_id, target), None)
+        if path.exists():
+            path.unlink()
+            IncrementalMemoryService(s).mark(project_id, target)
     return {"deleted": True}

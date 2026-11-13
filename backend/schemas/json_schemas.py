@@ -322,6 +322,10 @@ STORY_TIME_SCHEMA = {'type': 'object', 'properties': {
 WORLD_CONTEXT_SCHEMA = {'type': 'object', 'properties': {
     'world_id': {'type': 'string'}, 'branch_id': {'type': 'string'}, 'time': STORY_TIME_SCHEMA,
     'base_setting_ids': {'type': 'array', 'items': {'type': 'string'}}, 'local_adjustments': {'type': 'string'},
+    'period_id': {'type': 'string'}, 'region_ids': {'type': 'array', 'items': {'type': 'string'}},
+    'overrides': {'type': 'array', 'items': {'type': 'object', 'properties': {
+        'target_id': {'type': 'string'}, 'path': {'type': 'array', 'items': {'type': 'string'}}, 'base_revision': {'type': 'string'},
+    }}},
 }}
 for _kind in ['story', 'outline', 'character', 'world']:
     CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['world_context'] = WORLD_CONTEXT_SCHEMA
@@ -339,3 +343,7 @@ CARD_TYPE_SCHEMAS['world']['properties']['payload']['properties']['branches'] = 
     'id': {'type': 'string'}, 'label': {'type': 'string'}, 'parent_branch_id': {'type': ['string', 'null']}, 'fork_event_ref': EVENT_REF_SCHEMA,
 }}}
 CARD_TYPE_SCHEMAS['style']['properties']['payload']['properties']['style_guide']['properties']['pov'] = {'type': 'string'}
+for _kind in ['story', 'outline', 'character', 'world', 'style']:
+    CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['information_ids'] = {'type': 'array', 'items': {'type': 'string'}}
+for _kind in ['story', 'outline']:
+    CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['important_scenes']['items']['properties']['information_ids'] = {'type': 'array', 'items': {'type': 'string'}}

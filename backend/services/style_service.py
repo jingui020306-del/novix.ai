@@ -18,7 +18,7 @@ class StyleService:
         import re
         if not re.fullmatch(r'[\w-]{1,120}', style_card_id) or not isinstance(asset_ids, list) or any(not isinstance(value, str) or not re.fullmatch(r'[\w-]{1,120}', value) for value in asset_ids):
             raise ValueError('请选择有效的文风卡和原始参考样本。')
-        samples, versions, evidence = [], {}, []
+        samples, versions, evidence, warnings = [], {}, [], []
         for asset_id in dict.fromkeys(asset_ids):
             sample = self.kb.get_asset_text(project_id, asset_id, 'style_sample')
             metadata = self.store.read_json(project_id, sample['path'] + '.json')
@@ -31,13 +31,17 @@ class StyleService:
         if import_id:
             from services.material_import_service import MaterialImportService
             batch = MaterialImportService(self.store).get(project_id, import_id)
-            if batch['source'].get('kind') == 'ai_example':
+            originals = [source for source in batch['sources'] if source.get('kind') != 'ai_example']
+            if not originals:
                 raise ValueError('AI效果示例不能作为原始样本分析。')
-            text = batch['source'].get('original_text') or ''
-            if text.strip():
-                samples.append(text)
-                versions[f'sessions/material_imports/{import_id}.json'] = batch['revision']
-                evidence.append({'import_id': import_id, 'quote': text[:500], 'kind': 'author_reference'})
+            if len(originals) != len(batch['sources']):
+                warnings.append('已排除材料中标记为AI效果示例的内容，只分析原始参考文本。')
+            for source in originals:
+                text = source.get('original_text') or ''
+                if text.strip():
+                    samples.append(text)
+                    versions[f'sessions/material_imports/{import_id}.json'] = batch['revision']
+                    evidence.append({'import_id': import_id, 'source_id': source['id'], 'quote': text[:500], 'kind': 'author_reference'})
         if not samples:
             raise ValueError('请先选择或导入参考原文；没有样本时不会生成固定文风设置。')
         feats = [text_features(text) for text in samples]
@@ -67,5 +71,6 @@ class StyleService:
             'source_versions': versions,
             'evidence': evidence,
             'method': 'local_statistics',
+            'warnings': warnings,
         }
         return profile

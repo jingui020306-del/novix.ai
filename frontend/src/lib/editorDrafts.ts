@@ -22,7 +22,7 @@ export function useDraftRecovery(key: string, value: any, baseline: string, onRe
   useEffect(() => {
     if (!value || !baseline || !dirty) return
     const save = () => {
-      if (acknowledged.current.has(`${key}:${serialized}`)) return
+      if (acknowledged.current.has(`${key}:${baseline}:${serialized}`)) return
       try { localStorage.setItem(`novix:draft:${key}`, JSON.stringify({ draft: value, saved_at: new Date().toISOString() })) } catch { /* The in-memory draft remains available if browser storage is full. */ }
     }
     const timer = window.setTimeout(save, 300)
@@ -37,7 +37,7 @@ export function useDraftRecovery(key: string, value: any, baseline: string, onRe
   const scopedRecovery = recovery?.key === key ? recovery : null
   const markSaved = (submitted: any, saved: any) => {
     const snapshots = [JSON.stringify(submitted), JSON.stringify(saved)]
-    for (const snapshot of snapshots) acknowledged.current.add(`${key}:${snapshot}`)
+    for (const snapshot of snapshots) acknowledged.current.add(`${key}:${baseline}:${snapshot}`)
     try { const stored = JSON.parse(localStorage.getItem(`novix:draft:${key}`) || 'null'); if (stored?.draft && snapshots.includes(JSON.stringify(stored.draft))) localStorage.removeItem(`novix:draft:${key}`) } catch {}
     setRecovery((current: any) => current?.key === key && snapshots.includes(JSON.stringify(current.draft)) ? null : current)
   }

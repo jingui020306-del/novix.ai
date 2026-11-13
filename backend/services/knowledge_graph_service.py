@@ -51,9 +51,9 @@ class KnowledgeGraphService:
                             continue
                     except (ValueError, FileNotFoundError):
                         continue
-            if node['type'] == 'relationship' and not service.applies(project_id, node.get('applicability'), scope)[0]:
+            if node['type'] in {'relationship', 'information'} and not service.applies(project_id, node.get('applicability'), scope)[0]:
                 continue
-            if node['type'] in {'character_state', 'world_state', 'relationship_state'} and not service.applies(project_id, node.get('applicability'), scope, dynamic=True)[0]:
+            if node['type'] in {'character_state', 'world_state', 'relationship_state', 'information_state'} and not service.applies(project_id, node.get('applicability'), scope, dynamic=True)[0]:
                 continue
             if node.get('superseded_by') and any(service.applies(project_id, replacement.get('scope'), scope, dynamic=True)[0] for replacement in node['superseded_by']):
                 continue
@@ -285,13 +285,26 @@ class KnowledgeGraphService:
                     edge(chapter, aliases.get(target, target), '关联资料', evidence={'path': f'drafts/{chapter}.meta.json', 'field': 'material_ids'})
         from services.author_data_service import AuthorDataService, STAGES_PATH
         author_data = AuthorDataService(self.store)
-        for event in author_data.events(project_id):
-            nid = event['id']
-            if nid not in nodes:
+        events = author_data.events(project_id)
+        event_aliases = {}
+        by_event_id = {event['id']: event for event in events}
+        visible_event_nodes = set(nodes)
+        for event in events:
+            nid = aliases.get(event['id'], event['id'])
+            if nid not in visible_event_nodes:
                 continue
+            canonical_id = aliases.get(event['canonical_id'], event['canonical_id'])
+            event_aliases[nid] = canonical_id
+            event_aliases[event['id']] = canonical_id
+            if canonical_id not in nodes:
+                original = by_event_id[event['canonical_id']]
+                value = original['values']
+                nodes[canonical_id] = {**nodes[nid], 'id': canonical_id, 'source': original['canonical_source'],
+                    'label': str(value.get('scene') or value.get('name') or value.get('goal') or value.get('plot') or '情节安排')}
             nodes[nid].update(canonical_id=event['canonical_id'], aliases=event['aliases'], duplicate_conflicts=event['duplicate_conflicts'])
-            if event['canonical_id'] != nid:
-                edge(nid, event['canonical_id'], '同一事件的来源映射', evidence={'path': event['sources'][0]['path'], 'field': 'canonical_event_ref'}, layer='references')
+            if event['canonical_id'] != event['id']:
+                edge(event['owner_card_id'], canonical_id, '同一事件的来源映射', alias_event_id=event['id'],
+                     evidence={'path': event['sources'][0]['path'], 'field': 'canonical_event_ref'}, layer='references')
             for reference in event['values'].get('causal_event_refs', []) or []:
                 try:
                     target = author_data.world.event(project_id, reference)[-1]
@@ -299,7 +312,8 @@ class KnowledgeGraphService:
                     continue
                 target_id = f"{target['owner_card_id']}:important_scenes:{target['scene_id']}"
                 edge(nid, target_id, '承接前因', scope='author_plan', evidence={'path': event['sources'][0]['path'], 'field': 'causal_event_refs'})
-        for index, fact in enumerate(self.store.read_jsonl(project_id, 'canon/facts.jsonl')):
+        from services.author_control_service import AuthorControlService
+        for index, fact in enumerate(AuthorControlService(self.store).read(project_id, 'canon/facts.jsonl')):
             evidence = fact.get('evidence') or {}
             chapter = str(evidence.get('chapter_id') or '')
             if chapter_id and (not chapter or chapter not in visible):
@@ -328,19 +342,75 @@ class KnowledgeGraphService:
             for participant in relation['participants']:
                 edge(nid, participant['entity_id'], participant.get('role') or '关系参与者', layer='relationships', relationship_id=nid,
                      evidence={'path': relation['sources'][-1]['path']}, participant=participant, direction=relation['direction'], scope='author_saved')
+        from services.information_service import InformationService
+        information = InformationService(self.store)
+        for item in information.list(project_id):
+            nid = item['id']
+            nodes[nid] = {'id': nid, 'label': item['label'], 'type': 'information', 'source': item['source'], 'confirmed': item.get('truth_status') == 'confirmed',
+                          'status': item.get('truth_status'), 'applicability': item.get('scope', {}), 'layer': 'information'}
+            if item.get('fact_ref'):
+                for fact_node in list(nodes.values()):
+                    if fact_node['type'] == 'fact' and fact_node.get('record', {}).get('id') == item['fact_ref']:
+                        edge(nid, fact_node['id'], '真相引用原事实', layer='information', evidence={'path': item['source']})
+        for card in cards:
+            for info_id in card.get('payload', {}).get('information_ids', []) or []:
+                edge(card['id'], info_id, '信息关联', layer='information', evidence={'path': nodes[card['id']]['source'], 'field': 'payload.information_ids'})
+        for event in author_data.events(project_id):
+            for info_id in event['effective_values'].get('information_ids', []) or []:
+                edge(event['id'], info_id, '信息关联', layer='information', evidence={'path': event['canonical_source'], 'field': 'information_ids'})
+        for chapter in visible:
+            for info_id in self.store.read_json(project_id, f'drafts/{chapter}.meta.json').get('information_ids', []) or []:
+                edge(chapter, info_id, '信息展示关联', layer='information', evidence={'path': f'drafts/{chapter}.meta.json', 'field': 'information_ids'})
         stage_rows = self.store.read_jsonl(project_id, STAGES_PATH)
         voids = {sid for row in stage_rows if row.get('kind') == 'void' for sid in row.get('voids', [])}
         for row in stage_rows:
-            if row.get('kind') == 'void' or row.get('id') in voids or row.get('status') == 'retracted' or row.get('entity_id') not in nodes:
+            if row.get('kind') == 'void' or row.get('record_type') == 'review_decision' or row.get('id') in voids or row.get('status') == 'retracted' or row.get('entity_id') not in nodes:
                 continue
             nid = f"state:{row['id']}"
             nodes[nid] = {'id': nid, 'label': row.get('label') or '、'.join(row.get('changes', {})) or '阶段记录',
                           'type': f"{row['entity_type']}_state", 'source': f"{STAGES_PATH}#{row['id']}", 'confirmed': row.get('status') == 'confirmed',
                           'status': row.get('status'), 'changes': row.get('changes', {}), 'applicability': row.get('scope', {}), 'evidence': row.get('source'), 'layer': 'states'}
+            if row.get('entity_type') == 'information':
+                nodes[nid].update(label=row.get('data', {}).get('value') or '信息记录', record_type=row.get('record_type'), data=row.get('data', {}))
+                actor = row.get('data', {}).get('character_id') or row.get('data', {}).get('speaker_id')
+                edge(nid, actor, '人物认知' if row.get('record_type') == 'awareness' else '表达', layer='information', evidence=row.get('source'))
             nodes[nid]['superseded_by'] = [replacement for replacement in stage_rows if replacement.get('supersedes') == row['id'] and replacement.get('status') in {'confirmed', 'retracted'}]
             edge(nid, row['entity_id'], '阶段变化', evidence=row.get('source'), layer='states')
+        for event in events:
+            nid = aliases.get(event['id'], event['id'])
+            canonical_id = event_aliases.get(event['id'])
+            if canonical_id not in nodes:
+                continue
+            node = nodes[canonical_id]
+            node['canonical_id'] = event['canonical_id']
+            node.setdefault('sources', [{'path': node['source']}])
+            for source in event['sources']:
+                if source not in node.setdefault('sources', []):
+                    node['sources'].append(source)
+            projection = {key: event[key] for key in ['id', 'owner_card_id', 'scene_id', 'local_values']}
+            projection['source'] = event['sources'][0]['path']
+            node.setdefault('projections', []).append(projection)
+            if nid != canonical_id:
+                alias = {'owner_card_id': event['owner_card_id'], 'scene_id': event['scene_id']}
+                if alias not in node.setdefault('aliases', []):
+                    node['aliases'].append(alias)
+            for conflict in event['duplicate_conflicts']:
+                if conflict not in node.setdefault('duplicate_conflicts', []):
+                    node['duplicate_conflicts'].append(conflict)
+        for alias_id, canonical_id in event_aliases.items():
+            if alias_id != canonical_id:
+                nodes.pop(alias_id, None)
+        projected_edges = []
+        for item in edges:
+            item = {**item, **{key: event_aliases.get(item[key], item[key]) for key in ['source', 'target', 'event_ref'] if key in item}}
+            item.pop('id', None)
+            item['id'] = hashlib.sha256(json.dumps(item, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
+            if item['source'] in nodes and item['target'] in nodes and item not in projected_edges:
+                projected_edges.append(item)
+        edges = projected_edges
         self._relationship_history(edges)
         return {'nodes': list(nodes.values()), 'edges': edges, 'chapter_id': chapter_id, 'visible_chapters': [item for item in order if item in visible],
+                'event_aliases': event_aliases,
                 'policy': '关系来自已保存文件；正文事实需原句支持。按章节查看时不包含未来章节事实。'}
 
     @staticmethod
@@ -395,6 +465,8 @@ class KnowledgeGraphService:
             visible.add(previous_id)
             pending.extend(scope_service.predecessors(project_id, previous))
         graph = self.graph(project_id)
+        event_aliases = graph.get('event_aliases', {})
+        visible = {event_aliases.get(reference, reference) for reference in visible}
         nodes = []
         for node in graph['nodes']:
             nid = node['id']
@@ -407,7 +479,7 @@ class KnowledgeGraphService:
                 table, offset = node['source'].split('#payload.', 1)[1].rsplit('.', 1)
                 row = card.get('payload', {}).get(table, [])[int(offset)]
                 linked = {row.get('scene_id'), *(row.get('scene_ids', []) or [])} - {None, ''}
-                if not linked or not any(f'{owner}:important_scenes:{scene}' in visible for scene in linked):
+                if not linked or not any(event_aliases.get(f'{owner}:important_scenes:{scene}', f'{owner}:important_scenes:{scene}') in visible for scene in linked):
                     continue
             elif node.get('scope') == 'author_plan' and node['type'] == 'scene' and ':important_scenes:' not in nid:
                 continue
@@ -418,10 +490,12 @@ class KnowledgeGraphService:
                     offset = int(node['source'].rsplit('.', 1)[1])
                     planned = stored.get('payload', {}).get('foreshadowings', [])[offset]
                     anchor = self._event_ref(planned.get('first_event_ref'))
+                    anchor = event_aliases.get(anchor, anchor)
                     if anchor and anchor not in visible:
                         continue
             if node['type'] == 'fact':
                 anchored = self._event_ref(node.get('event_ref'))
+                anchored = event_aliases.get(anchored, anchored)
                 if anchored and anchored not in visible:
                     continue
                 if not anchored:
@@ -620,6 +694,10 @@ class KnowledgeGraphService:
         seeds = [chapter_id, *scene.get('cast', []), *scene.get('material_ids', []), *self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('material_ids', [])]
         if scope.get('world_id'):
             seeds.append(scope['world_id'])
+        seeds.extend(scope.get('region_ids', []))
+        seeds.extend(scope.get('base_setting_ids', []))
+        if scope.get('period_id'):
+            seeds.append(scope['period_id'])
         if not scene.get('cast'):
             seeds.extend([node['id'] for node in graph['nodes'] if node['type'] == 'character'][:2])
         neighbors: dict[str, set[str]] = {}

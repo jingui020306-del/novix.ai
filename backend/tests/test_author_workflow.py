@@ -17,12 +17,13 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routers import cards, drafts
+from routers import cards, drafts, projects
 from services.change_suggestion_service import ChangeSuggestionService
-from services.kb_service import KBService
+from services.kb_service import KBService, text_features
 from services.author_data_service import AuthorDataService
 from services.world_scope_service import WorldScopeService
 from services.context_pack_service import ContextPackService
+from services.incremental_memory_service import IncrementalMemoryService
 from services.material_import_service import MaterialImportService
 from services.authoring_service import AuthoringService
 from services.style_service import StyleService
@@ -32,6 +33,10 @@ from services import material_reader_service as reader_module
 from services import llm_gateway as gateway_module
 from services.token_usage import summarize_usage
 from services.editing_service import create_patch_review
+from services.author_control_service import AuthorControlService
+from services.information_service import InformationService
+from services.trial_service import TrialService
+from services.edit_version_service import revision
 from services.scene_rehearsal_service import SceneRehearsalService
 from services.knowledge_graph_service import KnowledgeGraphService
 from storage.fs_store import FSStore
@@ -220,7 +225,7 @@ def test_same_named_events_keep_identity_and_explicit_alias_updates_one_source(s
         {'id': 'second', 'scene': '同名相遇', 'summary': '第二次', 'causal_scene_ids': ['first']},
         {'id': 'consequence', 'scene': '共同后果', 'causal_scene_ids': ['first', 'second']}]})
     card(store, 'outline_1', 'outline', {'story_card_id': 'story_1', 'important_scenes': [
-        {'id': 'mapped', 'canonical_event_ref': {'owner_card_id': 'story_1', 'scene_id': 'first'}}]})
+        {'id': 'mapped', 'notes': '本表编排说明', 'canonical_event_ref': {'owner_card_id': 'story_1', 'scene_id': 'first'}}]})
     service = AuthorDataService(store)
     rows = service.events('p', 'story_1')
     assert len(rows) == 4 and len({row['canonical_id'] for row in rows}) == 3
@@ -233,6 +238,20 @@ def test_same_named_events_keep_identity_and_explicit_alias_updates_one_source(s
     assert arrangement['owner_card_id'] == 'story_1' and arrangement['scene_id'] == 'first'
     graph = KnowledgeGraphService(store).graph('p')
     assert any(edge['label'] == '同一事件的来源映射' and edge['target'] == 'story_1:important_scenes:first' for edge in graph['edges'])
+    nodes = {node['id']: node for node in graph['nodes']}
+    scenes = [node for node in graph['nodes'] if node['type'] == 'scene']
+    assert len(scenes) == 3 and 'outline_1:important_scenes:mapped' not in nodes
+    first = nodes['story_1:important_scenes:first']
+    assert any('cards/story_1.yaml' in item['path'] for item in first['sources'])
+    assert any('cards/outline_1.yaml' in item['path'] for item in first['sources'])
+    assert {'owner_card_id': 'outline_1', 'scene_id': 'mapped'} in first['aliases']
+    projection = next(item for item in first['projections'] if item['owner_card_id'] == 'outline_1' and item['scene_id'] == 'mapped')
+    assert projection['local_values']['notes'] == '本表编排说明'
+    assert all(edge['source'] in nodes and edge['target'] in nodes for edge in graph['edges'])
+    assert any(edge['source'] == 'outline_1' and edge['target'] == first['id'] and edge.get('alias_event_id') == 'outline_1:important_scenes:mapped' for edge in graph['edges'])
+    assert any(edge['source'] == 'story_1:important_scenes:second' and edge['target'] == first['id'] and edge['label'] == '承接前因' for edge in graph['edges'])
+    assert first['label'] == nodes['story_1:important_scenes:second']['label']
+    assert first['duplicate_conflicts'] and nodes['story_1:important_scenes:second']['duplicate_conflicts']
     saved = store.read_yaml('p', 'cards/story_1.yaml')['payload']['important_scenes']
     assert len(saved) == 3 and saved[0]['rehearsal']['text'] == '作者已确认安排'
     assert saved[1]['summary'] == '第二次' and saved[1]['causal_scene_ids'] == ['first']
@@ -623,6 +642,17 @@ def test_style_analysis_uses_selected_original_samples_and_returns_an_unsaved_ca
     assert store._safe_path('p', 'cards/style_1.yaml').read_bytes() == original
     with pytest.raises(ValueError, match='AI'):
         service.analyze('p', 'style_1', [ai['asset_id']])
+    imports = MaterialImportService(store)
+    originals = ['雨停了。', '我绕过灯塔前漫长寂静的街道，终于看见门边那盏熟悉的灯。']
+    batch = imports.create('p', {'purpose': 'style', 'text': originals[0]})
+    batch = imports.add_source('p', batch['id'], {'base_revision': batch['revision'], 'text': originals[1]})
+    batch = imports.add_source('p', batch['id'], {'base_revision': batch['revision'], 'source_kind': 'ai_example', 'text': 'AI效果示例！' * 20})
+    mixed = service.analyze('p', 'style_1', [], import_id=batch['id'])
+    assert mixed['stats']['avg_sentence_len'] == sum(text_features(text)['avg_sentence_len'] for text in originals) / 2
+    assert {item['source_id'] for item in mixed['evidence']} == {source['id'] for source in batch['sources'][:2]}
+    assert len(mixed['evidence']) == 2 and mixed['warnings']
+    assert mixed['source_versions'] == {f"sessions/material_imports/{batch['id']}.json": batch['revision']}
+    assert store._safe_path('p', 'cards/style_1.yaml').read_bytes() == original
 
 
 def test_cross_owner_event_causes_reject_cycles_and_keep_future_evidence_out_of_prompt(store):
@@ -855,3 +885,538 @@ def test_patch_review_rejects_changed_source_and_can_only_be_applied_once(store)
         body['base_revision'] = client.get(url).json()['revision']
         assert client.post(url + '/apply-patch', json=body).status_code == 409
         assert snapshot() == saved
+
+
+def test_confirmed_field_lock_blocks_store_import_and_confirmed_rule_changes(store):
+    value = card(store, 'world_1', 'world', {'rules': ['潮汐有固定周期'], 'summary': '未锁定的说明'})
+    target = 'cards/world_1.yaml'
+    controls = AuthorControlService(store)
+    controls.confirm('p', {'targets': [{'target': target, 'paths': ['/payload/rules'], 'base_revision': revision(store, 'p', target)}]})
+    saved = store._safe_path('p', target).read_bytes()
+    with pytest.raises(FileExistsError):
+        store.write_yaml('p', target, {**value, 'payload': {**value['payload'], 'rules': ['绕过锁的规则']}})
+    assert store._safe_path('p', target).read_bytes() == saved
+    value['payload']['summary'] = '作者可继续补充未锁说明'
+    store.write_yaml('p', target, value)
+    saved = store._safe_path('p', target).read_bytes()
+    imports = MaterialImportService(store)
+    batch = imports.create('p', {'text': '潮汐没有固定周期。', 'purpose': 'world'})
+    batch = imports.update('p', batch['id'], {'base_revision': batch['revision'], 'candidates': [
+        {'id': 'rule', 'kind': 'world', 'target_id': 'world_1', 'values': {'rules': ['潮汐没有固定周期']}}]})
+    with pytest.raises(FileExistsError):
+        imports.apply('p', batch['id'], {'base_revision': batch['revision'], 'selected_ids': ['rule'], 'decisions': {'rule': {'mode': 'replace'}}})
+    assert store._safe_path('p', target).read_bytes() == saved
+    author = AuthorDataService(store)
+    with pytest.raises(FileExistsError):
+        author.add_stage('p', 'world', 'world_1', {'status': 'confirmed', 'scope': {'world_id': 'world_1', 'time': {'year': 2020}},
+            'changes': {'rules': ['用追加阶段绕过正式规则']}, 'source': {'kind': 'author'}})
+    assert store.read_jsonl('p', 'canon/author_stages.jsonl') == []
+    author.add_stage('p', 'world', 'world_1', {'status': 'confirmed', 'scope': {'world_id': 'world_1', 'time': {'year': 2020}},
+        'changes': {'summary': '此时城市经历暴潮，过去仍保留'}, 'source': {'kind': 'author'}})
+    assert store._safe_path('p', target).read_bytes() == saved
+
+
+def test_scoped_amendment_restore_and_id_based_row_locks_preserve_other_changes(store):
+    card(store, 'world_1', 'world', {'rules': ['原规则'], 'limits': ['不能改变的另一规则'], 'summary': '原说明'})
+    controls, target = AuthorControlService(store), 'cards/world_1.yaml'
+    controls.confirm('p', {'targets': [{'target': target, 'paths': ['/payload/rules', '/payload/limits'], 'base_revision': revision(store, 'p', target)}]})
+    held = controls.get('p', target)
+    amendment = controls.start('p', {'target': target, 'paths': ['/payload/rules'], 'base_revision': held['base_revision'], 'control_revision': held['revision'], 'reason': '只改潮汐规则'})
+    with pytest.raises(ValueError):
+        controls.update('p', amendment['id'], {'revision': amendment['revision'], 'changes': {'/payload/limits': ['超出指定范围']}})
+    amendment = controls.update('p', amendment['id'], {'revision': amendment['revision'], 'changes': {'/payload/rules': ['新规则']}})
+    assert store.read_yaml('p', target)['payload']['rules'] == ['原规则']
+    adopted = controls.apply('p', amendment['id'], {'revision': amendment['revision']})
+    saved = store._safe_path('p', target).read_bytes()
+    assert controls.apply('p', amendment['id'], {'revision': amendment['revision']})['status'] == 'applied'
+    assert store._safe_path('p', target).read_bytes() == saved
+    current = store.read_yaml('p', target)
+    current['payload']['summary'] = '采用后作者又写的未锁字段'
+    store.write_yaml('p', target, current)
+    restored = controls.apply('p', amendment['id'], {'revision': adopted['revision']}, restore=True)
+    assert restored['status'] == 'restored'
+    current = store.read_yaml('p', target)
+    assert current['payload'] == {'rules': ['原规则'], 'limits': ['不能改变的另一规则'], 'summary': '采用后作者又写的未锁字段'}
+    with pytest.raises(FileExistsError):
+        store.write_yaml('p', target, {**current, 'payload': {**current['payload'], 'rules': ['恢复后仍不能普通覆盖']}})
+    assert [row['kind'] for row in store.read_jsonl('p', 'canon/author_controls.jsonl')] == ['lock', 'applied', 'restored']
+    story = card(store, 'story_1', 'story', {'important_scenes': [{'id': 'first', 'summary': '锁住第一场'}, {'id': 'second', 'summary': '第二场'}]})
+    story_target = 'cards/story_1.yaml'
+    history = store._safe_path('p', 'canon/author_controls.jsonl').read_bytes()
+    with pytest.raises(FileExistsError):
+        controls.confirm('p', {'targets': [
+            {'target': story_target, 'paths': ['/payload/important_scenes/@first/summary'], 'base_revision': revision(store, 'p', story_target)},
+            {'target': target, 'paths': ['/'], 'base_revision': 'stale'}]})
+    assert store._safe_path('p', 'canon/author_controls.jsonl').read_bytes() == history
+    assert controls.get('p', story_target)['locks'] == []
+    controls.confirm('p', {'targets': [{'target': story_target, 'paths': ['/payload/important_scenes/@first/summary'], 'base_revision': revision(store, 'p', story_target)}]})
+    story['payload']['important_scenes'].reverse()
+    store.write_yaml('p', story_target, story)
+    story['payload']['important_scenes'][1]['summary'] = '换序不能绕过原ID锁'
+    with pytest.raises(FileExistsError):
+        store.write_yaml('p', story_target, story)
+
+
+def test_information_truth_belief_and_reader_disclosure_follow_separate_axes(store):
+    world = card(store, 'world_1', 'world', {'summary': '河港'})
+    people = [card(store, 'person_' + key, 'character', {'name': key, 'identity': ''}) for key in 'abc']
+    secret, claim = '甲秘密取走了黄铜钥匙', '丙取走了黄铜钥匙'
+    store.write_md('p', 'drafts/prologue.md', secret + '。')
+    store.write_md('p', 'drafts/chapter_001.md', '乙站在门外。')
+    store.write_md('p', 'drafts/.chapter_order', 'prologue\nchapter_001')
+    scope = {'world_id': 'world_1', 'time': {'year': 2020}, 'pov_character_id': 'person_b'}
+    store.write_json('p', 'drafts/chapter_001.meta.json', {'world_context': scope, 'information_ids': ['key_info']})
+    store.append_jsonl('p', 'canon/facts.jsonl', {'id': 'key_fact', 'value': secret, 'scope': 'world_state', 'world_context': scope, 'public': True})
+    service = InformationService(store)
+    service.save('p', {'id': 'key_info', 'label': '钥匙去向', 'truth_status': 'confirmed', 'fact_ref': 'key_fact', 'scope': {'world_id': 'world_1'}})
+
+    def record(kind, data, **extra):
+        return service.add_record('p', 'key_info', {'record_type': kind, 'status': 'confirmed',
+            'scope': {'world_id': 'world_1', 'time': {'year': 2020}}, 'source': {'kind': 'author'}, 'data': data, **extra})
+
+    record('occurrence', {'value': secret})
+    expression = record('expression', {'value': claim, 'speaker_id': 'person_a', 'audience_ids': ['person_b'], 'heard_by': ['person_b'], 'intent': 'lie'})
+    record('awareness', {'value': claim, 'character_id': 'person_b', 'state': 'believes', 'basis': '听到甲的说法', 'expression_ref': expression['id']})
+    record('reader_disclosure', {'value': secret, 'chapter_id': 'prologue', 'start': 0, 'end': len(secret), 'mode': 'shown',
+        'source_revision': revision(store, 'p', 'drafts/prologue.md')})
+    state = service.state('p', world_context=scope, reader_chapter_id='chapter_001')['items'][0]
+    assert state['truth_value'] == secret and len(state['occurrences']) == 1
+    assert state['awareness'][0]['data']['state'] == 'believes' and len(state['reader_disclosures']) == 1
+    writer = service.materials('p', {**scope, 'chapter_id': 'chapter_001'})
+    encoded = json.dumps(writer, ensure_ascii=False)
+    assert claim in encoded and secret not in encoded and '"intent": "lie"' not in encoded
+    assert not service.fact_allowed('p', 'key_fact', scope)
+    manifest = {'generation_control': {'world_context': scope}, 'included_cards': [world, *people],
+                'linked_materials': {'facts': [store.read_jsonl('p', 'canon/facts.jsonl')[0]]}}
+    prompt, report = ContextPackService(store).build('p', 'chapter_001', manifest, {'场景': {'cast': ['person_b']}})
+    assert claim in prompt and secret not in prompt
+    review = service.materials('p', {**scope, 'chapter_id': 'chapter_001'}, for_review=True)
+    assert secret in json.dumps(review, ensure_ascii=False)
+    store.write_md('p', 'drafts/prologue.md', '序章已改，不再展示钥匙。')
+    assert not ContextPackService(store).sources_unchanged('p', report['source_versions'])
+    store.write_md('p', 'drafts/prologue.md', secret + '。')
+    before = store._safe_path('p', 'canon/author_stages.jsonl').read_bytes()
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_001\nprologue')
+    reordered = service.state('p', world_context=scope, reader_chapter_id='chapter_001')['items'][0]
+    assert not reordered['reader_disclosures'] and reordered['awareness'] == state['awareness']
+    assert store._safe_path('p', 'canon/author_stages.jsonl').read_bytes() == before
+    assert not ContextPackService(store).sources_unchanged('p', report['source_versions'])
+    controls = AuthorControlService(store)
+    registry = 'cards/outline_author_registry.yaml'
+    controls.confirm('p', {'targets': [{'target': registry, 'paths': ['/payload/information_registry/@key_info/truth_value'],
+        'base_revision': revision(store, 'p', registry)}]})
+    assert controls.get('p', 'canon/facts.jsonl')['locks'][0]['paths'] == ['/@key_fact/value']
+    store.append_jsonl('p', 'canon/facts.jsonl', {'id': 'dict_scoped_fact', 'value': '仅有范围，不擅自当世界事实分类', 'scope': {'world_id': 'world_1'}})
+    memory = IncrementalMemoryService(store)
+    memory.prepare('p')
+    assert [row['source']['fact_id'] for row in KBService(store).world_fact_rows('p')] == ['key_fact']
+    facts = store._safe_path('p', 'canon/facts.jsonl').read_bytes()
+    with pytest.raises(FileExistsError):
+        store.append_jsonl('p', 'canon/revisions.jsonl', {'target_fact_id': 'key_fact', 'patch': {'value': '通过原事实绕过已锁真相'}})
+    assert not store.read_jsonl('p', 'canon/revisions.jsonl')
+    original = controls.get('p', 'canon/facts.jsonl')
+    work = controls.start('p', {'target': 'canon/facts.jsonl', 'paths': ['/@key_fact/value'], 'base_revision': original['base_revision']})
+    work = controls.update('p', work['id'], {'revision': work['revision'], 'changes': {'/@key_fact/value': '作者指定修订后的真相'}})
+    adopted = controls.apply('p', work['id'], {'revision': work['revision']})
+    assert service.fact('p', 'key_fact')['value'] == '作者指定修订后的真相'
+    assert 'canon/revisions.jsonl' in memory.prepare('p')['updated_sources']
+    indexed = [row for row in store.read_jsonl('p', 'meta/kb/kb_world/chunks.jsonl') if row['source'].get('fact_id') == 'key_fact']
+    assert indexed[0]['text'] == KBService(store).world_fact_rows('p')[0]['text'] == '作者指定修订后的真相'
+    protected_prompt, _ = ContextPackService(store).build('p', 'chapter_001', {**manifest, 'evidence': indexed}, {'场景': {'cast': ['person_b']}})
+    assert '作者指定修订后的真相' not in protected_prompt and claim in protected_prompt
+    assert store._safe_path('p', 'canon/facts.jsonl').read_bytes() == facts
+    controls.apply('p', work['id'], {'revision': adopted['revision']}, restore=True)
+    assert service.fact('p', 'key_fact')['value'] == secret
+    assert len(store.read_jsonl('p', 'canon/revisions.jsonl')) == 2
+    assert store._safe_path('p', 'canon/facts.jsonl').read_bytes() == facts
+    pending = service.get('p', 'key_info')
+    service.save('p', {**pending, 'truth_status': 'undecided'}, 'key_info')
+    undecided = service.state('p', world_context=scope)['items'][0]
+    assert undecided['truth_value'] is None and undecided['truth_status'] == 'undecided'
+    assert not service.fact_allowed('p', 'key_fact', scope)
+
+
+def test_information_intention_signatures_and_disclosure_versions_remain_explicit(store):
+    card(store, 'world_1', 'world', {})
+    card(store, 'person_a', 'character', {'name': '甲', 'identity': ''})
+    store.write_md('p', 'drafts/chapter_001.md', '甲说自己没有取钥匙。')
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_001')
+    service = InformationService(store)
+    service.save('p', {'id': 'key_info', 'label': '钥匙去向', 'truth_status': 'undecided', 'scope': {'world_id': 'world_1'}})
+    assert service.get('p', 'key_info')['truth_value'] is None
+    card(store, 'story_1930', 'story', {'world_context': {'world_id': 'world_1', 'time': {'year': 1930}}})
+    store.write_json('p', 'drafts/chapter_001.meta.json', {'story_card_id': 'story_1930', 'world_context': {'time': {'year': 1940}}})
+    pending = {'record_type': 'awareness', 'status': 'confirmed', 'source': {'kind': 'author'},
+               'data': {'character_id': 'person_a', 'state': 'believes', 'value': '尚待核实的钥匙说法'}}
+    inherited = service.prepare_record('p', 'key_info', {**pending, 'scope': {'story_card_id': 'story_1930'}})
+    chapter = service.prepare_record('p', 'key_info', {**pending, 'scope': {'chapter_id': 'chapter_001'}})
+    assert inherited['scope']['time']['year'] == 1930 and chapter['scope']['time']['year'] == 1940
+    with pytest.raises(ValueError, match='时间|事件'):
+        service.prepare_record('p', 'key_info', {**pending, 'scope': {'world_id': 'world_1'}})
+    text = store.read_md('p', 'drafts/chapter_001.md')
+    disclosure = service.add_record('p', 'key_info', {'record_type': 'reader_disclosure', 'status': 'confirmed',
+        'scope': {'world_id': 'world_1'}, 'source': {'kind': 'author'}, 'data': {'value': '甲自称没有拿钥匙', 'mode': 'claim',
+        'chapter_id': 'chapter_001', 'start': 0, 'end': len(text), 'source_revision': revision(store, 'p', 'drafts/chapter_001.md')}})
+    assert not disclosure['scope'].get('time')
+    assert service.state('p', world_context={'world_id': 'world_1', 'time': {'year': 1800}},
+                         reader_chapter_id='chapter_001')['items'][0]['reader_disclosures'][0]['id'] == disclosure['id']
+    decision = {'action': 'intentional', 'chapter_id': 'chapter_001', 'actor_ids': ['person_a'], 'reason': '此处保留不可靠说法',
+                'quote': text, 'source_versions': {'drafts/chapter_001.md': revision(store, 'p', 'drafts/chapter_001.md'),
+                                                'canon/author_stages.jsonl': revision(store, 'p', 'canon/author_stages.jsonl')}}
+    first = service.add_decision('p', 'key_info', decision)
+    decision['source_versions']['canon/author_stages.jsonl'] = revision(store, 'p', 'canon/author_stages.jsonl')
+    assert service.add_decision('p', 'key_info', decision)['id'] == first['id']
+    assert service.decisions('p', 'key_info')[0]['status'] == 'active'
+    assert service.get('p', 'key_info')['truth_status'] == 'undecided'
+    store.write_md('p', 'drafts/chapter_001.md', text + '\n\n无关末段的环境描写。')
+    assert service.decisions('p', 'key_info')[0]['status'] == 'active'
+    store.write_md('p', 'drafts/chapter_001.md', text + '\n\n' + text)
+    with pytest.raises(ValueError, match='原句|重复|唯一|多处'):
+        service.add_decision('p', 'key_info', {**decision, 'source_versions': {
+            'drafts/chapter_001.md': revision(store, 'p', 'drafts/chapter_001.md'),
+            'canon/author_stages.jsonl': revision(store, 'p', 'canon/author_stages.jsonl')}})
+    store.write_md('p', 'drafts/chapter_001.md', '作者后来重写了这段话。')
+    assert not service.disclosure_valid('p', disclosure)
+    assert service.records('p', 'key_info')[0]['evidence_status'] == 'stale'
+    assert service.decisions('p', 'key_info')[0]['status'] == 'stale'
+    assert not service.state('p', world_context={'world_id': 'world_1', 'time': {'year': 2020}},
+                             reader_chapter_id='chapter_001')['items'][0]['reader_disclosures']
+    target = 'cards/outline_author_registry.yaml'
+    controls = AuthorControlService(store)
+    work = controls.start('p', {'target': target, 'paths': ['/payload/information_registry/@key_info/truth_status'],
+        'base_revision': revision(store, 'p', target)})
+    work = controls.update('p', work['id'], {'revision': work['revision'],
+        'changes': {'/payload/information_registry/@key_info/truth_status': 'invalid_status'}})
+    before = store._safe_path('p', target).read_bytes()
+    with pytest.raises(ValueError):
+        controls.apply('p', work['id'], {'revision': work['revision']})
+    assert store._safe_path('p', target).read_bytes() == before
+    assert controls.amendment('p', work['id'])['status'] == 'draft'
+
+
+def test_trial_isolation_discard_and_adoption_use_version_and_content_locks(store):
+    original = '开头。原段。结尾。'
+    store.write_md('p', 'drafts/chapter_001.md', original)
+    authoring = suggestion_service(store, None).authoring
+    service = TrialService(store, authoring)
+    before = {str(path.relative_to(store._project_dir('p'))): path.read_bytes()
+              for directory in ['cards', 'canon', 'drafts'] for path in store._safe_path('p', directory).rglob('*') if path.is_file()}
+    first = service.create('p', 'chapter_001', {'start': 3, 'end': 6, 'text': '另一种写法。'})
+    first = service.update('p', first['id'], {'revision': first['revision'], 'text': '仅试写，未采用。'})
+    service.discard('p', first['id'], {'revision': first['revision']})
+    for path, contents in before.items():
+        assert store._safe_path('p', path).read_bytes() == contents
+    stale = service.create('p', 'chapter_001', {'text': '迟来的试写'})
+    store.write_md('p', 'drafts/chapter_001.md', '作者的新正文。')
+    with pytest.raises(FileExistsError):
+        service.apply('p', stale['id'], {'revision': stale['revision']})
+    assert not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+    locked = service.create('p', 'chapter_001', {'text': '不该绕锁的试写'})
+    AuthorControlService(store).confirm('p', {'targets': [{'target': 'drafts/chapter_001.md', 'paths': ['/'],
+        'base_revision': revision(store, 'p', 'drafts/chapter_001.md')}]})
+    with pytest.raises(FileExistsError):
+        service.apply('p', locked['id'], {'revision': locked['revision']})
+    assert store.read_md('p', 'drafts/chapter_001.md') == '作者的新正文。'
+    assert not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+    store.write_md('p', 'drafts/chapter_002.md', original)
+    fresh = service.create('p', 'chapter_002', {'start': 3, 'end': 6, 'text': '确认采用。'})
+    accepted = service.apply('p', fresh['id'], {'revision': fresh['revision']})
+    assert accepted['status'] == 'applied'
+    assert store.read_md('p', 'drafts/chapter_002.md') == original[:3] + '确认采用。' + original[6:]
+    assert len(store.read_jsonl('p', 'drafts/chapter_002.patch.jsonl')) == 1
+    assert service.apply('p', fresh['id'], {'revision': fresh['revision']})['status'] == 'applied'
+    assert len(store.read_jsonl('p', 'drafts/chapter_002.patch.jsonl')) == 1
+
+
+def test_late_trial_ai_does_not_overwrite_manual_trial_or_formal_text(store):
+    async def scenario():
+        original = '正式正文保持。'
+        store.write_md('p', 'drafts/chapter_001.md', original)
+        store.write_md('p', 'drafts/.chapter_order', 'chapter_001')
+        store.write_json('p', 'drafts/chapter_001.meta.json', {'title': '第一章'})
+        formal_meta = store._safe_path('p', 'drafts/chapter_001.meta.json').read_bytes()
+        entered, release, calls = asyncio.Event(), asyncio.Event(), []
+
+        async def complete(*args, **kwargs):
+            assert kwargs['prepare_memory'] is False
+            calls.append(args)
+            kwargs['usage_callback']({'module': 'chapter_writer', 'provider': 'fake', 'model': 'isolated',
+                                      'prompt_tokens': 8, 'completion_tokens': 3, 'total_tokens': 11, 'estimated': False})
+            entered.set()
+            await release.wait()
+            return '晚到的AI试写。'
+
+        service = TrialService(store, suggestion_service(store, complete).authoring)
+        draft = service.create('p', 'chapter_001', {'text': '原试写稿'})
+        task = asyncio.create_task(service.generate('p', draft['id'], {'revision': draft['revision']}))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        current = service.get('p', draft['id'])
+        manual = service.update('p', draft['id'], {'revision': current['revision'], 'text': '作者在等待时手改的试写。'})
+        release.set()
+        with pytest.raises(FileExistsError):
+            await task
+        latest = service.get('p', draft['id'])
+        assert latest['text'] == manual['text'] and latest['status'] == 'draft'
+        assert len(calls) == 1 and latest['usage']['total_tokens'] == 11
+        assert store.read_md('p', 'drafts/chapter_001.md') == original
+        assert store._safe_path('p', 'drafts/chapter_001.meta.json').read_bytes() == formal_meta
+        assert not store.read_jsonl('p', 'canon/facts.jsonl') and not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+
+    asyncio.run(scenario())
+
+
+def test_world_period_region_and_story_local_override_preserve_shared_base(store):
+    card(store, 'world_1', 'world', {'rules': ['夜潮封港'], 'summary': '原世界'})
+    card(store, 'world_2', 'world', {'rules': ['别的世界']})
+    card(store, 'period_old', 'world', {'parent_id': 'world_1', 'entry_type': 'period', 'time': {'year': 1900}})
+    card(store, 'region_north', 'world', {'parent_id': 'world_1', 'entry_type': 'region', 'summary': '北岸'})
+    card(store, 'region_other', 'world', {'parent_id': 'world_2', 'entry_type': 'region'})
+    service = WorldScopeService(store)
+    options = service.options('p', 'world_1')
+    assert [row['id'] for row in options['periods']] == ['period_old']
+    assert [row['id'] for row in options['regions']] == ['region_north']
+    target = 'cards/world_1.yaml'
+    scope = {'world_id': 'world_1', 'period_id': 'period_old', 'region_ids': ['region_north'],
+             'overrides': [{'target_id': 'world_1', 'path': ['payload', 'rules'], 'base_revision': revision(store, 'p', target),
+                            'before': ['夜潮封港'], 'after': ['此故事北岸临时开放']} ]}
+    before = store._safe_path('p', target).read_bytes()
+    resolved = service.resolve('p', world_context=scope)
+    assert resolved['scope']['time']['year'] == 1900
+    state = AuthorDataService(store).author_state('p', world_context=scope)
+    world = next(row for row in state['worlds'] if row['id'] == 'world_1')
+    assert world['state']['rules'] == ['此故事北岸临时开放']
+    assert store._safe_path('p', target).read_bytes() == before
+    with pytest.raises(ValueError):
+        service.resolve('p', world_context={**scope, 'region_ids': ['region_other']})
+    with pytest.raises(ValueError):
+        service.resolve('p', world_context={**scope, 'overrides': [{**scope['overrides'][0], 'target_id': 'world_2'}]})
+    edited = store.read_yaml('p', target)
+    edited['payload']['rules'] = ['原世界已由作者更新']
+    store.write_yaml('p', target, edited)
+    with pytest.raises(FileExistsError):
+        AuthorDataService(store).author_state('p', world_context=scope)
+    assert store.read_yaml('p', target)['payload']['rules'] == ['原世界已由作者更新']
+
+
+def test_zip_restore_preserves_order_typed_sources_locks_and_never_resumes_tasks(store):
+    card(store, 'world_1', 'world', {'rules': ['规则原文']})
+    card(store, 'person_a', 'character', {'name': '甲', 'identity': ''})
+    store.write_md('p', 'drafts/chapter_001.md', '作者正文。')
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_002\nchapter_001')
+    service = InformationService(store)
+    service.save('p', {'id': 'key_info', 'label': '钥匙', 'truth_status': 'undecided', 'sources': [{'url': 'https://example.invalid/source', 'fetched_at': '2026-11-14T00:21:00+08:00'}]})
+    service.add_record('p', 'key_info', {'record_type': 'awareness', 'status': 'confirmed', 'scope': {'time': {'year': 2020}},
+        'source': {'kind': 'author'}, 'data': {'character_id': 'person_a', 'state': 'suspects', 'value': '钥匙可能在北岸'}})
+    AuthorControlService(store).confirm('p', {'targets': [{'target': 'cards/world_1.yaml', 'paths': ['/payload/rules'],
+        'base_revision': revision(store, 'p', 'cards/world_1.yaml')}]})
+    for directory, status in [('meta/jobs', 'running'), ('meta/writing_runs', 'queued'), ('sessions/trials', 'generating')]:
+        store.write_json('p', directory + '/pending.json', {'id': 'pending', 'status': status})
+    imports = MaterialImportService(store)
+    batch = imports.create('p', {'purpose': 'world'}, raw='原始参考材料。'.encode(), filename='参考.txt')
+    preserved = {path: store._safe_path('p', path).read_bytes() for path in [
+        'drafts/.chapter_order', 'drafts/chapter_001.md', 'cards/world_1.yaml', 'cards/outline_author_registry.yaml',
+        'canon/author_stages.jsonl', 'canon/author_controls.jsonl']}
+    preserved[f"sessions/material_imports/{batch['id']}.json"] = store._safe_path('p', f"sessions/material_imports/{batch['id']}.json").read_bytes()
+    preserved[batch['source']['raw_path']] = store._safe_path('p', batch['source']['raw_path']).read_bytes()
+    app = FastAPI()
+    app.include_router(projects.router)
+    app.dependency_overrides[projects.get_store] = lambda: store
+    with TestClient(app) as client:
+        response = client.get('/api/projects/p/export.zip')
+        assert response.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            assert 'p/drafts/.chapter_order' in archive.namelist()
+        response = client.post('/api/projects/import.zip', files={'file': ('roundtrip.zip', response.content, 'application/zip')})
+        assert response.status_code == 200, response.text
+        restored = response.json()['project_id']
+    for path, raw in preserved.items():
+        assert store._safe_path(restored, path).read_bytes() == raw
+    restored_batch = MaterialImportService(store).get(restored, batch['id'])
+    assert restored_batch['source']['url_preview'].startswith(f'/api/projects/{restored}/')
+    assert all(source['url_preview'].startswith(f'/api/projects/{restored}/') for source in restored_batch['sources'])
+    assert store._safe_path(restored, f"sessions/material_imports/{batch['id']}.json").read_bytes() == preserved[f"sessions/material_imports/{batch['id']}.json"]
+    assert store.read_json(restored, 'meta/jobs/pending.json')['status'] == 'failed'
+    assert store.read_json(restored, 'meta/writing_runs/pending.json')['status'] == 'failed'
+    assert store.read_json(restored, 'sessions/trials/pending.json')['status'] == 'needs_retry'
+    value = store.read_yaml(restored, 'cards/world_1.yaml')
+    value['payload']['rules'] = ['恢复后不能绕锁']
+    with pytest.raises(FileExistsError):
+        store.write_yaml(restored, 'cards/world_1.yaml', value)
+
+
+def test_mixed_import_sources_and_targeted_completion_do_not_publish_or_overwrite(store):
+    async def scenario():
+        calls, outputs = [], []
+
+        async def complete(*args, **kwargs):
+            calls.append(args)
+            return json.dumps(outputs.pop(0), ensure_ascii=False)
+
+        service = MaterialImportService(store, suggestion_service(store, complete).authoring)
+        batch = service.create('p', {'purpose': 'world', 'text': '港口每晚封闭。'})
+        original_source = copy.deepcopy(batch['source'])
+        batch = service.add_source('p', batch['id'], {'base_revision': batch['revision']}, raw='北岸只有一座灯塔。'.encode(), filename='北岸.txt')
+        assert len(batch['sources']) == 2 and batch['source'] == original_source
+        same = service.add_source('p', batch['id'], {'base_revision': batch['revision']}, raw='北岸只有一座灯塔。'.encode(), filename='北岸.txt')
+        assert len(same['sources']) == 2 and same['revision'] == batch['revision']
+        batch = service.update('p', batch['id'], {'base_revision': batch['revision'], 'candidates': [
+            {'id': 'world_candidate', 'kind': 'world', 'values': {'name': '临港', 'summary': '作者已有说明', 'rules': [], 'limits': []}}]})
+        outputs.append({'changes': [{'candidate_id': 'world_candidate', 'values': {'name': '不该改名', 'summary': '不该改说明', 'rules': ['港口每晚封闭'], 'limits': ['越权内容']},
+            'evidence': [{'quote': '港口每晚封闭。', 'source_id': original_source['id']}]}]})
+        batch = await service.complete('p', batch['id'], {'base_revision': batch['revision'], 'target_ids': ['world_candidate'], 'paths': ['rules', 'summary'], 'mode': 'faithful'})
+        candidate = batch['candidates'][0]
+        assert candidate['values'] == {'name': '临港', 'summary': '作者已有说明', 'rules': ['港口每晚封闭'], 'limits': []}
+        assert candidate['field_provenance']['rules'] == 'material_fact'
+        batch = await service.complete('p', batch['id'], {'base_revision': batch['revision'], 'target_ids': ['world_candidate'], 'paths': ['rules'], 'mode': 'faithful'})
+        assert len(calls) == 1
+        outputs.append({'changes': [{'candidate_id': 'world_candidate', 'values': {'limits': ['无原文依据的能力限制']}, 'evidence': []}]})
+        batch = await service.complete('p', batch['id'], {'base_revision': batch['revision'], 'target_ids': ['world_candidate'], 'paths': ['limits'], 'mode': 'faithful'})
+        assert batch['candidates'][0]['values']['limits'] == []
+        outputs.append({'changes': [{'candidate_id': 'world_candidate', 'values': {'limits': ['作者主动要求的改编限制']}, 'evidence': []}]})
+        batch = await service.complete('p', batch['id'], {'base_revision': batch['revision'], 'target_ids': ['world_candidate'], 'paths': ['limits'], 'mode': 'adaptation'})
+        assert batch['candidates'][0]['field_provenance']['limits'] == 'ai_addition'
+        assert batch['candidates'][0]['values']['summary'] == '作者已有说明'
+        assert not list(store._safe_path('p', 'cards').glob('*.yaml'))
+        assert not store.read_jsonl('p', 'canon/facts.jsonl')
+        adopted = service.apply('p', batch['id'], {'base_revision': batch['revision'], 'selected_ids': ['world_candidate']})
+        saved = store.read_yaml('p', f"cards/{adopted['results'][0]['target_id']}.yaml")
+        assert saved['payload']['field_provenance']['rules'] == 'material_fact'
+        assert saved['payload']['field_provenance']['limits'] == 'ai_addition'
+        assert saved['payload']['field_provenance']['summary'] == 'author_edit'
+
+    asyncio.run(scenario())
+
+
+def test_import_lock_preflight_blocks_whole_apply_and_undo_before_partial_publish(store):
+    card(store, 'world_1', 'world', {'summary': '可改的原说明'})
+    card(store, 'world_2', 'world', {'summary': '锁定的原说明'})
+    controls = AuthorControlService(store)
+    controls.confirm('p', {'targets': [{'target': 'cards/world_2.yaml', 'paths': ['/payload/summary'],
+        'base_revision': revision(store, 'p', 'cards/world_2.yaml')}]})
+    service = MaterialImportService(store)
+    batch = service.create('p', {'purpose': 'world', 'text': '两地改写资料'})
+    batch = service.update('p', batch['id'], {'base_revision': batch['revision'], 'candidates': [
+        {'id': 'first', 'kind': 'world', 'target_id': 'world_1', 'values': {'summary': '第一份新说明'}},
+        {'id': 'second', 'kind': 'world', 'target_id': 'world_2', 'values': {'summary': '第二份新说明'}}]})
+    saved = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    with pytest.raises(FileExistsError):
+        service.apply('p', batch['id'], {'base_revision': batch['revision'], 'selected_ids': ['first', 'second'],
+                      'decisions': {'first': {'mode': 'replace'}, 'second': {'mode': 'replace'}}})
+    assert saved == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    batch = service.create('p', {'purpose': 'world', 'text': '新资料甲与新资料乙'})
+    batch = service.update('p', batch['id'], {'base_revision': batch['revision'], 'candidates': [
+        {'id': 'new_first', 'kind': 'world', 'values': {'summary': '新资料甲'}},
+        {'id': 'new_second', 'kind': 'world', 'values': {'summary': '新资料乙'}}]})
+    adopted = service.apply('p', batch['id'], {'base_revision': batch['revision'], 'selected_ids': ['new_first', 'new_second']})
+    locked_id = adopted['results'][1]['target_id']
+    controls.confirm('p', {'targets': [{'target': f'cards/{locked_id}.yaml', 'paths': ['/payload/summary'],
+        'base_revision': revision(store, 'p', f'cards/{locked_id}.yaml')}]})
+    saved = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    with pytest.raises(FileExistsError):
+        service.undo('p', batch['id'], {'base_revision': adopted['revision']})
+    assert saved == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+
+
+def test_late_targeted_completion_keeps_manual_candidates_and_records_used_model_cost(store):
+    async def scenario():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def complete(*args, **kwargs):
+            kwargs['usage_callback']({'module': 'setup_story', 'provider': 'fake', 'model': 'isolated',
+                                      'prompt_tokens': 7, 'completion_tokens': 4, 'total_tokens': 11, 'estimated': False})
+            entered.set()
+            await release.wait()
+            return json.dumps({'changes': [{'candidate_id': 'one', 'values': {'rules': ['晚到的AI规则']}}]}, ensure_ascii=False)
+
+        service = MaterialImportService(store, suggestion_service(store, complete).authoring)
+        batch = service.create('p', {'purpose': 'world', 'text': '港口材料。'})
+        batch = service.update('p', batch['id'], {'base_revision': batch['revision'], 'candidates': [
+            {'id': 'one', 'kind': 'world', 'values': {'summary': '原工作稿', 'rules': []}}]})
+        task = asyncio.create_task(service.complete('p', batch['id'], {'base_revision': batch['revision'], 'target_ids': ['one'], 'paths': ['rules'], 'mode': 'adaptation'}))
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        current = service.get('p', batch['id'])
+        manual = service.update('p', batch['id'], {'base_revision': current['revision'], 'candidates': [
+            {'id': 'one', 'kind': 'world', 'values': {'summary': '作者等待时的手稿', 'rules': ['作者自写规则']}}]})
+        release.set()
+        with pytest.raises(FileExistsError):
+            await task
+        latest = service.get('p', batch['id'])
+        assert latest['candidates'] == manual['candidates']
+        assert latest['usage']['total_tokens'] == 11 and latest['usage_calls'][0]['attempt_status'] == 'stale'
+        assert not list(store._safe_path('p', 'cards').glob('*.yaml'))
+
+    asyncio.run(scenario())
+
+
+def test_amendment_publish_and_restore_retry_once_and_atomic_writes_keep_old_bytes(store, monkeypatch):
+    controls = AuthorControlService(store)
+    target = 'drafts/chapter_001.md'
+    store.write_md('p', target, '正式原稿。')
+    controls.confirm('p', {'targets': [{'target': target, 'paths': ['/'], 'base_revision': revision(store, 'p', target)}]})
+    work = controls.start('p', {'target': target, 'paths': ['/'], 'base_revision': revision(store, 'p', target)})
+    work = controls.update('p', work['id'], {'revision': work['revision'], 'changes': {'/': '指定采用的新稿。'}})
+    save = controls._save
+
+    def fail_applied(project, record):
+        if record['status'] == 'applied':
+            raise OSError('模拟正式写入后工作稿保存中断')
+        return save(project, record)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(controls, '_save', fail_applied)
+        with pytest.raises(OSError, match='中断'):
+            controls.apply('p', work['id'], {'revision': work['revision']})
+    pending = controls.amendment('p', work['id'])
+    assert pending['status'] == 'applying' and store.read_md('p', target) == '指定采用的新稿。'
+    applied = controls.apply('p', work['id'], {'revision': pending['revision']})
+    assert applied['status'] == 'applied'
+    assert len(store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')) == 1
+    assert len([row for row in store.read_json('p', 'drafts/chapter_001.meta.json')['versions'] if row.get('patch_id') == work['id']]) == 1
+    assert len([row for row in store.read_jsonl('p', 'canon/author_controls.jsonl') if row.get('amendment_id') == work['id']]) == 1
+
+    world_target = 'cards/world_1.yaml'
+    card(store, 'world_1', 'world', {'rules': ['旧规则'], 'summary': '旧说明'})
+    controls.confirm('p', {'targets': [{'target': world_target, 'paths': ['/payload/rules'], 'base_revision': revision(store, 'p', world_target)}]})
+    world_work = controls.start('p', {'target': world_target, 'paths': ['/payload/rules'], 'base_revision': revision(store, 'p', world_target)})
+    world_work = controls.update('p', world_work['id'], {'revision': world_work['revision'], 'changes': {'/payload/rules': ['新规则']}})
+    adopted = controls.apply('p', world_work['id'], {'revision': world_work['revision']})
+    later = store.read_yaml('p', world_target)
+    later['payload']['summary'] = '采用后另写的说明，不该恢复掉'
+    store.write_yaml('p', world_target, later)
+
+    def fail_restored(project, record):
+        if record['status'] == 'restored':
+            raise OSError('模拟恢复已写后工作稿保存中断')
+        return save(project, record)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(controls, '_save', fail_restored)
+        with pytest.raises(OSError, match='中断'):
+            controls.apply('p', world_work['id'], {'revision': adopted['revision']}, restore=True)
+    pending = controls.amendment('p', world_work['id'])
+    assert pending['status'] == 'restoring'
+    restored = controls.apply('p', world_work['id'], {'revision': pending['revision']}, restore=True)
+    assert restored['status'] == 'restored'
+    assert store.read_yaml('p', world_target)['payload'] == {'rules': ['旧规则'], 'summary': '采用后另写的说明，不该恢复掉'}
+    assert len([row for row in store.read_jsonl('p', 'canon/author_controls.jsonl') if row.get('amendment_id') == world_work['id'] and row['kind'] == 'restored']) == 1
+
+    for path, writer, old, new in [
+        ('cards/unlocked.yaml', store.write_yaml, {'name': '旧资料'}, {'name': '新资料'}),
+        ('sessions/unlocked.json', store.write_json, {'value': '旧值'}, {'value': '新值'}),
+        ('drafts/unlocked.md', store.write_md, '旧稿不能截断', '新稿'),
+    ]:
+        writer('p', path, old)
+        destination, raw = store._safe_path('p', path), store._safe_path('p', path).read_bytes()
+        original_replace = Path.replace
+
+        def fail_replace(source, target):
+            if Path(target) == destination:
+                raise OSError('模拟原子替换失败')
+            return original_replace(source, target)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, 'replace', fail_replace)
+            with pytest.raises(OSError, match='替换失败'):
+                writer('p', path, new)
+        assert destination.read_bytes() == raw
+        assert not list(destination.parent.glob(destination.name + '.*.tmp'))

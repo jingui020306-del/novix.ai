@@ -5,7 +5,7 @@ import { Button } from './ui/Button'
 import { Input, Select } from './ui/Fields'
 import { isIncompleteReference, referenceLabel } from '../lib/writingReferences'
 
-export const MATERIAL_TYPES: Record<string, string> = { character: '人物', world: '世界条目', world_rule: '世界规则', lore: '背景资料', worldview: '世界观', story: '故事', outline: '情节工作表与大纲', style: '文风', chapter: '章节', technique: '技法', tool_skill: '写作工具', scene: '场景', beat: '节拍', character_intersection: '角色交集', character_storyline: '人物故事线', chapter_plan: '章节计划', open_line: '明线', hidden_line: '暗线', foreshadowings: '伏笔', fact: '作品事实' }
+export const MATERIAL_TYPES: Record<string, string> = { information: '关键信息', character: '人物', world: '世界条目', world_rule: '世界规则', lore: '背景资料', worldview: '世界观', story: '故事', outline: '情节工作表与大纲', style: '文风', chapter: '章节', technique: '技法', tool_skill: '写作工具', scene: '场景', beat: '节拍', character_intersection: '角色交集', character_storyline: '人物故事线', chapter_plan: '章节计划', open_line: '明线', hidden_line: '暗线', foreshadowings: '伏笔', fact: '作品事实' }
 export type OpenMaterial = (target: { id: string; type?: string; [key: string]: any }) => void
 
 export function MaterialBacklinks({ project, targetId, onOpen }: { project: string; targetId?: string; onOpen?: OpenMaterial }) {
