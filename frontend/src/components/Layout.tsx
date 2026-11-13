@@ -1,58 +1,38 @@
-import { AnimatePresence, motion } from 'framer-motion'
-import { BookOpen, Bot, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { useState } from 'react'
+import { BookOpen, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
-export default function Layout({ left, center, right, header }: { left: any; center: any; right: any; header?: any }) {
-  const [hideLeft, setHideLeft] = useState(false)
+export default function Layout({ left, center, right, header, surface = '', navigationKey, inspectorTitle = '材料与检查' }: { left: any; center: any; right: any; header?: any; surface?: string; navigationKey?: string; inspectorTitle?: string }) {
+  const [hideLeft, setHideLeft] = useState(() => window.innerWidth < 900)
+  const [hideRight, setHideRight] = useState(true)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 899px)')
+    const resize = () => setHideLeft(media.matches)
+    media.addEventListener('change', resize)
+    return () => media.removeEventListener('change', resize)
+  }, [])
+  useEffect(() => {
+    if (window.innerWidth < 900) setHideLeft(true)
+  }, [navigationKey])
   return (
-    <div className='h-full grid grid-cols-12 gap-3 p-3'>
-      <AnimatePresence initial={false}>
-        {!hideLeft && (
-          <motion.aside
-            key='left'
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -20, opacity: 0 }}
-            className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'
-          >
-            <div className='flex items-center justify-between border-b border-border px-3 py-2'>
-              <div className='flex items-center gap-2 font-semibold text-sm'>
-                <BookOpen size={16} />
-                Novix 写作台
-              </div>
-              <button className='focus-ring rounded-ui p-1 hover:bg-surface-2' onClick={() => setHideLeft(true)} title='Hide sidebar'>
-                <PanelLeftClose size={15} />
-              </button>
-            </div>
-            <div className='p-3'>{left}</div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
-
-      <main className={`${hideLeft ? 'col-span-9' : 'col-span-6'} rounded-xl border border-border bg-panel shadow-soft panel-scroll`}>
-        <div className='sticky top-0 z-10 border-b border-border bg-panel/95 backdrop-blur px-4 py-2'>
-          <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-2'>
-              {hideLeft && (
-                <button className='focus-ring rounded-ui p-1 hover:bg-surface-2' onClick={() => setHideLeft(false)} title='Show sidebar'>
-                  <PanelLeftOpen size={15} />
-                </button>
-              )}
-              {header}
-            </div>
-            <span className='text-xs text-muted'>作者工作台</span>
-          </div>
+    <div className={`author-workspace surface-${surface}`} onKeyDown={(e) => { if (e.key === 'Escape') { if (window.innerWidth < 900) setHideLeft(true); setHideRight(true) } }}>
+      {!hideLeft && <>
+        <button className='sidebar-scrim' aria-label='关闭作品目录' onClick={() => setHideLeft(true)} />
+        <aside className='workspace-sidebar' aria-label='作品目录'>
+          <div className='workspace-brand'><span><BookOpen size={21} strokeWidth={1.6} /><strong>novix</strong><span className='brand-description'>写作工作台</span></span><button className='icon-control' onClick={() => setHideLeft(true)} aria-label='收起作品目录'><PanelLeftClose size={17} /></button></div>
+          <div className='workspace-sidebar-body'>{left}</div>
+        </aside>
+      </>}
+      <main className='workspace-main'>
+        <div className='workspace-topbar'>
+          <div className='workspace-location'>{hideLeft && <button className='toolbar-control' onClick={() => setHideLeft(false)}><PanelLeftOpen size={16} /><span>目录</span></button>}{header}</div>
+          <button className='toolbar-control workspace-inspector-toggle' onClick={() => setHideRight(!hideRight)} aria-expanded={!hideRight} aria-label={inspectorTitle}>{hideRight ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}<span>{inspectorTitle}</span></button>
         </div>
-        <div className='p-4'>{center}</div>
+        <div className='workspace-page'>{center}</div>
       </main>
-
-      <section className='col-span-3 rounded-xl border border-border bg-panel shadow-soft panel-scroll'>
-        <div className='flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-semibold'>
-          <Bot size={16} />
-          AI 助手
-        </div>
-        <div className='p-3'>{right}</div>
-      </section>
+      {!hideRight && <aside className='workspace-inspector' aria-label={inspectorTitle}>
+        <div className='inspector-heading'><strong>{inspectorTitle}</strong><button className='icon-control' onClick={() => setHideRight(true)} aria-label='收起材料与检查'><PanelRightClose size={17} /></button></div>
+        <div className='inspector-content'>{right}</div>
+      </aside>}
     </div>
   )
 }

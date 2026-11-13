@@ -15,6 +15,16 @@ from services.canon_extractor_service import CanonExtractorService
 from services.evidence_service import EvidenceService
 from services.editing_service import create_chapter_review, create_patch_review, save_snapshot
 from services.llm_config_service import LLMConfigService
+from services.knowledge_graph_service import KnowledgeGraphService
+from services.writing_reference_service import WritingReferenceService
+from services.incremental_memory_service import IncrementalMemoryService
+from services.context_pack_service import ContextPackService
+from services.world_scope_service import WorldScopeService
+from services.change_suggestion_service import ChangeSuggestionService
+from services.story_planning_service import StoryPlanningService
+from services.scene_rehearsal_service import SceneRehearsalService
+from services.shared_material_service import SharedMaterialService, CHARACTER_PORTRAYAL_GUIDANCE
+from services.token_usage import normalize_usage, summarize_usage
 from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
 
@@ -78,7 +88,11 @@ class JobManager:
     def _write_job_record(self, project_id: str, job_id: str, rec: dict[str, Any]) -> dict[str, Any]:
         current = self.store.read_json(project_id, self._job_path(job_id)) or {}
         merged = {**current, **rec, "updated_at": rec.get("updated_at") or now_iso()}
-        self.store.write_json(project_id, self._job_path(job_id), merged)
+        target = self.store._safe_path(project_id, self._job_path(job_id))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(f'.{uuid.uuid4().hex}.tmp')
+        temporary.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding='utf-8')
+        temporary.replace(target)
         return merged
 
     def _record_job_event(self, project_id: str, job_id: str, event: str, data: Any) -> None:
@@ -184,27 +198,61 @@ class JobManager:
         fallback = profiles.get("mock_default", {"provider": "mock", "model": "mock-writer-v1", "stream": True})
         return req_id, selected, fallback
 
-    async def _writer(self, project_id: str, job_id: str, messages: list[dict[str, str]], selected: dict[str, Any], fallback: dict[str, Any]) -> tuple[str, dict[str, Any], list[str]]:
+    def _record_usage(self, project_id: str, job_id: str, module: str, profile: dict, usage: dict, *, status: str = 'completed') -> None:
+        record = self.store.read_json(project_id, self._job_path(job_id)) or {}
+        call = {'call_id': uuid.uuid4().hex[:12], 'module': module, 'provider': profile.get('provider', ''),
+                'model': profile.get('model', ''), **normalize_usage(usage), 'status': status}
+        calls = [*(record.get('usage_calls') or []), call]
+        self._write_job_record(project_id, job_id, {'usage_calls': calls, 'usage': summarize_usage(calls)})
+        self.store.append_jsonl(project_id, 'sessions/session_001.jsonl', {'job_id': job_id, 'event': 'TOKEN_USAGE', 'data': call})
+
+    async def _tracked_stream(self, project_id: str, job_id: str, messages: list, profile: dict, max_tokens: int):
+        reported, output = {}, []
+        completed = False
+        try:
+            async for delta in self.llm_gateway.chat_stream(messages, profile.get('model', ''), 0.7, max_tokens, {**profile, '_usage_callback': reported.update}):
+                output.append(delta)
+                yield delta
+            completed = True
+        finally:
+            self._record_usage(project_id, job_id, 'chapter_writer', profile, normalize_usage(reported, messages=messages, text=''.join(output)), status='completed' if completed else 'interrupted')
+
+    async def _tracked_complete(self, project_id: str, job_id: str, module: str, messages: list, profile: dict) -> dict:
+        reported, result = {}, {}
+        completed = False
+        try:
+            result = await self.llm_gateway.chat_complete(messages, profile.get('model', ''), 0.4, 500, {**profile, '_usage_callback': reported.update})
+            completed = True
+            return result
+        finally:
+            self._record_usage(project_id, job_id, module, profile, normalize_usage(reported or result.get('usage'), messages=messages, text=result.get('text', '')), status='completed' if completed else 'interrupted')
+
+    async def _writer(self, project_id: str, job_id: str, messages: list[dict[str, str]], selected: dict[str, Any], fallback: dict[str, Any], *, max_tokens: int = 900, strict: bool = False) -> tuple[str, dict[str, Any], list[str]]:
         used = selected
         tokens: list[str] = []
         try:
-            async for delta in self.llm_gateway.chat_stream(messages, selected.get("model", ""), 0.7, 900, selected):
+            async for delta in self._tracked_stream(project_id, job_id, messages, selected, max_tokens):
                 tokens.append(delta)
                 await self.emit(project_id, job_id, "WRITER_TOKEN", {"delta": delta, "provider": selected.get("provider"), "model": selected.get("model")})
         except Exception as e:
+            if strict:
+                raise
             await self.emit(project_id, job_id, "ERROR", {"stage": "writer", "provider": selected.get("provider"), "message": str(e)})
             used = fallback
-            async for delta in self.llm_gateway.chat_stream(messages, fallback.get("model", "mock-writer-v1"), 0.7, 900, fallback):
+            async for delta in self._tracked_stream(project_id, job_id, messages, fallback, 900):
                 tokens.append(delta)
                 await self.emit(project_id, job_id, "WRITER_TOKEN", {"delta": delta, "provider": fallback.get("provider"), "model": fallback.get("model"), "fallback": True})
         return "".join(tokens), used, tokens
 
-    async def _complete_with_fallback(self, project_id: str, job_id: str, stage: str, messages: list[dict[str, str]], selected: dict[str, Any], fallback: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    async def _complete_with_fallback(self, project_id: str, job_id: str, stage: str, messages: list[dict[str, str]], selected: dict[str, Any], fallback: dict[str, Any], *, strict: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
+        module = {'critic': 'chapter_reviewer', 'editor': 'proofreader'}.get(stage, stage)
         try:
-            return await self.llm_gateway.chat_complete(messages, selected.get("model", ""), 0.4, 500, selected), selected
+            return await self._tracked_complete(project_id, job_id, module, messages, selected), selected
         except Exception as e:
+            if strict:
+                raise
             await self.emit(project_id, job_id, "ERROR", {"stage": stage, "provider": selected.get("provider"), "message": str(e)})
-            return await self.llm_gateway.chat_complete(messages, fallback.get("model", "mock-writer-v1"), 0.4, 500, fallback), fallback
+            return await self._tracked_complete(project_id, job_id, module, messages, fallback), fallback
 
 
     def _persist_memory_pack(self, project_id: str, chapter_id: str, job_id: str, manifest: dict[str, Any], mark_ids: list[str] | None = None) -> None:
@@ -233,20 +281,29 @@ class JobManager:
         meta["chapter_status"] = status
         self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", meta)
 
-    def _story_targets_for_chapter(self, project_id: str, chapter_id: str) -> dict[str, Any]:
+    def _story_targets_for_chapter(self, project_id: str, chapter_id: str, story_card_id: str | None = None) -> dict[str, Any]:
         cards_dir = self.store._safe_path(project_id, "cards")
         story = {}
-        if cards_dir.exists():
+        story_card_id = story_card_id or self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('story_card_id')
+        if story_card_id:
+            story = self.store.read_yaml(project_id, f'cards/{story_card_id}.yaml').get('payload', {})
+        elif cards_dir.exists():
+            matches = []
             for f in cards_dir.glob("*.yaml"):
                 card = self.store.read_yaml(project_id, f"cards/{f.name}")
                 if card.get("type") == "story":
-                    story = card.get("payload", {}) or {}
-                    break
+                    matches.append(card.get('payload', {}) or {})
+            linked_stories = [value for value in matches if any(row.get('chapter_id') == chapter_id or row.get('chapter') == chapter_id for row in value.get('chapter_plan', []) if isinstance(row, dict))]
+            choices = linked_stories or matches
+            if len(choices) == 1:
+                story = choices[0]
         def linked(section: str) -> list[dict[str, Any]]:
             rows = story.get(section, []) or []
             return [r for r in rows if r.get("chapter") == chapter_id or r.get("chapter_id") == chapter_id or r.get("first_chapter") == chapter_id or r.get("payoff_chapter") == chapter_id]
 
         return {
+            'scope': 'author_plan',
+            'knowledge_boundary': '以下是作者的结构安排，不表示事件已经发生或人物已经知道隐藏信息。',
             "chapter_plan": linked("chapter_plan"),
             "open_line": linked("open_line"),
             "hidden_line": linked("hidden_line"),
@@ -332,11 +389,23 @@ class JobManager:
             chapter_id, bp, scene_index = self._validate_write_payload(project_id, payload)
             payload = {"agent_mode": "three_agent", "auto_apply_patch": False, "word_checkpoint_chars": 1500, **payload}
             word_checkpoint_chars = int(payload.get("word_checkpoint_chars") or 1500)
+            previous_chapter_status = self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('chapter_status', 'drafting')
             self._write_chapter_status(project_id, chapter_id, "生成中")
             selection_range = self._normalize_selection_range(payload)
             scene = bp.get("scene_plan", [])[scene_index]
+            writing_run = payload.get('writing_run') or {}
+            original_draft = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
+            if writing_run.get('beat_index') is not None:
+                beat_index = writing_run['beat_index']
+                scene = {**scene, 'beats': [scene['beats'][beat_index]]}
+            elif writing_run:
+                scene = {**scene, 'chapter_scenes': bp['scene_plan']}
             outline = self.store.read_yaml(project_id, "cards/outline_001.yaml")
             generation_control = payload.get("generation_control") if isinstance(payload.get("generation_control"), dict) else {}
+            scope_service = WorldScopeService(self.store)
+            author_scope = scope_service.resolve(project_id, story_card_id=generation_control.get('story_card_id'), chapter_id=chapter_id,
+                event_ref=generation_control.get('scene_ref'), world_context=generation_control.get('world_context'), branch_id=generation_control.get('branch_id'), pov_character_id=generation_control.get('pov_character_id'), pov=generation_control.get('pov'))
+            scope = author_scope['scope']
             req_profile_id, selected, fallback = self._resolve_profile(project_id, payload, "chapter_writer")
 
             plan = {"scene": scene, "beats": outline.get("payload", {}).get("beats", [])}
@@ -345,7 +414,9 @@ class JobManager:
             selected_bundle = self.technique_director.resolve_selected_bundle(project_id, chapter_id, outline, scene)
             selected_techniques = selected_bundle.get("selected_techniques", [])
             selected_categories = selected_bundle.get("selected_categories", [])
-            story_targets = self._story_targets_for_chapter(project_id, chapter_id)
+            if generation_control.get('include_techniques') is False:
+                selected_techniques, selected_categories = [], []
+            story_targets = self._story_targets_for_chapter(project_id, chapter_id, scope.get('story_card_id'))
             pre_review_plan = {
                 "agent": "审查 Agent",
                 "chapter_id": chapter_id,
@@ -368,7 +439,7 @@ class JobManager:
                 chapter_id,
                 plan,
                 self.store.read_yaml(project_id, "cards/style_001.yaml").get("payload", {}).get("style_guide", {}),
-                self.store.read_jsonl(project_id, "canon/facts.jsonl")[-8:],
+                [fact for fact in self.store.read_jsonl(project_id, "canon/facts.jsonl") if scope_service.fact_visible(project_id, fact, scope)][-8:],
                 selected_techniques,
                 selected_categories,
             )
@@ -376,9 +447,26 @@ class JobManager:
             chapter_meta = self.store.read_json(project_id, f"drafts/{chapter_id}.meta.json")
             chapter_meta["technique_brief"] = technique_bundle.get("technique_brief", "")
             chapter_meta["technique_checklist"] = technique_bundle.get("technique_checklist", [])
+            if writing_run:
+                chapter_meta['writing_scene'] = {'blueprint_id': payload['blueprint_id'], 'scene_index': scene_index}
             self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", chapter_meta)
 
             manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle)
+            manifest['author_scope'] = author_scope
+            if writing_run:
+                manifest['linked_materials'] = KnowledgeGraphService(self.store).materials(project_id, chapter_id, scene, max_chars=min(12000, max(2000, int(payload.get('constraints', {}).get('max_tokens', 2400)) * 3)), include_references=generation_control.get('include_techniques') is not False, world_context=scope, story_card_id=generation_control.get('story_card_id'), scene_ref=generation_control.get('scene_ref'), branch_id=scope.get('branch_id'), pov_character_id=scope.get('pov_character_id'))
+            reference_cards = [*manifest.get('included_cards', []), *[card for card in manifest.get('linked_materials', {}).get('cards', []) if card.get('type') in {'world', 'style', 'world_rule', 'lore'}]]
+            world_ids = [card.get('id') for card in reference_cards if card.get('type') in {'world', 'world_rule', 'lore', 'worldview'}]
+            manifest['address_rules'] = SharedMaterialService(self.store).address_rules(project_id, chapter_id, world_ids=world_ids, world_context=scope) if generation_control.get('include_cards') is not False else []
+            manifest['world_baselines'] = SharedMaterialService(self.store).world_baselines(project_id, chapter_id, world_ids=world_ids, world_context=scope) if generation_control.get('include_cards') is not False else []
+            manifest['event_context'] = KnowledgeGraphService(self.store).event_context(project_id, chapter_id, generation_control.get('scene_ref'), generation_control.get('story_card_id'), world_context=scope, branch_id=scope.get('branch_id'), pov_character_id=scope.get('pov_character_id')) if generation_control.get('include_lines') is not False else {}
+            manifest['writing_references'] = WritingReferenceService(self.store).collect(project_id, cards=reference_cards, chapter_id=chapter_id, cast=scene.get('cast', []), story_card_id=generation_control.get('story_card_id')) if generation_control.get('include_techniques') is not False else {'references': [], 'omitted': []}
+            manifest['story_planning'] = StoryPlanningService(self.store).chapter_materials(project_id, chapter_id, story_card_id=generation_control.get('story_card_id'), world_context=scope, scene_ref=generation_control.get('scene_ref'))
+            if writing_run:
+                rehearsals = SceneRehearsalService(self.store).writer_materials(project_id, chapter_id, story_card_id=generation_control.get('story_card_id'), scene_ref=generation_control.get('scene_ref'))
+                if rehearsals.get('stale'):
+                    raise ValueError('本章关联的场景推演依据已变化，请回到情节工作表核对并重新确认，再生成正文。')
+                manifest['scene_rehearsals'] = rehearsals
             manifest["llm"] = {"requested_profile_id": req_profile_id, "requested_provider": selected.get("provider"), "requested_model": selected.get("model")}
             manifest["generation_control"] = generation_control
             manifest["usage_estimate"] = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -386,23 +474,93 @@ class JobManager:
             manifest["evidence_policy"] = {"required_quote_for_supported": True, "unsupported_without_quote": True}
             if manifest.get("compression_steps") and not manifest.get("compression_reason"):
                 manifest["compression_reason"] = "上下文预算触发裁剪，优先保留 style locks、章节目标、人物硬设定、未回收伏笔、世界规则。"
-            self._persist_memory_pack(project_id, chapter_id, job_id, manifest)
-            await self.emit(project_id, job_id, "CONTEXT_MANIFEST", {**manifest, "input_summary": "组装上下文、证据、预算和压缩记录", "output_summary": f"使用证据 {len(manifest.get('evidence', []))} 条，压缩 {len(manifest.get('compression_steps', []))} 步"})
-
             guide_text = str(manifest["fixed_blocks"].get("style_guide", {}))
             world_facts = manifest.get("world_facts", [])[:5]
             writer_messages = [
                 {"role": "system", "content": "你是长篇小说写作助手，按提供文风与场景目标写作，必须遵守style locks。"},
                 {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\ntechnique_brief={manifest.get('fixed_blocks',{}).get('technique_brief','')}\ntechnique_checklist={manifest.get('fixed_blocks',{}).get('technique_checklist',[])}\ntechnique_agent_tags={manifest.get('fixed_blocks',{}).get('technique_agent_tags',[])}\n请写一段章节草稿。"},
             ]
-            writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback)
+            if writing_run:
+                order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
+                prior = order[order.index(chapter_id) - 1] if chapter_id in order and order.index(chapter_id) > 0 else None
+                direction = generation_control.get('scene_direction') or generation_control.get('writing_alignment', {}).get('scene_direction') or {}
+                direction = {key: str(direction[key]) for key in ['shots', 'setting', 'motivation', 'performance', 'focus', 'atmosphere', 'perception', 'reader_feeling', 'dramatic_function'] if isinstance(direction, dict) and direction.get(key)}
+                writer_messages = [{'role': 'system', 'content': '你是中文小说写作助手。只输出小说正文，不输出写作说明或摄影脚本。根据章节计划与作者共识写作；承接前文，保持人物与事实一致，必须遵守文风约束。只使用给定材料；缺少依据时不要自创关键事实。作者设定不代表人物已知信息，不要把未来秘密写成人物已知。每次写作都要从全局故事线、当前章节目标落实到场景：作者意图优先，先按作者确定的段落作用（推进、人物、伏笔、回收、转折或蓄势）选择细节，再把感知、动作或反应、随后变化连成因果。从选定角色的注意与处境出发，选择真正有作用的视觉、听觉或触觉素材，不罗列五感、不并列堆放景物、不随意跳视角；不能擅自把素材升格为新伏笔或新事实。保持空间和时间连续，让人物动机驱动动作、表情、沉默与对话。描写焦点可由远及近，再落到推动情绪或冲突的具体细节；用人物不说话时的细小动作与环境变化烘托情绪，细节有主次，不堆满感官。参考镜头、画面和布景需要转换成自然小说叙述，不照搬机位或剪辑术语；适量运用贴合文风的描写、结构和抒情技法，修辞服务情节而非堆砌。已确认的场景推演是作者采用的创作安排，不是既成事实。依照它把重要人物各自的打算写成互相牵动的行动与回应：一个人的行为应改变另一个人能够或愿意作出的选择，再由反应改变局势。沉默、退让和注意转移同样可以形成变化；空间、物件与环境要实际影响行动，而非均匀堆砌景物。保留每个角色的底线，情绪、神态随处境变化，不把人物参考图的定格表情写成恒定状态。让本场后果形成后场问题；所选技法按作者指定的作用位置服务铺势与转折，不擅自增加秘密、人物或规则。引用的写作工具仅作为约束，不额外生成一轮规划或自动检查。'}, {'role': 'user', 'content': json.dumps({
+                    '本次范围': writing_run.get('label'),
+                    '写作方式': '只续写当前桥段，不重复已经写过的内容' if writing_run.get('append') else '完成当前章节的场景与目标',
+                    '章节计划': payload.get('constraints', {}).get('chapter_plan', {}),
+                    '故事要求': story_targets,
+                    '作者共识': generation_control.get('writing_alignment', {}),
+                    '叙述视角': author_scope.get('narrative_pov') or '沿用作者已有叙述，视角人物的知识不得超出本次资料范围。',
+                    '场景表达参考（可选，转成小说语言）': direction,
+                    '人物与设定': manifest.get('fixed_blocks', {}),
+                    '本章相关材料（最新保存版，包含来源）': manifest['linked_materials'],
+                    '作者选用的写作参考': manifest['writing_references'],
+                    '关联情节规划（作者规划，不代表人物已知）': manifest['story_planning'],
+                    '上一章结尾': self.store.read_md(project_id, f'drafts/{prior}.md')[-2500:] if prior else '',
+                    '本章已写内容': writing_run.get('append_base', '')[-6000:] if writing_run.get('append') else '',
+                }, ensure_ascii=False)}]
+                requirements = json.loads(writer_messages[-1]['content'])
+                requirements = {key: requirements[key] for key in ['本次范围', '写作方式', '章节计划', '故事要求', '作者共识', '叙述视角', '场景表达参考（可选，转成小说语言）']}
+                requirements['场景'] = scene
+                input_limit = payload.get('constraints', {}).get('context_max_chars', 14000)
+                if isinstance(input_limit, bool) or not isinstance(input_limit, int) or not 4000 <= input_limit <= 100000:
+                    raise ValueError('本次取材范围必须在 4000 至 100000 字符之间。')
+                if generation_control.get('include_lines') is False:
+                    requirements.pop('故事要求')
+                pack_manifest = manifest
+                if generation_control.get('include_cards') is False:
+                    pack_manifest = {**manifest, 'included_cards': [], 'linked_materials': {**manifest['linked_materials'], 'cards': []}, 'fixed_blocks': {**manifest['fixed_blocks'], 'style_guide': {}, 'style_locks': {}}}
+                writer_messages[-1]['content'], report = ContextPackService(self.store).build(
+                    project_id, chapter_id, pack_manifest, requirements,
+                    previous_end=self.store.read_md(project_id, f'drafts/{prior}.md') if prior else '',
+                    current_end=writing_run.get('append_base', '') if writing_run.get('append') else '',
+                    max_chars=input_limit - 2000,
+                )
+                manifest['context_pack'] = {**report, 'request_char_limit': input_limit, 'writer_request_chars': sum(len(message['content']) for message in writer_messages)}
+            if not writing_run:
+                writer_messages[-1]['content'], report = ContextPackService(self.store).build(project_id, chapter_id, manifest,
+                    {'场景': scene, '故事要求': story_targets, '叙述视角': author_scope.get('narrative_pov') or '沿用作者视角'}, max_chars=14000)
+                manifest['context_pack'] = report
+                writer_messages[0]['content'] += '只采用本次有来源资料，规划不等于已发生事实，人物不能提前知道未来秘密。'
+            address_guidance = '遵守人物已保存的性别、代词、称呼说明和世界称谓通则；人物关系address_as表示当前人物如何称呼target，不能反用。不从外貌、ABO分类或性别推断亲属与称呼，未知时用姓名或保留未知。'
+            writer_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE
+            manifest['manifest_hash'] = self._hash_payload({key: value for key, value in manifest.items() if key != 'manifest_hash'})
+            self._persist_memory_pack(project_id, chapter_id, job_id, manifest)
+            await self.emit(project_id, job_id, "CONTEXT_MANIFEST", {**manifest, "input_summary": "组装上下文、证据、预算和压缩记录", "output_summary": f"使用证据 {len(manifest.get('evidence', []))} 条，压缩 {len(manifest.get('compression_steps', []))} 步"})
+            writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback, max_tokens=int(payload.get('constraints', {}).get('max_tokens', 2400)) if writing_run else 900, strict=bool(writing_run))
             draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
-            previous_draft = self.store.read_md(project_id, f"drafts/{chapter_id}.md")
-            if previous_draft:
-                save_snapshot(self.store, project_id, chapter_id, previous_draft, reason="before_ai_draft", patch_id=job_id)
-            self.store.write_md(project_id, f"drafts/{chapter_id}.md", draft)
-            review = create_chapter_review(self.store, project_id, chapter_id, draft, job_id=job_id, source="writer_agent")
-            self._write_chapter_status(project_id, chapter_id, "待审稿")
+            if writing_run:
+                if not writer_text.strip():
+                    raise ValueError('模型未返回正文。')
+                if writing_run.get('append'):
+                    draft = writing_run.get('append_base', original_draft).rstrip() + '\n\n' + writer_text
+            with ChangeSuggestionService(self.store).lock(project_id):
+                if not ContextPackService(self.store).sources_unchanged(project_id, manifest['context_pack'].get('source_versions', {})):
+                    raise ValueError('生成期间采用的资料已更新，原正文保留，请重新核对后生成。')
+                if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != original_draft:
+                    raise ValueError('生成期间作者已修改正文，已保留新编辑，请重新生成。')
+                if writing_run:
+                    current_scope = scope_service.resolve(project_id, story_card_id=generation_control.get('story_card_id'), chapter_id=chapter_id, event_ref=generation_control.get('scene_ref'), world_context=generation_control.get('world_context'), branch_id=generation_control.get('branch_id'), pov_character_id=generation_control.get('pov_character_id'), pov=generation_control.get('pov'))
+                    if current_scope['scope'] != scope or current_scope.get('narrative_pov') != author_scope.get('narrative_pov'):
+                        raise ValueError('生成期间故事时间、分支或叙述视角已变化，原正文保留，请重新核对后生成。')
+                    if not ContextPackService(self.store).sources_unchanged(project_id, manifest['context_pack'].get('source_versions', {})):
+                        raise ValueError('生成期间引用的设定已有新修改，已保留作者的最新资料与原正文，请重新生成。')
+                    if generation_control.get('include_cards') is not False and SharedMaterialService(self.store).address_rules(project_id, chapter_id, world_ids=world_ids, world_context=scope) != manifest['address_rules']:
+                        raise ValueError('生成期间世界称谓通则已变化，请使用最新资料重新生成。')
+                    if generation_control.get('include_cards') is not False and SharedMaterialService(self.store).world_baselines(project_id, chapter_id, world_ids=world_ids, world_context=scope) != manifest['world_baselines']:
+                        raise ValueError('生成期间世界参照已变化，请使用最新资料重新生成。')
+                    if generation_control.get('include_lines') is not False and KnowledgeGraphService(self.store).event_context(project_id, chapter_id, generation_control.get('scene_ref'), generation_control.get('story_card_id'), world_context=scope, branch_id=scope.get('branch_id'), pov_character_id=scope.get('pov_character_id')) != manifest['event_context']:
+                        raise ValueError('生成期间事件或关系依据已有变化，原正文已保留，请重新生成。')
+                    if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != original_draft:
+                        raise ValueError('正文在生成期间被修改，已保留作者的新内容，请重新生成。')
+                previous_draft = self.store.read_md(project_id, f"drafts/{chapter_id}.md")
+                if previous_draft:
+                    save_snapshot(self.store, project_id, chapter_id, previous_draft, reason="before_ai_draft", patch_id=job_id)
+                self.store.write_md(project_id, f"drafts/{chapter_id}.md", draft)
+                IncrementalMemoryService(self.store).mark(project_id, f'drafts/{chapter_id}.md')
+                review = create_chapter_review(self.store, project_id, chapter_id, draft, job_id=job_id, source="writer_agent")
+                self._write_chapter_status(project_id, chapter_id, "待审稿")
             manifest["usage_estimate"] = {
                 "prompt_tokens": max(1, len(str(writer_messages)) // 4),
                 "completion_tokens": max(1, len("".join(writer_tokens)) // 4),
@@ -421,9 +579,10 @@ class JobManager:
             await self.emit(project_id, job_id, "MARK_EXTRACTION", {"chapter_id": chapter_id, "marks": marks, "provider": "rules", "model": "evidence-rules-v1", "input_summary": "从正文抽取人物、技法、明线、暗线、伏笔命中", "output_summary": f"supported={len(supported)}, unsupported={len(unsupported)}"})
             await self.emit(project_id, job_id, "CLAIM_VERIFICATION", {"chapter_id": chapter_id, "verified_mark_ids": [m.get("mark_id") for m in supported], "unsupported_mark_ids": [m.get("mark_id") for m in unsupported], "provider": "rules", "model": "quote-verifier-v1", "input_summary": "回查 quote 和行号", "output_summary": f"{len(unsupported)} 条未证实"})
 
-            critic_messages = [{"role": "system", "content": "你是审稿人，输出一句主要问题。"}, {"role": "user", "content": draft[:900] + "\n证据:" + str(manifest.get("critic_evidence", [])[:3])}]
+            critic_messages = [{'role': 'system', 'content': '你是小说审稿人，只根据当前正文、已保存设定和有来源的材料指出主要问题；明确事件阶段优先于章节讲述顺序，不把未来事件或读者已知当作人物已知；没有依据时明确未知。'}, {'role': 'user', 'content': draft[:900] + '\n本次取材（规划不能当作已发生事实）：' + writer_messages[-1]['content']}]
+            critic_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE
             _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "chapter_reviewer")
-            critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback)
+            critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback, strict=bool(writing_run))
             issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
             style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
             if style_locks.get("punctuation") and ("!" in draft or "！" in draft):
@@ -439,20 +598,24 @@ class JobManager:
                 {"role": "user", "content": f"{editor_scope_hint}\n{draft[:1200]}"},
             ]
             _, editor_selected, editor_fallback = self._resolve_profile(project_id, payload, "proofreader")
-            editor_out, editor_used = await self._complete_with_fallback(project_id, job_id, "editor", editor_messages, editor_selected, editor_fallback)
+            editor_out, editor_used = await self._complete_with_fallback(project_id, job_id, "editor", editor_messages, editor_selected, editor_fallback, strict=bool(writing_run))
             ops = []
+            valid_editor_output = False
             try:
                 obj = json.loads(editor_out.get("text", "{}"))
                 ops = obj.get("ops", []) if isinstance(obj, dict) else []
+                valid_editor_output = isinstance(obj, dict) and isinstance(obj.get('ops'), list)
             except Exception:
                 ops = []
-            if not ops:
+            if writing_run and editor_used.get('provider') != 'mock' and not valid_editor_output:
+                raise ValueError('校对模型返回格式无效，已保留生成的草稿，请检查后继续。')
+            if not ops and not writing_run:
                 ops = [{"op_id": "op_001", "type": "replace", "target_range": {"start": 2, "end": 3}, "before": "", "after": "林秋停了两秒。她收起手机，走进雨里，决定赴约。", "rationale": "增强节奏与动作"}]
-            if selection_range and not self._clip_ops_to_selection(ops, selection_range):
+            if not writing_run and selection_range and not self._clip_ops_to_selection(ops, selection_range):
                 s0, e0 = selection_range["start"], selection_range["end"]
                 ops = [{"op_id": "op_sel_001", "type": "replace", "target_range": {"start": s0, "end": e0}, "before": "", "after": "（选区内润色）", "rationale": "选区编辑兜底"}]
             technique_issue = next((x for x in issues if x.get("type") == "technique_adherence"), None)
-            if technique_issue:
+            if technique_issue and not writing_run:
                 ops.insert(0, {
                     "op_id": "op_technique_001",
                     "type": "replace",
@@ -475,6 +638,8 @@ class JobManager:
                 model=editor_used.get("model", ""),
             )
             patch_payload = {"patch_id": f"patch_{job_id}", "patch_review_id": patch_review.get("review_id"), "ops": ops, "provider": editor_used.get("provider"), "model": editor_used.get("model"), "selection_range": selection_range, "input_summary": "基础校对 Agent 只做语言层 patch，不新增事实", "output_summary": f"生成 {len(ops)} 条待审 patch"}
+            if writing_run and not ops:
+                patch_payload['output_summary'] = '未生成可应用的修改建议，保留原文；模拟预览不代表真实模型校对。' if editor_used.get('provider') == 'mock' else '没有可应用的修改建议，保留原文。'
             await self.emit(project_id, job_id, "PROOFREAD_PATCH", patch_payload)
             await self.emit(project_id, job_id, "EDITOR_PATCH", patch_payload)
 
@@ -490,7 +655,11 @@ class JobManager:
                     apply_ops.append({"op": op.get("type", op.get("op", "replace")), "start": int(tr.get("start", op.get("start", 0))), "end": int(tr.get("end", op.get("end", tr.get("start", 0)))), "value": op.get("after", op.get("value", ""))})
                 updated, diff = apply_patch_ops(draft, apply_ops)
                 await self.emit(project_id, job_id, "DIFF", {"diff": diff})
-                self.store.write_md(project_id, f"drafts/{chapter_id}.md", updated)
+                with ChangeSuggestionService(self.store).lock(project_id):
+                    if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != draft:
+                        raise ValueError('校对期间正文已有新编辑，旧修改未应用，作者新稿保留。')
+                    self.store.write_md(project_id, f"drafts/{chapter_id}.md", updated)
+                IncrementalMemoryService(self.store).mark(project_id, f'drafts/{chapter_id}.md')
                 self.store.append_jsonl(project_id, f"drafts/{chapter_id}.patch.jsonl", {"patch_id": f"patch_{job_id}", "patch_ops": ops, "accept_op_ids": [o.get("op_id") for o in ops], "accepted_op_ids": [o.get("op_id") for o in ops], "rejected_op_ids": [], "diff": diff, "job_id": job_id})
                 await self.emit(project_id, job_id, "MERGE_RESULT", {"chapter_id": chapter_id, "applied": True, "accepted_op_ids": [o.get("op_id") for o in ops], "rejected_op_ids": []})
 
@@ -501,17 +670,19 @@ class JobManager:
                 self.store.write_md(project_id, f"meta/summaries/{chapter_id}.summary.md", summary["chapter_summary"])
                 self.store.write_json(project_id, f"meta/summaries/{chapter_id}.scene_summaries.json", summary["scene_summaries"])
 
-                chapter_fact = {"id": f"fact_{job_id}", "scope": "chapter_summary", "key": "summary", "value": summary["chapter_summary"], "confidence": 0.8, "evidence": {"chapter_id": chapter_id, "quote": summary["chapter_summary"][:80]}, "sources": [{"path": f"drafts/{chapter_id}.md"}]}
+                chapter_fact = {"id": f"fact_{job_id}", "scope": "chapter_summary", 'world_context': scope, "key": "summary", "value": summary["chapter_summary"], "confidence": 0.8, "evidence": {"chapter_id": chapter_id, "quote": summary["chapter_summary"][:80]}, "sources": [{"path": f"drafts/{chapter_id}.md"}]}
                 self.store.append_jsonl(project_id, "canon/facts.jsonl", chapter_fact)
                 for scene_summary in summary["scene_summaries"]:
-                    self.store.append_jsonl(project_id, "canon/facts.jsonl", {"id": f"fact_{uuid.uuid4().hex[:10]}", "scope": "scene_summary", "key": "scene", "value": scene_summary["summary"], "confidence": 0.7, "evidence": {"chapter_id": chapter_id, "quote": scene_summary["summary"][:80]}, "sources": [{"path": f"drafts/{chapter_id}.md"}]})
+                    self.store.append_jsonl(project_id, "canon/facts.jsonl", {"id": f"fact_{uuid.uuid4().hex[:10]}", "scope": "scene_summary", 'world_context': scope, "key": "scene", "value": scene_summary["summary"], "confidence": 0.7, "evidence": {"chapter_id": chapter_id, "quote": scene_summary["summary"][:80]}, "sources": [{"path": f"drafts/{chapter_id}.md"}]})
                 _, canon_selected, _canon_fallback = self._resolve_profile(project_id, payload, "canon_extractor")
                 canon_profile = canon_selected
                 if canon_profile.get("provider") == "mock" and writer_used.get("provider") != "mock":
                     canon_profile = writer_used
-                extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": scene_index, "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, canon_profile)
+                extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": scene_index, "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, canon_profile, usage_callback=lambda stats: self._record_usage(project_id, job_id, 'canon_extractor', canon_profile, stats, status=stats.get('status', 'completed')))
+                if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != updated:
+                    raise ValueError('核对期间正文已有新编辑，旧事实提取结果未写入，作者新稿保留。')
                 for fact in extracted.get("facts", []):
-                    self.store.append_jsonl(project_id, "canon/facts.jsonl", fact)
+                    self.store.append_jsonl(project_id, "canon/facts.jsonl", {**fact, 'world_context': scope})
                 for issue in extracted.get("issues", []):
                     self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
                 for proposal in extracted.get("new_entity_proposals", []):
@@ -526,7 +697,15 @@ class JobManager:
                 await self.emit(project_id, job_id, "CANON_UPDATES", {"facts": [], "summary": None, "provider": writer_used.get("provider")})
 
             self._update_rolling_summary(project_id, "session_001")
+        except asyncio.CancelledError:
+            if payload.get('writing_run'):
+                self._write_job_record(project_id, job_id, {'status': 'failed', 'last_error': '服务停止，本段尚未完成，可从断点重试。'})
+                if self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('chapter_status') == '生成中':
+                    self._write_chapter_status(project_id, chapter_id, previous_chapter_status)
+            raise
         except Exception as exc:
+            if payload.get('writing_run') and 'chapter_id' in locals() and self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('chapter_status') == '生成中':
+                self._write_chapter_status(project_id, chapter_id, previous_chapter_status)
             await self.emit(project_id, job_id, "ERROR", {"stage": "pipeline", "message": str(exc)})
         finally:
             self.finish_job(project_id, job_id)

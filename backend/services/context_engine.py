@@ -4,6 +4,7 @@ from typing import Any
 
 from context_engine.budget_manager import BudgetManager
 from services.kb_service import KBService
+from services.incremental_memory_service import IncrementalMemoryService
 from storage.fs_store import FSStore
 
 
@@ -17,6 +18,7 @@ class ContextEngine:
         self.kb = kb
 
     def build_manifest(self, project_id: str, chapter_id: str, scene: dict[str, Any], constraints: dict[str, Any] | None = None, technique_data: dict[str, Any] | None = None) -> dict[str, Any]:
+        memory_update = IncrementalMemoryService(self.store, self.kb).prepare(project_id)
         constraints = constraints or {}
         proj = self.store.read_yaml(project_id, "project.yaml")
         bm = BudgetManager.from_project(proj, constraints.get("max_tokens"))
@@ -34,10 +36,6 @@ class ContextEngine:
         locks = style.get("payload", {}).get("locks", {})
         policy = style.get("payload", {}).get("injection_policy", {"max_examples": 4, "max_chars_per_example": 800})
         query_text = " ".join([scene.get("purpose", ""), scene.get("situation", ""), *scene.get("choice_points", [])])
-
-        self.kb.reindex(project_id, "kb_world")
-        if not self.store.read_jsonl(project_id, "meta/kb/kb_manuscript/chunks.jsonl"):
-            self.kb.reindex_manuscript(project_id)
 
         writer_evidence = self.kb.query_multi(
             project_id,
@@ -65,6 +63,12 @@ class ContextEngine:
             filters={},
         )
 
+        order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
+        visible = set(order[:order.index(chapter_id) + 1]) if chapter_id in order else {chapter_id}
+        # Incrementally added future chapters must not leak into an earlier chapter's evidence.
+        writer_evidence = [row for row in writer_evidence if row.get('kb_id') != 'kb_manuscript' or row.get('source', {}).get('chapter_id') in visible]
+        critic_evidence = [row for row in critic_evidence if row.get('kb_id') != 'kb_manuscript' or row.get('source', {}).get('chapter_id') in visible]
+
         world_facts = [e for e in writer_evidence if e.get("kb_id") == "kb_world"][:8]
         style_examples = [e for e in writer_evidence if e.get("kb_id") == "kb_style"][: int(policy.get("max_examples", bm.caps["max_examples_style"]))]
         for ex in style_examples:
@@ -89,6 +93,7 @@ class ContextEngine:
             if technique_data.get("technique_agent_tags"):
                 fixed_blocks["technique_agent_tags"] = technique_data.get("technique_agent_tags", [])
         manifest = {
+            "memory_update": memory_update,
             "token_budgets": {"max_tokens": bm.total},
             "fixed_blocks": fixed_blocks,
             "included_cards": cards,

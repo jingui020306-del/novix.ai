@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from schemas.json_schemas import BLUEPRINT_SCHEMA
 from storage.fs_store import FSStore
+from services.incremental_memory_service import IncrementalMemoryService
 
 
 def get_store() -> FSStore:
@@ -39,6 +40,7 @@ def create_blueprint(project_id: str, bp: dict, s: FSStore = Depends(get_store))
     if msg:
         raise HTTPException(status_code=400, detail={"path": path, "message": msg})
     s.write_json(project_id, f"cards/{bp['id']}.json", bp)
+    IncrementalMemoryService(s).mark(project_id, f"cards/{bp['id']}.json")
     return bp
 
 
@@ -52,4 +54,5 @@ def delete_blueprint(project_id: str, blueprint_id: str, s: FSStore = Depends(ge
     path = s._safe_path(project_id, f'cards/{blueprint_id}.json')
     if path.exists():
         path.unlink()
+        IncrementalMemoryService(s).mark(project_id, f'cards/{blueprint_id}.json')
     return {"deleted": True}

@@ -5,6 +5,8 @@ import json
 import os
 from typing import Any, AsyncIterator
 
+from services.token_usage import normalize_usage
+
 try:
     import httpx  # type: ignore
 except Exception:
@@ -34,24 +36,29 @@ class LLMGateway:
         extra: dict[str, Any],
     ) -> AsyncIterator[str]:
         provider = extra.get("provider", "mock")
-        if provider == "mock":
-            text = self._mock_text(messages)
-            for token in text:
-                await asyncio.sleep(0)
-                yield token
-            return
-
-        if provider == "ollama":
-            async for d in self._ollama_stream(messages, model, temperature, max_tokens, extra):
-                yield d
-            return
-
-        if provider in {"openai_compat", "llama_cpp"}:
-            async for d in self._openai_compat_stream(messages, model, temperature, max_tokens, extra):
-                yield d
-            return
-
-        raise RuntimeError(f"unsupported provider: {provider}")
+        reported: dict = {}
+        options = {**extra, '_report_usage': reported.update}
+        output = []
+        try:
+            if provider == "mock":
+                for token in self._mock_text(messages):
+                    await asyncio.sleep(0)
+                    output.append(token)
+                    yield token
+            elif provider == "ollama":
+                async for delta in self._ollama_stream(messages, model, temperature, max_tokens, options):
+                    output.append(delta)
+                    yield delta
+            elif provider in {"openai_compat", "llama_cpp"}:
+                async for delta in self._openai_compat_stream(messages, model, temperature, max_tokens, options):
+                    output.append(delta)
+                    yield delta
+            else:
+                raise RuntimeError(f"unsupported provider: {provider}")
+        finally:
+            callback = extra.get('_usage_callback')
+            if callable(callback):
+                callback(normalize_usage(reported, messages=messages, text=''.join(output)))
 
     async def chat_complete(
         self,
@@ -62,10 +69,16 @@ class LLMGateway:
         extra: dict[str, Any],
     ) -> dict[str, Any]:
         content = []
-        async for d in self.chat_stream(messages, model, temperature, max_tokens, extra):
+        reported: dict = {}
+        def receive(usage):
+            reported.update(usage)
+            callback = extra.get('_usage_callback')
+            if callable(callback):
+                callback(usage)
+        async for d in self.chat_stream(messages, model, temperature, max_tokens, {**extra, '_usage_callback': receive}):
             content.append(d)
         text = "".join(content)
-        usage = {"prompt_tokens": max(1, len(str(messages)) // 4), "completion_tokens": max(1, len(text) // 4)}
+        usage = normalize_usage(reported, messages=messages, text=text)
         return {"text": text, "usage": usage}
 
 
@@ -76,9 +89,24 @@ class LLMGateway:
     async def _ollama_stream(self, messages: list[dict[str, str]], model: str, temperature: float, max_tokens: int, extra: dict[str, Any]) -> AsyncIterator[str]:
         self._require_httpx()
         base = extra.get("base_url") or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        normalized = []
+        for message in messages:
+            blocks = message.get('content')
+            if isinstance(blocks, list):
+                text = '\n'.join(str(block.get('text', '')) for block in blocks if block.get('type') == 'text')
+                images = []
+                for block in blocks:
+                    if block.get('type') == 'image_url':
+                        url = block.get('image_url', {}).get('url', '')
+                        if not url.startswith('data:image/') or ';base64,' not in url:
+                            raise ValueError('本地视觉模型需要上传后的图片数据。')
+                        images.append(url.split(';base64,', 1)[1])
+                normalized.append({**message, 'content': text, 'images': images})
+            else:
+                normalized.append(message)
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": normalized,
             "stream": True,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
@@ -90,6 +118,10 @@ class LLMGateway:
                     if not line.strip():
                         continue
                     obj = json.loads(line)
+                    if 'prompt_eval_count' in obj or 'eval_count' in obj:
+                        callback = extra.get('_report_usage')
+                        if callable(callback):
+                            callback({'prompt_tokens': obj.get('prompt_eval_count'), 'completion_tokens': obj.get('eval_count')})
                     chunk = obj.get("message", {}).get("content", "")
                     if chunk:
                         yield chunk
@@ -123,7 +155,12 @@ class LLMGateway:
                     if data == "[DONE]":
                         break
                     obj = json.loads(data)
-                    delta = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    if isinstance(obj.get('usage'), dict):
+                        callback = extra.get('_report_usage')
+                        if callable(callback):
+                            callback(obj['usage'])
+                    choices = obj.get('choices') or []
+                    delta = (choices[0].get("delta") or {}).get("content", "") if choices else ''
                     if delta:
                         yield delta
 

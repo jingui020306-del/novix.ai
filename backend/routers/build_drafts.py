@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from services.build_draft_service import BuildDraftService
+from services.authoring_service import AuthoringService
 from storage.fs_store import FSStore
 
 
@@ -25,11 +26,16 @@ def list_build_drafts(project_id: str, kind: str | None = None, status: str | No
 
 
 @router.post("")
-def create_build_draft(project_id: str, body: dict, svc: BuildDraftService = Depends(get_service)):
+async def create_build_draft(project_id: str, body: dict, svc: BuildDraftService = Depends(get_service)):
     try:
+        if body.get('generate_with_ai'):
+            from main import job_manager
+            return await AuthoringService(job_manager).build_draft(project_id, body)
         return svc.create_draft(project_id, body or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail='模型调用失败，请检查模型配置后重试。') from exc
 
 
 @router.get("/{draft_id}")

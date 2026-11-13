@@ -1,5 +1,20 @@
 # Repository Agent Rules
 
+## Read project state and record each round
+
+- Before changing code, read `docs/changes/README.md`, the latest dated change
+  record it links to, `docs/PRODUCT_PLAN.md`, and the documents relevant to the
+  requested change. Recheck the working tree so concurrent edits are preserved.
+- Keep the scope limited to the user's current request and its necessary
+  dependencies. Preserve previously confirmed features and author data.
+- Each work round adds a new `docs/changes/YYYY-MM-DD_HH-mm.md` file, using the
+  actual start time in `Asia/Shanghai`. Add seconds if the name already exists.
+  Record the purpose, changed/added files, behavior, validation evidence, and
+  remaining work. Distinguish plans, implementation, and verified results.
+- Update the change index to point to the latest round. A round's in-progress
+  log may receive an appended completion section; completed earlier logs must
+  not be rewritten to imply different history.
+
 ## WenShape-compatible storage layout (IMMUTABLE)
 
 All project data **must** follow and preserve this exact structure:

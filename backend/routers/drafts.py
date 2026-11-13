@@ -1,11 +1,16 @@
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from services.kb_service import KBService
+from services.incremental_memory_service import IncrementalMemoryService
+from services.shared_material_service import SharedMaterialService
+from services.change_suggestion_service import ChangeSuggestionService
 from services.editing_service import list_chapter_reviews, list_patch_reviews, update_chapter_review, update_patch_review
 from storage.fs_store import FSStore, apply_patch_ops
+from services.edit_version_service import check_revision, decorate, revision
 
 
 def now_iso() -> str:
@@ -38,6 +43,17 @@ def _chapter_meta(s: FSStore, project_id: str, chapter_id: str) -> dict:
     meta.setdefault('versions', [])
     meta.setdefault('current_version', None)
     return meta
+
+
+def _validate_author_meta(store, project_id, body):
+    if 'world_context' in body:
+        from services.world_scope_service import WorldScopeService
+        WorldScopeService(store).validate_context(project_id, body['world_context'])
+    actor = body.get('pov_character_id')
+    if actor and (not isinstance(actor, str) or not re.fullmatch(r'[\w-]{1,120}', actor) or store.read_yaml(project_id, f'cards/{actor}.yaml').get('type') != 'character'):
+        raise ValueError('请选择已有的视角人物。')
+    if 'pov' in body and (not isinstance(body['pov'], str) or len(body['pov']) > 1000):
+        raise ValueError('叙述视角请填写1000字以内的文字。')
 
 
 def _chapter_order(s: FSStore, project_id: str) -> list[str]:
@@ -154,7 +170,7 @@ def list_draft_details(project_id: str, s: FSStore = Depends(get_store)):
 
 @router.get('/{chapter_id}')
 def get_draft(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
-    return {"chapter_id": chapter_id, "content": s.read_md(project_id, f'drafts/{chapter_id}.md'), "meta": _chapter_meta(s, project_id, chapter_id)}
+    return {"chapter_id": chapter_id, "content": s.read_md(project_id, f'drafts/{chapter_id}.md'), "revision": revision(s, project_id, f'drafts/{chapter_id}.md'), "meta": decorate(s, project_id, f'drafts/{chapter_id}.meta.json', _chapter_meta(s, project_id, chapter_id))}
 
 
 @router.get('/{chapter_id}/lines')
@@ -166,27 +182,36 @@ def get_lines(project_id: str, chapter_id: str, start: int = 1, end: int = 20, s
 
 @router.put('/{chapter_id}')
 def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store), kb: KBService = Depends(get_kb)):
-    old = s.read_md(project_id, f'drafts/{chapter_id}.md')
-    if old:
-        _save_snapshot(s, project_id, chapter_id, old, reason='manual_save')
-    s.write_md(project_id, f'drafts/{chapter_id}.md', body.get('content', ''))
-    order = _chapter_order(s, project_id)
-    if chapter_id not in order:
-        order.append(chapter_id)
-        _write_chapter_order(s, project_id, order)
-    meta = _chapter_meta(s, project_id, chapter_id)
-    for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index']:
-        if key in body:
-            meta[key] = body[key]
-    if 'title' in body and 'chapter_title' not in body:
-        meta['chapter_title'] = body['title']
-    if 'chapter_title' in body and 'title' not in body:
-        meta['title'] = body['chapter_title']
-    if not meta.get('order_index'):
-        meta['order_index'] = len(order)
-    s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
-    kb.reindex_manuscript_chapter(project_id, chapter_id)
-    return {"ok": True, "meta": meta}
+    with ChangeSuggestionService(s).lock(project_id):
+        try:
+            check_revision(s, project_id, f'drafts/{chapter_id}.md', body.get('base_revision'))
+            check_revision(s, project_id, f'drafts/{chapter_id}.meta.json', body.get('meta_revision'))
+            _validate_author_meta(s, project_id, body)
+        except FileExistsError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        old = s.read_md(project_id, f'drafts/{chapter_id}.md')
+        if old:
+            _save_snapshot(s, project_id, chapter_id, old, reason='manual_save')
+        s.write_md(project_id, f'drafts/{chapter_id}.md', body.get('content', ''))
+        order = _chapter_order(s, project_id)
+        if chapter_id not in order:
+            order.append(chapter_id)
+            _write_chapter_order(s, project_id, order)
+        meta = _chapter_meta(s, project_id, chapter_id)
+        for key in ['title', 'chapter_title', 'chapter_status', 'volume_id', 'order_index', 'world_context', 'pov', 'pov_character_id']:
+            if key in body:
+                meta[key] = body[key]
+        if 'title' in body and 'chapter_title' not in body:
+            meta['chapter_title'] = body['title']
+        if 'chapter_title' in body and 'title' not in body:
+            meta['title'] = body['chapter_title']
+        if not meta.get('order_index'):
+            meta['order_index'] = len(order)
+        s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
+        IncrementalMemoryService(s, kb).mark(project_id, f'drafts/{chapter_id}.md')
+        return {"ok": True, "revision": revision(s, project_id, f'drafts/{chapter_id}.md'), "meta": decorate(s, project_id, f'drafts/{chapter_id}.meta.json', meta)}
 
 
 @router.get('/{chapter_id}/versions')
@@ -234,71 +259,98 @@ def put_patch_review(project_id: str, chapter_id: str, review_id: str, body: dic
 
 @router.post('/{chapter_id}/rollback')
 def rollback(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store), kb: KBService = Depends(get_kb)):
-    version_id = body.get('version_id')
-    if not version_id:
-        raise HTTPException(status_code=400, detail='version_id required')
-    content = s.read_md(project_id, f'drafts/versions/{chapter_id}/{version_id}.md')
-    if not content:
-        raise HTTPException(status_code=404, detail='version not found')
-    current = s.read_md(project_id, f'drafts/{chapter_id}.md')
-    if current:
-        _save_snapshot(s, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}')
-    s.write_md(project_id, f'drafts/{chapter_id}.md', content)
-    meta = _chapter_meta(s, project_id, chapter_id)
-    meta['current_version'] = version_id
-    s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
-    s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "ROLLBACK", "data": {"chapter_id": chapter_id, "version_id": version_id}})
-    kb.reindex_manuscript_chapter(project_id, chapter_id)
-    return {"chapter_id": chapter_id, "version_id": version_id, "content": content}
+    with ChangeSuggestionService(s).lock(project_id):
+        version_id = body.get('version_id')
+        if not version_id:
+            raise HTTPException(status_code=400, detail='version_id required')
+        content = s.read_md(project_id, f'drafts/versions/{chapter_id}/{version_id}.md')
+        if not content:
+            raise HTTPException(status_code=404, detail='version not found')
+        current = s.read_md(project_id, f'drafts/{chapter_id}.md')
+        if current:
+            _save_snapshot(s, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}')
+        s.write_md(project_id, f'drafts/{chapter_id}.md', content)
+        meta = _chapter_meta(s, project_id, chapter_id)
+        meta['current_version'] = version_id
+        s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
+        s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "ROLLBACK", "data": {"chapter_id": chapter_id, "version_id": version_id}})
+        IncrementalMemoryService(s, kb).mark(project_id, f'drafts/{chapter_id}.md')
+        return {"chapter_id": chapter_id, "version_id": version_id, "content": content}
 
 
 @router.get('/{chapter_id}/meta')
 def get_meta(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
-    return s.read_json(project_id, f'drafts/{chapter_id}.meta.json')
+    return decorate(s, project_id, f'drafts/{chapter_id}.meta.json', s.read_json(project_id, f'drafts/{chapter_id}.meta.json'))
 
 
 @router.put('/{chapter_id}/meta')
 def put_meta(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store)):
-    s.write_json(project_id, f'drafts/{chapter_id}.meta.json', body)
-    return body
+    with ChangeSuggestionService(s).lock(project_id):
+        path = f'drafts/{chapter_id}.meta.json'
+        try:
+            check_revision(s, project_id, path, body.get('_revision'))
+            _validate_author_meta(s, project_id, body)
+            if 'material_ids' in body:
+                SharedMaterialService(s).validate_ids(project_id, body['material_ids'], previous=s.read_json(project_id, path).get('material_ids', []))
+        except FileExistsError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        saved = {key: value for key, value in body.items() if key != '_revision'}
+        s.write_json(project_id, path, saved)
+        IncrementalMemoryService(s).mark(project_id, path)
+        return decorate(s, project_id, path, saved)
 
 
 @router.post('/{chapter_id}/apply-patch')
 def apply_patch(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store), kb: KBService = Depends(get_kb)):
-    original = s.read_md(project_id, f'drafts/{chapter_id}.md')
-    patch_ops = body.get('patch_ops', body.get('ops', []))
-    norm = _normalize_ops(patch_ops)
-    accept_ids = set(body.get('accept_op_ids', [o['op_id'] for o in norm]))
-    accepted = [o for o in norm if o['op_id'] in accept_ids]
-    rejected = [o for o in norm if o['op_id'] not in accept_ids]
-    patch_review_id = body.get('patch_review_id')
-    if patch_review_id and not any(row.get('review_id') == patch_review_id for row in list_patch_reviews(s, project_id, chapter_id)):
-        raise HTTPException(status_code=404, detail='patch review not found')
+    with ChangeSuggestionService(s).lock(project_id):
+        try:
+            check_revision(s, project_id, f'drafts/{chapter_id}.md', body.get('base_revision'))
+        except FileExistsError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        original = s.read_md(project_id, f'drafts/{chapter_id}.md')
+        patch_ops = body.get('patch_ops', body.get('ops', []))
+        norm = _normalize_ops(patch_ops)
+        accept_ids = set(body.get('accept_op_ids', [o['op_id'] for o in norm]))
+        accepted = [o for o in norm if o['op_id'] in accept_ids]
+        rejected = [o for o in norm if o['op_id'] not in accept_ids]
+        patch_review_id = body.get('patch_review_id')
+        if patch_review_id:
+            review = next((row for row in list_patch_reviews(s, project_id, chapter_id) if row.get('review_id') == patch_review_id), None)
+            if not review:
+                raise HTTPException(status_code=404, detail='未找到这份正文修改建议。')
+            if review.get('status') != 'pending_author_review':
+                raise HTTPException(409, '这份修改建议已经处理，请查看最新结果。')
+            try:
+                check_revision(s, project_id, f'drafts/{chapter_id}.md', review.get('source_revision'))
+            except FileExistsError as exc:
+                raise HTTPException(409, '建议生成后正文已更新，旧建议未应用，请重新核对。') from exc
 
-    _validate_selection_bounds(accepted, body.get('selection_range'))
+        _validate_selection_bounds(accepted, body.get('selection_range'))
 
-    _save_snapshot(s, project_id, chapter_id, original, reason='before_apply_patch', patch_id=body.get('patch_id'))
-    apply_ops = [o['raw'] for o in accepted]
-    updated, diff = apply_patch_ops(original, apply_ops)
-    s.write_md(project_id, f'drafts/{chapter_id}.md', updated)
+        _save_snapshot(s, project_id, chapter_id, original, reason='before_apply_patch', patch_id=body.get('patch_id'))
+        apply_ops = [o['raw'] for o in accepted]
+        updated, diff = apply_patch_ops(original, apply_ops)
+        s.write_md(project_id, f'drafts/{chapter_id}.md', updated)
 
-    rec = {
-        'patch_id': body.get('patch_id'),
-        'patch_ops': norm,
-        'accept_op_ids': list(accept_ids),
-        'accepted_op_ids': [o['op_id'] for o in accepted],
-        'rejected_op_ids': [o['op_id'] for o in rejected],
-        'diff': diff,
-    }
-    s.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', rec)
-    if patch_review_id:
-        status = 'accepted' if accepted else 'rejected'
-        update_patch_review(s, project_id, chapter_id, patch_review_id, {
-            'status': status,
-            'accepted_op_ids': rec['accepted_op_ids'],
-            'rejected_op_ids': rec['rejected_op_ids'],
+        rec = {
+            'patch_id': body.get('patch_id'),
+            'patch_ops': norm,
+            'accept_op_ids': list(accept_ids),
+            'accepted_op_ids': [o['op_id'] for o in accepted],
+            'rejected_op_ids': [o['op_id'] for o in rejected],
             'diff': diff,
-        })
-    s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "PATCH_APPLY_RESULT", "data": {"chapter_id": chapter_id, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}})
-    kb.reindex_manuscript_chapter(project_id, chapter_id)
-    return {"content": updated, "diff": diff, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}
+        }
+        s.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', rec)
+        if patch_review_id:
+            status = 'accepted' if accepted else 'rejected'
+            update_patch_review(s, project_id, chapter_id, patch_review_id, {
+                'status': status,
+                'accepted_op_ids': rec['accepted_op_ids'],
+                'rejected_op_ids': rec['rejected_op_ids'],
+                'diff': diff,
+            })
+        s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "PATCH_APPLY_RESULT", "data": {"chapter_id": chapter_id, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}})
+        IncrementalMemoryService(s, kb).mark(project_id, f'drafts/{chapter_id}.md')
+        return {"content": updated, "diff": diff, "accepted_op_ids": rec['accepted_op_ids'], "rejected_op_ids": rec['rejected_op_ids']}

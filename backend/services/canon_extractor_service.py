@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from services.llm_gateway import LLMGateway
+from services.token_usage import normalize_usage
 
 
 def now_iso() -> str:
@@ -17,13 +18,13 @@ class CanonExtractorService:
     def __init__(self, llm_gateway: LLMGateway):
         self.llm_gateway = llm_gateway
 
-    async def extract(self, chapter_id: str, chapter_markdown: str, chapter_meta: dict[str, Any], llm_profile: dict[str, Any]) -> dict[str, Any]:
-        llm_result = await self._extract_llm(chapter_markdown, chapter_meta, llm_profile)
+    async def extract(self, chapter_id: str, chapter_markdown: str, chapter_meta: dict[str, Any], llm_profile: dict[str, Any], *, usage_callback=None) -> dict[str, Any]:
+        llm_result = await self._extract_llm(chapter_markdown, chapter_meta, llm_profile, usage_callback=usage_callback)
         if llm_result:
             return llm_result
         return self._extract_rules(chapter_id, chapter_markdown)
 
-    async def _extract_llm(self, chapter_markdown: str, chapter_meta: dict[str, Any], llm_profile: dict[str, Any]) -> dict[str, Any] | None:
+    async def _extract_llm(self, chapter_markdown: str, chapter_meta: dict[str, Any], llm_profile: dict[str, Any], *, usage_callback=None) -> dict[str, Any] | None:
         provider = llm_profile.get("provider", "mock")
         if provider == "mock":
             return None
@@ -33,8 +34,11 @@ class CanonExtractorService:
             f"chapter_meta={chapter_meta}\ntext={chapter_markdown[:4000]}"
         )
         msg = [{"role": "system", "content": "你是canon抽取器。"}, {"role": "user", "content": prompt}]
+        reported, out = {}, {}
+        completed = False
         try:
-            out = await self.llm_gateway.chat_complete(msg, llm_profile.get("model", ""), 0.2, 700, llm_profile)
+            out = await self.llm_gateway.chat_complete(msg, llm_profile.get("model", ""), 0.2, 700, {**llm_profile, '_usage_callback': reported.update})
+            completed = True
             text = out.get("text", "{}")
             try:
                 return json.loads(text)
@@ -43,6 +47,9 @@ class CanonExtractorService:
                 return json.loads(repaired)
         except Exception:
             return None
+        finally:
+            if usage_callback:
+                usage_callback({**normalize_usage(reported or out.get('usage'), messages=msg, text=out.get('text', '')), 'status': 'completed' if completed else 'interrupted'})
 
     def _repair_json(self, text: str) -> str:
         start = text.find("{")

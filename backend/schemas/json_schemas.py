@@ -12,6 +12,9 @@ CARD_TYPE_SCHEMAS = {
                 "properties": {
                     "name": {"type": "string"},
                     "identity": {"type": "string"},
+                    "gender": {"type": "string", "maxLength": 200},
+                    "pronouns": {"type": "string", "maxLength": 200},
+                    "address_notes": {"type": "string", "maxLength": 2000},
                     "appearance": {"type": "string"},
                     "core_motivation": {"type": "string"},
                     "personality_traits": {"type": "array", "items": {"type": "string"}},
@@ -22,7 +25,7 @@ CARD_TYPE_SCHEMAS = {
                         "type": "array",
                         "items": {
                             "type": "object",
-                            "properties": {"target": {"type": "string"}, "type": {"type": "string"}},
+                            "properties": {"target": {"type": "string"}, "type": {"type": "string"}, "address_as": {"type": "string", "maxLength": 200}},
                         },
                     },
                     "arc": {
@@ -38,7 +41,7 @@ CARD_TYPE_SCHEMAS = {
                         "default": "other",
                     },
                     "importance": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
-                    "age": {"type": "integer", "minimum": 0, "maximum": 200},
+                    "age": {"type": "integer", "minimum": 0},
                 },
             },
         },
@@ -236,7 +239,103 @@ COMMON_CARD_OPTIONAL_PROPERTIES = {
     "importance": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Optional card importance used for retrieval weighting (default neutral=3)."},
 }
 
+# Optional author-facing fields; existing cards and their saved keys stay valid.
+CARD_TYPE_SCHEMAS['world']['properties']['payload']['properties'] = {
+    'era': {'type': 'string'},
+    'setting': {'type': 'string'},
+    'rules': {'type': 'array', 'items': {'type': 'string'}},
+    'locations': {'type': 'array', 'items': {'type': 'string'}},
+    'factions': {'type': 'array', 'items': {'type': 'string'}},
+    'entry_type': {'type': 'string'},
+    'direction': {'type': 'string', 'enum': ['geography', 'biology', 'physics_magic', 'metaphysics', 'technology', 'culture']},
+    'parent_id': {'type': 'string'},
+    'summary': {'type': 'string'}, 'content': {'type': 'string'},
+    'boundaries': {'type': 'string'}, 'causes': {'type': 'string'}, 'consequences': {'type': 'string'},
+    'core': {'type': 'boolean'},
+    'creation_status': {'type': 'string', 'enum': ['new', 'draft', 'complete']},
+    'setting_status': {'type': 'string', 'enum': ['unset', 'not_applicable', 'set']},
+    'canon_status': {'type': 'string', 'enum': ['canon', 'hypothesis', 'inspiration']},
+    'domain_status': {'type': 'object', 'properties': {key: {'type': 'string', 'enum': ['unset', 'not_applicable', 'set']} for key in ['geography', 'biology', 'physics_magic', 'metaphysics', 'technology', 'culture']}},
+    'relationships': {'type': 'array', 'items': {'type': 'object', 'properties': {'target': {'type': 'string'}, 'type': {'type': 'string'}, 'chapter': {'type': 'string'}}}},
+    'extra_context': {'type': 'object', 'properties': {
+        'address_rules': {'type': 'string', 'maxLength': 2000},
+        'world_base': {'type': 'object', 'properties': {
+            'reference': {'type': 'string', 'maxLength': 200},
+            'base_year': {'type': 'integer'}, 'offset_years': {'type': 'integer'},
+            'changes': {'type': 'string', 'maxLength': 4000},
+            'history': {'type': 'string', 'maxLength': 4000},
+        }},
+        'oc_notes': {'type': 'string'},
+        'races': {'type': 'array', 'items': {'type': 'string'}},
+        'genders': {'type': 'array', 'items': {'type': 'string'}},
+        'levels': {'type': 'array', 'items': {'type': 'string'}},
+        'map_url': {'type': 'string'},
+    }},
+}
+CARD_TYPE_SCHEMAS['style']['properties']['payload']['properties'].update({
+    'tone': {'type': 'string'},
+    'rules': {'type': 'array', 'items': {'type': 'string'}},
+    'style_guide': {'type': 'object', 'properties': {
+        'sentence_length': {'type': 'string'}, 'dialogue_ratio': {'type': 'string'},
+        'punctuation': {'type': 'string'},
+    }},
+})
+
+for _kind in ['story', 'outline']:
+    CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties'].setdefault('important_scenes', {'type': 'array', 'items': {'type': 'object'}})['items']['properties'] = {
+        'causal_scene_ids': {'type': 'array', 'items': {'type': 'string'}},
+        'relationship_changes': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'id': {'type': 'string'}, 'source_id': {'type': 'string'}, 'target_id': {'type': 'string'},
+            'relation': {'type': 'string', 'maxLength': 500}, 'notes': {'type': 'string', 'maxLength': 2000},
+        }}},
+    }
+CARD_TYPE_SCHEMAS['outline']['properties']['payload']['properties']['character_storylines'] = {
+    'type': 'array', 'items': {'type': 'object', 'properties': {'emotion': {'type': 'string', 'maxLength': 2000}}},
+}
+CARD_TYPE_SCHEMAS['story']['properties']['payload']['properties']['foreshadowings']['items']['properties'] = {
+    key: {'type': 'object', 'required': ['owner_card_id', 'scene_id'], 'properties': {'owner_card_id': {'type': 'string'}, 'scene_id': {'type': 'string'}}}
+    for key in ['first_event_ref', 'payoff_event_ref']
+}
+
 for _schema in CARD_TYPE_SCHEMAS.values():
     props = _schema.setdefault("properties", {})
     for _k, _v in COMMON_CARD_OPTIONAL_PROPERTIES.items():
         props.setdefault(_k, _v)
+
+for _kind in ['character', 'world', 'style', 'story', 'outline']:
+    if _kind in CARD_TYPE_SCHEMAS:
+        CARD_TYPE_SCHEMAS[_kind]['properties']['payload'].setdefault('properties', {})['writing_references'] = {'type': 'array', 'items': {'type': 'string'}}
+
+CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties']['reference_image'] = {'type': 'object', 'properties': {
+    'asset_id': {'type': 'string'}, 'sha256': {'type': 'string'}, 'mime_type': {'type': 'string'},
+    'filename': {'type': 'string'}, 'url': {'type': 'string'},
+}}
+
+# Time is author supplied; chapter order is never an age or branch clock.
+EVENT_REF_SCHEMA = {'type': 'object', 'required': ['owner_card_id', 'scene_id'], 'properties': {
+    'owner_card_id': {'type': 'string'}, 'scene_id': {'type': 'string'},
+}}
+STORY_TIME_SCHEMA = {'type': 'object', 'properties': {
+    'year': {'type': 'integer'}, 'date': {'type': 'string'}, 'elapsed_years': {'type': 'number'},
+    'event_ref': EVENT_REF_SCHEMA, 'position': {'type': 'string', 'enum': ['before', 'immediate_after', 'phase']}, 'phase': {'type': 'string'},
+}}
+WORLD_CONTEXT_SCHEMA = {'type': 'object', 'properties': {
+    'world_id': {'type': 'string'}, 'branch_id': {'type': 'string'}, 'time': STORY_TIME_SCHEMA,
+    'base_setting_ids': {'type': 'array', 'items': {'type': 'string'}}, 'local_adjustments': {'type': 'string'},
+}}
+for _kind in ['story', 'outline', 'character', 'world']:
+    CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['world_context'] = WORLD_CONTEXT_SCHEMA
+for _kind in ['story', 'outline']:
+    CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['important_scenes']['items']['properties'].update({
+        'world_context': WORLD_CONTEXT_SCHEMA, 'canonical_event_ref': EVENT_REF_SCHEMA, 'pov': {'type': 'string'}, 'pov_character_id': {'type': 'string'},
+        'causal_event_refs': {'type': 'array', 'items': EVENT_REF_SCHEMA},
+    })
+CARD_TYPE_SCHEMAS['character']['properties']['payload']['required'] = ['name', 'identity']
+CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties'].update({
+    'detail_level': {'type': 'string', 'enum': ['brief', 'detailed']}, 'initial_pov': {'type': 'string'},
+    'initial_age': {'type': 'number', 'minimum': 0}, 'initial_age_time': STORY_TIME_SCHEMA, 'birth_date': {'type': 'string'},
+})
+CARD_TYPE_SCHEMAS['world']['properties']['payload']['properties']['branches'] = {'type': 'array', 'items': {'type': 'object', 'properties': {
+    'id': {'type': 'string'}, 'label': {'type': 'string'}, 'parent_branch_id': {'type': ['string', 'null']}, 'fork_event_ref': EVENT_REF_SCHEMA,
+}}}
+CARD_TYPE_SCHEMAS['style']['properties']['payload']['properties']['style_guide']['properties']['pov'] = {'type': 'string'}

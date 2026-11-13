@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from services.kb_service import KBService
+from services.material_reader_service import MAX_BYTES, read_file
 
 
 def get_kb() -> KBService:
@@ -21,10 +22,15 @@ async def upload(project_id: str, files: list[UploadFile] = File(default=[]), fi
         raise HTTPException(status_code=400, detail="No files uploaded")
     out = []
     for f in all_files:
-        if not (f.filename or "").lower().endswith((".txt", ".md")):
-            raise HTTPException(status_code=400, detail="Only txt/md supported")
-        raw = (await f.read()).decode("utf-8", errors="ignore")
-        out.append(kb.upload_text(project_id, kind, f.filename or "upload.txt", raw))
+        try:
+            material = read_file(await f.read(MAX_BYTES + 1), f.filename or 'upload.txt')
+            if not material['text'].strip():
+                raise ValueError('此材料尚需视觉识别，请通过“从材料整理”入口核对图片或扫描件。')
+            uploaded = kb.upload_text(project_id, kind, f.filename or 'upload.txt', material['text'])
+            kb.store.write_json(project_id, uploaded['saved_path'] + '.json', {'source_kind': 'author_reference', 'version': material['version'], 'filename': material['filename']})
+            out.append({**uploaded, 'warnings': [*uploaded.get('warnings', []), *material['warnings']]})
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     return out[0] if len(out) == 1 else {"items": out}
 
 

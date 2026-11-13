@@ -12,7 +12,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from jobs.manager import JobManager
-from routers import analyze, blueprints, build_drafts, canon, cards, chapters, config_llm, drafts, health, jobs, kb, projects, schema, sessions, style, uploads, volumes, wiki, world
+from routers import analyze, author_data, authoring, blueprints, build_drafts, canon, cards, chapters, character_images, config_llm, drafts, health, jobs, kb, material_imports, planning_export, projects, scene_rehearsals, schema, selective_export, sessions, style, uploads, volumes, wiki, world
 from services.context_engine import ContextEngine
 from services.kb_service import KBService
 from services.style_service import StyleService
@@ -20,12 +20,14 @@ from services.llm_gateway import LLMGateway
 from services.world_facts_service import WorldFactsService
 from services.wiki_import_service import WikiImportService
 from services.llm_config_service import LLMConfigService
+from services.writing_run_service import WritingRunService
 from storage.fs_store import FSStore
 
 DATA_DIR = BACKEND_DIR.parents[0] / 'data'
 store = FSStore(DATA_DIR)
 try:
-    store.init_demo_project('demo_project_001')
+    if not store._safe_path('demo_project_001', 'project.yaml').exists():
+        store.init_demo_project('demo_project_001')
 except Exception:
     # Keep app importable in test/CI environments where demo data is already seeded
     # with YAML content different from local bootstrap format.
@@ -39,6 +41,7 @@ world_facts_service = WorldFactsService(store, kb_service)
 wiki_import_service = WikiImportService(store)
 llm_config_service = LLMConfigService(DATA_DIR)
 job_manager = JobManager(store, context_engine, llm_gateway)
+writing_runs = WritingRunService(job_manager)
 
 frontend_port = os.getenv('NOVIX_FRONTEND_PORT', '5173')
 allowed_origins = [
@@ -49,6 +52,21 @@ allowed_origins = [
 ]
 
 app = FastAPI(title='AI Longform Novel Workbench API')
+
+
+@app.middleware('http')
+async def recover_author_imports(request, call_next):
+    # A restarted/interrupted multi-file import must finish before readers see it.
+    import re
+    from fastapi.responses import JSONResponse
+    from services.material_import_service import MaterialImportService
+    match = re.match(r'^/api/projects/([\w-]+)/', request.url.path)
+    if match and '/material-imports/' not in request.url.path:
+        try:
+            MaterialImportService(store).recover_pending(match[1])
+        except (ValueError, OSError):
+            return JSONResponse({'detail': '有一份导入尚待恢复，请打开材料工作稿核对并重试；现有编辑不会被覆盖。'}, status_code=409)
+    return await call_next(request)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -58,6 +76,13 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(authoring.router)
+app.include_router(author_data.router)
+app.include_router(material_imports.router)
+app.include_router(scene_rehearsals.router)
+app.include_router(character_images.router)
+app.include_router(selective_export.router)
+app.include_router(planning_export.router)
 app.include_router(schema.router)
 app.include_router(projects.router)
 app.include_router(analyze.router)

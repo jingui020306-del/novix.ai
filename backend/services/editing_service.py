@@ -126,6 +126,7 @@ def create_patch_review(
     norm = normalize_ops(ops)
     review_id = f"patch_review_{chapter_id}_{len(rows) + 1:04d}"
     preview = " / ".join([str(op.get("rationale") or op.get("after") or op.get("op_id"))[:80] for op in norm[:3]])
+    from services.edit_version_service import revision
     rec = {
         "review_id": review_id,
         "patch_id": patch_id,
@@ -142,6 +143,7 @@ def create_patch_review(
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "review_policy": "AI patch 默认待审；作者选择接受的 op 才能写入正文。",
+        'source_revision': revision(store, project_id, f'drafts/{chapter_id}.md'),
     }
     rows.append(rec)
     store.write_json(project_id, _patch_review_path(chapter_id), rows)

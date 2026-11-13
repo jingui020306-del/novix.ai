@@ -5,8 +5,8 @@ export default {
     extend: {
       colors: {
         brand: {
-          500: '#4f46e5',
-          600: '#4338ca',
+          500: 'rgb(var(--c-accent) / <alpha-value>)',
+          600: 'rgb(var(--c-accent-hover) / <alpha-value>)',
         },
         border: 'rgb(var(--c-border) / <alpha-value>)',
         panel: 'rgb(var(--c-panel) / <alpha-value>)',

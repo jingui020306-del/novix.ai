@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from storage.fs_store import FSStore
@@ -197,6 +198,8 @@ class TechniqueDirector:
             card = cards.get(tid, {})
             p = card.get("payload", {})
             name = p.get("name") or card.get("title") or tid
+            if not card or re.fullmatch(r'[a-z]+_扩展技法_\d+', str(card.get('title') or name)):
+                continue
             signals = (p.get("signals") or [])[:3]
             avoid = (p.get("do_dont", {}).get("dont") or [])[:2]
             tag_bundle = _normalize_tags(card.get("tags", []), (p.get("tags") or []), category_tags)
