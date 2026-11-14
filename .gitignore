@@ -10,6 +10,28 @@ dist/
 
 .DS_Store
 
+# Generated caches, test reports, and build output.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+*.tsbuildinfo
+/backend/static_dist/
+/frontend/.vite/
+/playwright-report/
+/test-results/
+/build/
+/release/
+/*.log
+/*.tmp
+/*.bak
+/*.orig
+/*.rej
+
 # Local design-tool state and development notes stay on this machine.
 /.impeccable/
 /DESIGN.md
@@ -20,3 +42,7 @@ dist/
 /docs/AUTHOR_REFINEMENT_CONTRACT.md
 /docs/BACKEND_INFORMATION_CONTRACT.md
 /docs/SCENE_REHEARSAL_BRIEF.md
+/docs/PHASE2_PLAN.md
+/docs/REPO_AUDIT.md
+/docs/WORKPLAN_WENSHAPE_PARITY.md
+/docs/AUTHOR_WORKFLOW.md

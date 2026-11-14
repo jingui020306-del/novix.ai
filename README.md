@@ -425,6 +425,7 @@ Use backend tests and frontend build as the baseline verification. Browser check
 - [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
 - [Frontend Debug Guide](docs/FRONTEND_DEBUG.md)
 - [Technique Guide](docs/TECHNIQUES.md)
+- [Command Palette Guide](docs/COMMAND_PALETTE.md)
 - [Release / Packaging Guide](docs/RELEASE.md)
 - [Repository agent constraints](AGENTS.md)
 

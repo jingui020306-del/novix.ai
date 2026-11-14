@@ -34,3 +34,7 @@ body:
     id: risks
     attributes:
       label: Risks / compatibility notes
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

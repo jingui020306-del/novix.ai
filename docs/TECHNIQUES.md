@@ -44,19 +44,5 @@
 
 ## Command Palette
 
-- 创建技法：
-  - `+ technique 冷笔触`
-  - `+ technique "平行蒙太奇" --category 结构艺术 --signal "镜头并置" --step "交错切换"`
-- 章节挂载：
-  - `pin technique 蒙太奇 high --weight 1.6 --note "开头强切换"`
-  - `unpin technique 蒙太奇`
-  - `list pinned techniques`
-
-## 手动验收
-
-1. 打开 `chapter_001`。
-2. 执行 `pin technique 蒙太奇 high`。
-3. 确认 `pinned_techniques` 更新。
-4. 执行 `+ technique 冷笔触`。
-5. 在 Techniques 面板看到新卡并可编辑。
-6. 运行写作任务后检查 `TECHNIQUE_BRIEF` 与 manifest fixed block。
+创建技法、章节挂载、快捷键和验证步骤统一见
+[Command Palette 使用说明](COMMAND_PALETTE.md)。
