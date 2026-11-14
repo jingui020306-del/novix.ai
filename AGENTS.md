@@ -2,9 +2,9 @@
 
 ## Read project state and record each round
 
-- Before changing code, read `docs/changes/README.md`, the latest dated change
-  record it links to, `docs/PRODUCT_PLAN.md`, and the documents relevant to the
-  requested change. Recheck the working tree so concurrent edits are preserved.
+- Before changing code, read the relevant project documents and, when present,
+  local `docs/changes/README.md`, its latest dated record, and
+  `docs/PRODUCT_PLAN.md`. Recheck the working tree so concurrent edits are preserved.
 - Keep the scope limited to the user's current request and its necessary
   dependencies. Preserve previously confirmed features and author data.
 - Each work round adds a new `docs/changes/YYYY-MM-DD_HH-mm.md` file, using the
@@ -14,6 +14,9 @@
 - Update the change index to point to the latest round. A round's in-progress
   log may receive an appended completion section; completed earlier logs must
   not be rewritten to imply different history.
+- Development logs, internal plans/contracts, `PRODUCT.md`, `DESIGN.md`, and
+  `.impeccable/` are local-only context. Keep their files for continuity, but
+  do not force-add them or other ignored process artifacts to Git.
 
 ## WenShape-compatible storage layout (IMMUTABLE)
 

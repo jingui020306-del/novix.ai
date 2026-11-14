@@ -9,3 +9,14 @@ frontend/dist/
 dist/
 
 .DS_Store
+
+# Local design-tool state and development notes stay on this machine.
+/.impeccable/
+/DESIGN.md
+/PRODUCT.md
+/docs/changes/
+/docs/PRODUCT_PLAN.md
+/docs/AUTHOR_DATA_CONTRACT.md
+/docs/AUTHOR_REFINEMENT_CONTRACT.md
+/docs/BACKEND_INFORMATION_CONTRACT.md
+/docs/SCENE_REHEARSAL_BRIEF.md

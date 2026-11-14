@@ -45,5 +45,4 @@ authoritative storage layout or silently introduce future character knowledge.
 Field generation, saved-edit visibility, interrupted runs and retrieval need
 tests. Token reductions and real-provider output quality require measured
 requests; the relationship graph alone is not evidence for either. Live Obsidian
-sync remains a separately scoped optional integration. See `PRODUCT_PLAN.md`
-and `changes/README.md` for requirements and the actual implementation status.
+sync remains a separately scoped optional integration.
