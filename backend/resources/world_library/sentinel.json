@@ -1,0 +1,141 @@
+{
+  "format": "novix_world_pack",
+  "schema_version": 1,
+  "id": "sentinel",
+  "title": "雾塔边境",
+  "summary": "感知者、协调者与普通居民共同生活的边境港城；能力不规定性别，也不决定两人的关系。",
+  "category": "哨兵",
+  "tags": [
+    "哨兵",
+    "原创虚构示例"
+  ],
+  "world_id": "world_example_sentinel",
+  "source": {
+    "kind": "original_example",
+    "label": "novix 原创虚构示例",
+    "usage": "可按作品需要采用和改编；示例规则不代表该题材的统一规范。"
+  },
+  "cards": [
+    {
+      "id": "world_example_sentinel",
+      "type": "world",
+      "title": "雾塔边境",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "world",
+        "summary": "感知者、协调者与普通居民共同生活的边境港城；能力不规定性别，也不决定两人的关系。",
+        "content": "感知者、协调者与普通居民共同生活的边境港城；能力不规定性别，也不决定两人的关系。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete",
+        "rules": [
+          "感知放大能帮助辨识远处的响动，也会使嘈杂环境难以忍受。协调需要双方愿意建立联系，不能代替同意或读取未表达的思想。"
+        ]
+      }
+    },
+    {
+      "id": "world_example_sentinel_rule",
+      "type": "world",
+      "title": "基础规则",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_sentinel",
+        "summary": "感知放大能帮助辨识远处的响动，也会使嘈杂环境难以忍受。",
+        "content": "感知放大能帮助辨识远处的响动，也会使嘈杂环境难以忍受。协调需要双方愿意建立联系，不能代替同意或读取未表达的思想。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_sentinel_place",
+      "type": "world",
+      "title": "雾塔城",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_sentinel",
+        "summary": "层叠的石桥和潮湿仓房围绕内港展开；夜间以低亮度灯带引路，喧闹码头与安静居住区分开。",
+        "content": "层叠的石桥和潮湿仓房围绕内港展开；夜间以低亮度灯带引路，喧闹码头与安静居住区分开。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_sentinel_org",
+      "type": "world",
+      "title": "守塔公议会",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "organization",
+        "parent_id": "world_example_sentinel",
+        "summary": "感知者、协调者与居民各有代表；危险任务须说明风险，拒绝配对不剥夺居住资格。",
+        "content": "感知者、协调者与居民各有代表；危险任务须说明风险，拒绝配对不剥夺居住资格。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_sentinel_detail",
+      "type": "world",
+      "title": "静音庭院",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_sentinel",
+        "summary": "当事人可以暂时退出任务，在隔音庭院恢复与复盘。",
+        "content": "当事人可以暂时退出任务，在隔音庭院恢复与复盘。费用来自共同基金，使用记录不公开个人经历。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_sentinel_method",
+      "type": "world",
+      "title": "能力与信任",
+      "tags": [
+        "哨兵",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_sentinel",
+        "summary": "能力只能提供感官线索，线索可能被天气或疲惫影响。",
+        "content": "能力只能提供感官线索，线索可能被天气或疲惫影响。是否信任另一个人仍取决于经历与选择。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    }
+  ],
+  "stages": [],
+  "relationships": [],
+  "facts": [],
+  "attachments": [],
+  "sources": []
+}

@@ -103,6 +103,8 @@ async def import_project_zip(file: UploadFile = File(...), s: FSStore = Depends(
         rel = PurePosixPath(name).relative_to(PurePosixPath(root_prefix))
         if rel.name == 'novix_backup_manifest.json':
             continue
+        if rel.as_posix() == 'meta/material_index_state.json' or rel.name.startswith('material_index.sqlite3'):
+            continue
         if any(part.startswith('.') for part in rel.parts) and rel.as_posix() != 'drafts/.chapter_order':
             continue
         restore_members.append((name, rel))
@@ -139,7 +141,7 @@ async def import_project_zip(file: UploadFile = File(...), s: FSStore = Depends(
 
 @router.get("")
 def list_projects(s: FSStore = Depends(get_store)):
-    return s.list_projects()
+    return [project for project in s.list_projects() if project.get('kind') != 'world_library']
 
 
 @router.get('/{project_id}')
@@ -164,6 +166,8 @@ def export_project_zip(project_id: str, s: FSStore = Depends(get_store)):
             if not path.is_file():
                 continue
             rel = path.relative_to(project_dir)
+            if rel.as_posix() == 'meta/material_index_state.json' or rel.name.startswith('material_index.sqlite3'):
+                continue
             if any(part.startswith('.') for part in rel.parts) and rel.as_posix() != 'drafts/.chapter_order':
                 continue
             zf.write(path, f'{project_id}/{rel.as_posix()}')

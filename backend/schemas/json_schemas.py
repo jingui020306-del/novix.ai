@@ -347,3 +347,17 @@ for _kind in ['story', 'outline', 'character', 'world', 'style']:
     CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['information_ids'] = {'type': 'array', 'items': {'type': 'string'}}
 for _kind in ['story', 'outline']:
     CARD_TYPE_SCHEMAS[_kind]['properties']['payload']['properties']['important_scenes']['items']['properties']['information_ids'] = {'type': 'array', 'items': {'type': 'string'}}
+
+CHARACTER_DETAIL_SCHEMA = {'type': 'object', 'required': ['id', 'title', 'content'], 'properties': {
+    'id': {'type': 'string'}, 'title': {'type': 'string', 'maxLength': 200}, 'content': {'type': 'string', 'maxLength': 12000},
+    'usage': {'type': 'string', 'enum': ['relevant', 'focus', 'author_only']}, 'scope': WORLD_CONTEXT_SCHEMA,
+    'target_ids': {'type': 'array', 'items': {'type': 'string'}}, 'relationship_ids': {'type': 'array', 'items': {'type': 'string'}},
+    'situation': {'type': 'string'}, 'sources': {'type': 'array'},
+}}
+CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties']['detail_sections'] = {'type': 'array', 'items': CHARACTER_DETAIL_SCHEMA}
+CARD_TYPE_SCHEMAS['world']['properties']['payload']['properties']['maps'] = {'type': 'array', 'items': {'type': 'object', 'required': ['id', 'title', 'kind', 'source', 'coordinate_system'], 'properties': {
+    'id': {'type': 'string'}, 'title': {'type': 'string'}, 'kind': {'type': 'string', 'enum': ['map', 'town', 'diagram', 'illustration']},
+    'source': {'type': 'object'}, 'scope': WORLD_CONTEXT_SCHEMA, 'coordinate_system': {'type': 'string', 'enum': ['pixel', 'normalized', 'grid', 'geographic']},
+    'hotspots': {'type': 'array', 'items': {'type': 'object', 'properties': {'id': {'type': 'string'}, 'label': {'type': 'string'}, 'coordinates': {'type': 'object'},
+        'display_position': {'type': 'object'}, 'entity_id': {'type': 'string'}, 'status': {'type': 'string', 'enum': ['candidate', 'confirmed']}}}},
+}}}

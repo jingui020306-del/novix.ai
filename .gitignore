@@ -46,3 +46,7 @@ coverage/
 /docs/REPO_AUDIT.md
 /docs/WORKPLAN_WENSHAPE_PARITY.md
 /docs/AUTHOR_WORKFLOW.md
+
+# Rebuildable query copies; canonical cards, history, and attachments stay outside this rule.
+/data/**/meta/material_index.sqlite3*
+/data/**/meta/material_index_state.json

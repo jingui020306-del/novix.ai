@@ -7,11 +7,26 @@ import { AuthorControls } from './AuthorControls'
 import { useDraftRecovery } from '../lib/editorDrafts'
 import { WritingReferenceNotice } from './WritingReferencePicker'
 
-export function RevisionTools({ project, chapterId, text, profileId, storyCardId, onChange, onApplied }: {
+export const PROSE_STRATEGIES = [
+  ['wide_to_detail', '从整体到细节', '先交代处境，再停在关键对象。', '雨笼住整条街。她只看见门缝下那张干燥的纸。'],
+  ['detail_to_setting', '从细节到环境', '由一个细节展开空间与处境。', '杯沿有一圈盐。窗外的船，已经停满了港口。'],
+  ['spatial_flow', '按空间顺序移动', '沿人物能感知的位置组织行动。', '她绕过桌角，扶住门框，才看见台阶下的人。'],
+  ['sensory_follow', '跟随人物感官', '让一个感知带出下一步注意。', '门轴轻响。他停笔，先看向灯下那只伸进来的手。'],
+  ['action_reaction', '动作与反应衔接', '写清动作怎样引起回应与变化。', '她把信推过去。他没接，只将杯子挪开了一点。'],
+  ['delayed_reveal', '暂缓揭示', '先写迹象或反应，稍后揭示原因。', '他忽然收住笑。她顺着他的目光，回头看见了门外的人。'],
+  ['focus_closure', '聚焦与收束', '在关键选择停留，减少无关铺陈。', '她的手停在封口上。最后，只把信放回了抽屉。'],
+] as const
+export function ProseStrategy({ value = '', onChange }: { value?: string; onChange: (value: string) => void }) {
+  const current = PROSE_STRATEGIES.find(([id]) => id === value)
+  return <div className='space-y-2'><label className='block text-sm font-medium'>读者怎样逐步看到这一场</label><Select aria-label='描写顺序与观察方式' value={value} onChange={(event) => onChange(event.target.value)}><option value=''>由情节与视角决定，也可在下方自由说明</option>{PROSE_STRATEGIES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select>{current && <><p className='text-xs leading-6 text-muted'>{current[2]} 最终生成小说文字，保持人物意图与已确认事实。</p><details><summary className='cursor-pointer text-xs text-muted'>看一个短例</summary><p className='mt-2 text-sm leading-7'>{current[3]}</p><p className='mt-2 text-xs leading-6 text-muted'>只是写法示例，不加入作品设定。避免把每个动作都写成特写，或用人物此时不可能感知的内容制造效果。</p></details></>}</div>
+}
+
+export function RevisionTools({ project, chapterId, text, profileId, storyCardId, sceneDirection, onChange, onApplied }: {
   project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
-  onChange: (text: string) => void; onApplied: () => void;
+  sceneDirection?: any; onChange: (text: string) => void; onApplied: () => void;
 }) {
   const [mode, setMode] = useState('polish')
+  const [strategy, setStrategy] = useState('')
   const [instructions, setInstructions] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +52,7 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
     try {
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise`, {
         source_text: text, mode, instructions, llm_profile_id: profileId,
+        allow_plot_change: false, scene_direction: { ...sceneDirection, ...(strategy ? { prose_strategy: strategy } : {}) },
         story_card_id: storyCardId,
         start: Array.from(text.slice(0, start)).length,
         end: Array.from(text.slice(0, end)).length,
@@ -75,18 +91,19 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
           <label htmlFor='revision-mode' className='mb-1 block text-sm font-medium'>润色与改写</label>
           <Select id='revision-mode' value={mode} onChange={(e) => setMode(e.target.value)} disabled={busy}>
             <option value='polish'>日常润色：修顺病句，保留语气</option>
-            <option value='rewrite'>清晰自然地改写</option>
+            <option value='rewrite'>清晰自然地改写</option><option value='cinematic'>调整描写顺序与画面承接</option>
           </Select>
         </div>
-        <Button onClick={revise} disabled={busy || !text.trim()}>{busy ? '正在处理…' : mode === 'polish' ? '润色正文' : '改写正文'}</Button>
+        <Button onClick={revise} disabled={busy || !text.trim()}>{busy ? '正在处理…' : mode === 'polish' ? '润色正文' : mode === 'cinematic' ? '调整这一段的写法' : '改写正文'}</Button>
       </div>
       <p className='text-xs text-muted'>选中文字可只处理选段；未选择时处理正文。先预览，确认后才应用。</p>
-      {mode === 'rewrite' && <div>
+      {mode === 'cinematic' && <ProseStrategy value={strategy || sceneDirection?.prose_strategy || ''} onChange={setStrategy} />}
+      {mode !== 'polish' && <div>
         <label htmlFor='rewrite-instructions' className='text-sm text-muted'>希望怎样改写</label>
         <Textarea id='rewrite-instructions' value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={4000} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
       </div>}
       {error && <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{error}</p>}
-      {revision && <div className='space-y-2'>
+      {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
         <label htmlFor='revision-result' className='text-sm font-medium'>修改后的段落</label>
         <Textarea id='revision-result' className='min-h-40 font-serif leading-7' value={revision.text} onChange={(e) => setRevision({ ...revision, text: e.target.value })} />
         <TokenUsage usage={revision.usage} />
@@ -153,7 +170,7 @@ export function TokenUsage({ usage, calls, title = '本次用量' }: { usage?: a
   </section>
 }
 
-export function TrialWritingTools({ project, chapterId, text, revision, dirty, isGenerating, profileId, storyId, onApplied }: { project: string; chapterId: string; text: string; revision?: string; dirty: boolean; isGenerating: boolean; profileId?: string; storyId?: string; onApplied: (text: string) => void }) {
+export function TrialWritingTools({ project, chapterId, text, revision, dirty, isGenerating, profileId, storyId, sceneDirection, onApplied }: { project: string; chapterId: string; text: string; revision?: string; dirty: boolean; isGenerating: boolean; profileId?: string; storyId?: string; sceneDirection?: any; onApplied: (text: string) => void }) {
   const key = `${project}:${chapterId}`
   const active = useRef(key); active.current = key
   const [trialState, setTrialState] = useState<any>(null)
@@ -181,7 +198,7 @@ export function TrialWritingTools({ project, chapterId, text, revision, dirty, i
       } else {
         let saved = submitted
         if (action !== 'discard') saved = await api.put(`/api/projects/${project}/trials/${submitted.id}`, { revision: submitted.revision, text: submitted.text, instructions })
-        result = action === 'save' ? saved : await api.post(`/api/projects/${project}/trials/${saved.id}/${action}`, { revision: saved.revision, ...(action === 'generate' ? { instructions, llm_profile_id: profileId } : {}) })
+        result = action === 'save' ? saved : await api.post(`/api/projects/${project}/trials/${saved.id}/${action}`, { revision: saved.revision, ...(action === 'generate' ? { instructions, llm_profile_id: profileId, scene_direction: sceneDirection } : {}) })
       }
       if (active.current !== held) return
       if (action === 'apply') { if (latestManuscript.current !== text) { setMessage('试写已保存采用；等待期间的新正文编辑保留，请核对后再保存。'); setTrial(result); return }; if (typeof result.result?.content !== 'string') throw new Error('已提交采用，但返回的正文暂时无法读取，请刷新保存版核对；当前编辑仍保留。'); onApplied(result.result.content); setMessage('试写已按所选范围采用，原版本与修改差异保留。'); setTrial(result); setBaseline(JSON.stringify(result)); localDraft.markSaved(submitted, result); return }

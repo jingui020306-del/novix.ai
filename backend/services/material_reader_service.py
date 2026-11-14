@@ -2,6 +2,7 @@
 import hashlib
 import io
 import ipaddress
+import os
 import re
 import shutil
 import socket
@@ -19,6 +20,11 @@ from storage.fs_store import now_iso
 
 MAX_BYTES = 12 * 1024 * 1024
 MAX_TEXT = 300000
+
+
+def pdf_tool(name):
+    system = Path('/usr/bin') / name
+    return str(system) if system.is_file() and os.access(system, os.X_OK) else shutil.which(name)
 
 
 class _PageText(HTMLParser):
@@ -59,13 +65,13 @@ def decode_text(raw):
     raise ValueError('无法可靠读取文字编码，请另存为 UTF-8 文本后导入。')
 
 
-def read_file(raw, filename):
+def read_file(raw, filename, *, allow_long=False):
     if not raw or len(raw) > MAX_BYTES:
         raise ValueError('请选择非空且不超过12 MB的材料。')
     name = Path(str(filename or '材料.txt').replace('\\', '/')).name[:150]
     extension = Path(name).suffix.lower()
     result = {'filename': name, 'version': hashlib.sha256(raw).hexdigest(), 'kind': 'author_reference', 'fetched_at': now_iso(), 'warnings': [], 'coverage': 'uploaded_file', 'mime_type': 'text/plain'}
-    if extension in {'.txt', '.md'}:
+    if extension in {'.txt', '.md', '.json', '.yaml', '.yml', '.csv', '.tsv', '.xml'}:
         text = decode_text(raw)
     elif extension == '.docx':
         result['mime_type'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -81,8 +87,46 @@ def read_file(raw, filename):
                 result['warnings'].append('已读取Word正文文字；批注、嵌入图片和排版未自动解释。')
         except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
             raise ValueError('Word文件无法读取，请使用有效的.docx文件。') from exc
+    elif extension == '.xlsx':
+        result['mime_type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as workbook:
+                ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                parts = [item for item in workbook.infolist() if item.filename.startswith('xl/') and item.filename.endswith('.xml')]
+                if sum(item.file_size for item in parts) > 8 * MAX_BYTES:
+                    raise ValueError('表格XML超过本批读取范围，原件保留，请按工作表拆分。')
+                shared = ET.fromstring(workbook.read('xl/sharedStrings.xml')) if 'xl/sharedStrings.xml' in workbook.namelist() else None
+                strings = [''.join(node.itertext()) for node in shared.findall('m:si', ns)] if shared is not None else []
+                names = {}
+                if 'xl/workbook.xml' in workbook.namelist() and 'xl/_rels/workbook.xml.rels' in workbook.namelist():
+                    relations = {node.get('Id'): node.get('Target', '') for node in ET.fromstring(workbook.read('xl/_rels/workbook.xml.rels'))}
+                    for sheet in ET.fromstring(workbook.read('xl/workbook.xml')).findall('m:sheets/m:sheet', ns):
+                        target = relations.get(sheet.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'), '')
+                        names[target.lstrip('/') if target.startswith('/') else 'xl/' + target] = sheet.get('name', '')
+                rows = []
+                for item in sorted(parts, key=lambda item: item.filename):
+                    if not item.filename.startswith('xl/worksheets/'):
+                        continue
+                    rows.append('[工作表：' + (names.get(item.filename) or Path(item.filename).stem) + ']')
+                    for row in ET.fromstring(workbook.read(item)).findall('m:sheetData/m:row', ns):
+                        cells = []
+                        for cell in row.findall('m:c', ns):
+                            value = cell.findtext('m:v', '', ns)
+                            if cell.get('t') == 's':
+                                value = strings[int(value)]
+                            elif cell.get('t') == 'inlineStr':
+                                value = ''.join(cell.find('m:is', ns).itertext())
+                            formula = cell.findtext('m:f', '', ns)
+                            if formula:
+                                value = '=' + formula + ' [原文件缓存结果：' + value + '，未重算]'
+                            cells.append((cell.get('r') or '') + '=' + value)
+                        rows.append('\t'.join(cells))
+                text = '\n'.join(rows)
+                result.update(coverage='workbook_cells', warnings=['已读取工作表名称、单元格地址、文字与已有公式缓存；未重算公式，嵌入图片/图表尚未解释。'])
+        except (zipfile.BadZipFile, KeyError, ET.ParseError, IndexError, TypeError) as exc:
+            raise ValueError('Excel文件无法可靠读取，请使用有效的XLSX或另存CSV。') from exc
     elif extension in {'.pdf', '.doc'}:
-        command = shutil.which('pdftotext' if extension == '.pdf' else 'libreoffice')
+        command = pdf_tool('pdftotext') if extension == '.pdf' else shutil.which('libreoffice')
         if not command:
             raise ValueError('本机尚无此格式的文字提取工具，请导出为TXT或DOCX；原材料不会被修改。')
         with tempfile.TemporaryDirectory(prefix='novix-material-') as temporary:
@@ -97,6 +141,22 @@ def read_file(raw, filename):
             try:
                 output = subprocess.run(arguments, capture_output=True, timeout=25, check=True)
                 text = decode_text(output.stdout) if extension == '.pdf' else decode_text((Path(temporary) / 'source.txt').read_bytes())
+                if extension == '.pdf':
+                    pages = text.rstrip('\f\n').split('\f') if text.strip() else []
+                    count = len(pages)
+                    result['page_count_known'] = False
+                    if pdf_tool('pdfinfo'):
+                        try:
+                            details = subprocess.run([pdf_tool('pdfinfo'), str(source)], capture_output=True, timeout=10, check=True)
+                            found = re.search(rb'Pages:\s*(\d+)', details.stdout)
+                            count = int(found[1]) if found else count
+                            result['page_count_known'] = bool(found)
+                        except (subprocess.SubprocessError, OSError):
+                            result['warnings'].append('未能核实PDF总页数；目前文字页不能代表全部图页。')
+                    result['page_count'] = count
+                    result['pages'] = [{'page': number, 'text': pages[number - 1] if number <= len(pages) else '',
+                        'text_status': 'read' if number <= len(pages) and pages[number - 1].strip() else 'empty', 'visual_status': 'pending'} for number in range(1, count + 1)]
+                    result['warnings'].append('文字与图页分别读取；地图、图注和插图尚未视觉识别的页面会保留待处理状态。')
             except (subprocess.SubprocessError, OSError) as exc:
                 raise ValueError('文件文字提取未完成，请检查文件是否损坏、加密或需要密码。') from exc
         result['mime_type'] = 'application/pdf' if extension == '.pdf' else 'application/msword'
@@ -121,8 +181,8 @@ def read_file(raw, filename):
         result['coverage'] = 'needs_visual_reading'
         result['warnings'].append('图片已保留，尚未识别；提取时需选择支持图片的模型。')
     else:
-        raise ValueError('支持TXT、Markdown、PDF、Word（DOCX/DOC）、PNG和JPEG材料。')
-    if len(text) > MAX_TEXT:
+        raise ValueError('支持TXT、Markdown、JSON/YAML/CSV、Excel（XLSX）、PDF、Word（DOCX/DOC）、PNG和JPEG材料。')
+    if len(text) > MAX_TEXT and not allow_long:
         raise ValueError('文字超过30万字，请分批导入；不会静默截断材料。')
     return {**result, 'original_text': text, 'text': normalize_text(text)}
 

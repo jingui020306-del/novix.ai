@@ -41,8 +41,8 @@ async def upload(project_id: str, file: UploadFile = File(...), purpose: str = F
             context = json.loads(world_context)
         except ValueError as exc:
             raise ValueError('文件采用的世界背景格式不正确。') from exc
-        raw = await file.read(MAX_BYTES + 1)
-        return service.create(project_id, {'purpose': purpose, 'story_card_id': story_card_id, 'world_context': context, 'reference_scope': reference_scope}, raw=raw, filename=file.filename)
+        import asyncio
+        return await asyncio.to_thread(service.create_upload, project_id, {'purpose': purpose, 'story_card_id': story_card_id, 'world_context': context, 'reference_scope': reference_scope}, file.file, file.filename)
 
 
 @router.get('/{batch_id}')
@@ -66,8 +66,8 @@ def add_source(project_id: str, batch_id: str, body: dict, service=Depends(get_i
 @router.post('/{batch_id}/sources/upload')
 async def add_source_file(project_id: str, batch_id: str, file: UploadFile = File(...), base_revision: str = Form(...), reference_scope: str = Form(''), service=Depends(get_imports)):
     with user_errors():
-        raw = await file.read(MAX_BYTES + 1)
-        return service.add_source(project_id, batch_id, {'base_revision': base_revision, 'reference_scope': reference_scope}, raw=raw, filename=file.filename)
+        import asyncio
+        return await asyncio.to_thread(service.create_upload, project_id, {'base_revision': base_revision, 'reference_scope': reference_scope}, file.file, file.filename, batch_id=batch_id)
 
 
 @router.post('/{batch_id}/complete')
@@ -136,12 +136,20 @@ def cancel(project_id: str, batch_id: str, service=Depends(get_imports)):
 
 
 @router.get('/{batch_id}/source')
-def source(project_id: str, batch_id: str, source_id: str | None = None, service=Depends(get_imports)):
+def source(project_id: str, batch_id: str, source_id: str | None = None, page: int | None = None, view: str | None = None, service=Depends(get_imports)):
     with user_errors():
         record = service._read(project_id, batch_id)
         material = next((row for row in service._sources(record) if row['id'] == source_id), None) if source_id else record['source']
         if not material:
             raise FileNotFoundError('这份原材料不存在。')
+        if view == 'text':
+            if page is not None and not 1 <= page <= material.get('page_count', 0):
+                raise ValueError('请选择原PDF中实际存在的页面。')
+            selected_page = page or (1 if material.get('lazy_pdf') else None)
+            return {'source_id': material['id'], **service.source_content(project_id, material, page_numbers={selected_page} if selected_page else None),
+                'selected_page': selected_page, 'page_count': material.get('page_count'), 'coverage': material.get('coverage'), 'warnings': material.get('warnings', [])}
+        if page is not None:
+            return FileResponse(service.pdf_page_path(project_id, batch_id, material['id'], page), media_type='image/png')
         path = material.get('raw_path')
         if not path:
             raise FileNotFoundError('这份材料没有附加原文件，可在原文区查看文字。')

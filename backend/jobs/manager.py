@@ -25,6 +25,7 @@ from services.story_planning_service import StoryPlanningService
 from services.scene_rehearsal_service import SceneRehearsalService
 from services.shared_material_service import SharedMaterialService, CHARACTER_PORTRAYAL_GUIDANCE
 from services.token_usage import normalize_usage, summarize_usage
+from services.prose_strategy_service import prose_guidance, BASE_RULES, REVIEW_CATEGORIES
 from storage.fs_store import FSStore, apply_patch_ops, now_iso
 
 
@@ -486,7 +487,7 @@ class JobManager:
                 order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
                 prior = order[order.index(chapter_id) - 1] if chapter_id in order and order.index(chapter_id) > 0 else None
                 direction = generation_control.get('scene_direction') or generation_control.get('writing_alignment', {}).get('scene_direction') or {}
-                direction = {key: str(direction[key]) for key in ['shots', 'setting', 'motivation', 'performance', 'focus', 'atmosphere', 'perception', 'reader_feeling', 'dramatic_function'] if isinstance(direction, dict) and direction.get(key)}
+                direction = {key: str(direction[key]) for key in ['shots', 'setting', 'motivation', 'performance', 'focus', 'atmosphere', 'perception', 'reader_feeling', 'dramatic_function', 'prose_strategy'] if isinstance(direction, dict) and direction.get(key)}
                 writer_messages = [{'role': 'system', 'content': '你是中文小说写作助手。只输出小说正文，不输出写作说明或摄影脚本。根据章节计划与作者共识写作；承接前文，保持人物与事实一致，必须遵守文风约束。只使用给定材料；缺少依据时不要自创关键事实。作者设定不代表人物已知信息，不要把未来秘密写成人物已知。每次写作都要从全局故事线、当前章节目标落实到场景：作者意图优先，先按作者确定的段落作用（推进、人物、伏笔、回收、转折或蓄势）选择细节，再把感知、动作或反应、随后变化连成因果。从选定角色的注意与处境出发，选择真正有作用的视觉、听觉或触觉素材，不罗列五感、不并列堆放景物、不随意跳视角；不能擅自把素材升格为新伏笔或新事实。保持空间和时间连续，让人物动机驱动动作、表情、沉默与对话。描写焦点可由远及近，再落到推动情绪或冲突的具体细节；用人物不说话时的细小动作与环境变化烘托情绪，细节有主次，不堆满感官。参考镜头、画面和布景需要转换成自然小说叙述，不照搬机位或剪辑术语；适量运用贴合文风的描写、结构和抒情技法，修辞服务情节而非堆砌。已确认的场景推演是作者采用的创作安排，不是既成事实。依照它把重要人物各自的打算写成互相牵动的行动与回应：一个人的行为应改变另一个人能够或愿意作出的选择，再由反应改变局势。沉默、退让和注意转移同样可以形成变化；空间、物件与环境要实际影响行动，而非均匀堆砌景物。保留每个角色的底线，情绪、神态随处境变化，不把人物参考图的定格表情写成恒定状态。让本场后果形成后场问题；所选技法按作者指定的作用位置服务铺势与转折，不擅自增加秘密、人物或规则。引用的写作工具仅作为约束，不额外生成一轮规划或自动检查。'}, {'role': 'user', 'content': json.dumps({
                     '本次范围': writing_run.get('label'),
                     '写作方式': '只续写当前桥段，不重复已经写过的内容' if writing_run.get('append') else '完成当前章节的场景与目标',
@@ -505,6 +506,7 @@ class JobManager:
                 requirements = json.loads(writer_messages[-1]['content'])
                 requirements = {key: requirements[key] for key in ['本次范围', '写作方式', '章节计划', '故事要求', '作者共识', '叙述视角', '场景表达参考（可选，转成小说语言）']}
                 requirements['场景'] = scene
+                requirements['小说观察顺序'] = prose_guidance(direction)
                 input_limit = payload.get('constraints', {}).get('context_max_chars', 14000)
                 if isinstance(input_limit, bool) or not isinstance(input_limit, int) or not 4000 <= input_limit <= 100000:
                     raise ValueError('本次取材范围必须在 4000 至 100000 字符之间。')
@@ -522,11 +524,11 @@ class JobManager:
                 manifest['context_pack'] = {**report, 'request_char_limit': input_limit, 'writer_request_chars': sum(len(message['content']) for message in writer_messages)}
             if not writing_run:
                 writer_messages[-1]['content'], report = ContextPackService(self.store).build(project_id, chapter_id, manifest,
-                    {'场景': scene, '故事要求': story_targets, '叙述视角': author_scope.get('narrative_pov') or '沿用作者视角'}, max_chars=14000)
+                    {'场景': scene, '故事要求': story_targets, '小说观察顺序': prose_guidance(generation_control.get('scene_direction')), '叙述视角': author_scope.get('narrative_pov') or '沿用作者视角'}, max_chars=14000)
                 manifest['context_pack'] = report
                 writer_messages[0]['content'] += '只采用本次有来源资料，规划不等于已发生事实，人物不能提前知道未来秘密。'
             address_guidance = '遵守人物已保存的性别、代词、称呼说明和世界称谓通则；人物关系address_as表示当前人物如何称呼target，不能反用。不从外貌、ABO分类或性别推断亲属与称呼，未知时用姓名或保留未知。'
-            writer_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE
+            writer_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE + BASE_RULES
             manifest['manifest_hash'] = self._hash_payload({key: value for key, value in manifest.items() if key != 'manifest_hash'})
             self._persist_memory_pack(project_id, chapter_id, job_id, manifest)
             await self.emit(project_id, job_id, "CONTEXT_MANIFEST", {**manifest, "input_summary": "组装上下文、证据、预算和压缩记录", "output_summary": f"使用证据 {len(manifest.get('evidence', []))} 条，压缩 {len(manifest.get('compression_steps', []))} 步"})
@@ -583,7 +585,13 @@ class JobManager:
             await self.emit(project_id, job_id, "MARK_EXTRACTION", {"chapter_id": chapter_id, "marks": marks, "provider": "rules", "model": "evidence-rules-v1", "input_summary": "从正文抽取人物、技法、明线、暗线、伏笔命中", "output_summary": f"supported={len(supported)}, unsupported={len(unsupported)}"})
             await self.emit(project_id, job_id, "CLAIM_VERIFICATION", {"chapter_id": chapter_id, "verified_mark_ids": [m.get("mark_id") for m in supported], "unsupported_mark_ids": [m.get("mark_id") for m in unsupported], "provider": "rules", "model": "quote-verifier-v1", "input_summary": "回查 quote 和行号", "output_summary": f"{len(unsupported)} 条未证实"})
 
-            critic_messages = [{'role': 'system', 'content': '你是小说审稿人，只根据当前正文、已保存设定和有来源的材料指出主要问题；明确事件阶段优先于章节讲述顺序，不把未来事件或读者已知当作人物已知；没有依据时明确未知。'}, {'role': 'user', 'content': draft[:900] + '\n本次取材（规划不能当作已发生事实）：' + writer_messages[-1]['content']}]
+            review_text = draft[:18000] if writing_run else draft[:900]
+            review_coverage = {'examined_chars': len(review_text), 'total_chars': len(draft), 'partial': len(review_text) != len(draft)}
+            critic_messages = [{'role': 'system', 'content': '你是小说审稿人，只根据当前正文、已保存设定和有来源的材料指出主要问题；明确事件阶段优先于章节讲述顺序，不把未来事件或读者已知当作人物已知；没有依据时明确未知。'}, {'role': 'user', 'content': review_text + '\n本次检查范围：' + json.dumps(review_coverage) + '\n本次取材（规划不能当作已发生事实）：' + writer_messages[-1]['content']}]
+            if writing_run:
+                critic_messages[0]['content'] += ('检查描写顺序、空间与动作衔接、细节对情节的作用、人物表现差异、重复动作和句式、感官与修辞堆叠、人物认知与读者披露边界。'
+                    '这是供作者选择的文学建议，不用关键词出现次数打分。只检查所给范围，不声称未读段落已通过。'
+                    '输出JSON {"issues":[{"category":"' + '|'.join(REVIEW_CATEGORIES) + '","issue":"具体建议","quote":"当前正文连续原句"}]}，无依据不造问题，可返回空issues。')
             from services.information_service import InformationService
             review_information = InformationService(self.store).materials(project_id, scope, for_review=True, actor_ids=scene.get('cast', []), max_chars=5000)
             if review_information['items']:
@@ -592,14 +600,33 @@ class JobManager:
             critic_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE
             _, critic_selected, critic_fallback = self._resolve_profile(project_id, payload, "chapter_reviewer")
             critic_out, critic_used = await self._complete_with_fallback(project_id, job_id, "critic", critic_messages, critic_selected, critic_fallback, strict=bool(writing_run))
-            issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
+            issues, review_format = [], 'legacy_text'
+            if writing_run:
+                try:
+                    reviewed = json.loads(critic_out.get('text') or '')
+                    if not isinstance(reviewed, dict) or not isinstance(reviewed.get('issues'), list):
+                        raise ValueError('未返回问题列表')
+                    review_format = 'structured'
+                    for issue in reviewed['issues'][:20]:
+                        if not isinstance(issue, dict) or not isinstance(issue.get('issue'), str):
+                            continue
+                        quote = issue.get('quote') if isinstance(issue.get('quote'), str) else ''
+                        verified = bool(quote and quote in review_text)
+                        issues.append({'issue': issue['issue'][:2000], 'category': issue.get('category') if issue.get('category') in REVIEW_CATEGORIES else 'other',
+                            'evidence': {'chapter_id': chapter_id, 'quote': quote if verified else ''}, 'support_level': 'supported' if verified else 'unsupported', 'review_coverage': review_coverage})
+                except (ValueError, TypeError):
+                    review_format = 'unstructured'
+                    if critic_out.get('text'):
+                        issues = [{'issue': critic_out['text'][:2000], 'evidence': {'chapter_id': chapter_id, 'quote': ''}, 'support_level': 'unsupported', 'review_coverage': review_coverage}]
+            else:
+                issues = [{"issue": (critic_out.get("text") or "冲突可增强")[:120], "evidence": {"chapter_id": chapter_id, "quote": draft.splitlines()[-1][:40]}}]
             style_locks = manifest.get("fixed_blocks", {}).get("style_locks", {})
             if style_locks.get("punctuation") and ("!" in draft or "！" in draft):
                 issues.append({"issue": "style_drift: punctuation lock violated", "evidence": {"chapter_id": chapter_id, "quote": "!"}})
             issues.extend(tech_issues)
             for issue in issues:
                 self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
-            await self.emit(project_id, job_id, "CRITIC_REVIEW", {"issues": issues, "provider": critic_used.get("provider"), "model": critic_used.get("model"), "input_summary": "审查 Agent 复核正文、人设/技法/设定风险", "output_summary": f"发现 {len(issues)} 条问题"})
+            await self.emit(project_id, job_id, "CRITIC_REVIEW", {"issues": issues, 'coverage': review_coverage, 'format': review_format, "provider": critic_used.get("provider"), "model": critic_used.get("model"), "input_summary": "审查 Agent 复核正文、人设/技法/设定风险", "output_summary": f"返回 {len(issues)} 条建议；" + ('部分正文未检查' if review_coverage['partial'] else '已检查所给正文') + ('，模型未按结构返回，须人工核对' if review_format == 'unstructured' else '')})
 
             editor_scope_hint = f"selection_range={selection_range}" if selection_range else "selection_range=None(whole chapter)"
             editor_messages = [

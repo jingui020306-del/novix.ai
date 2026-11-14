@@ -22,11 +22,13 @@ import Layout from '../components/Layout'
 import { SchemaForm, fieldLabel, profileLabel } from '../components/SchemaForm'
 import { CardEditor } from '../components/CardEditor'
 import { KnowledgeGraph } from '../components/KnowledgeGraph'
-import { RevisionTools, TrialWritingTools, WritingRunPanel, TokenUsage } from '../components/WritingTools'
+import { RevisionTools, TrialWritingTools, WritingRunPanel, TokenUsage, ProseStrategy } from '../components/WritingTools'
 import { WritingReferenceNotice, WritingReferencePanel, WritingReferencePicker } from '../components/WritingReferencePicker'
 import { StoryPlanningTables } from '../components/StoryPlanningTables'
 import { MaterialReferences, OpenMaterial } from '../components/MaterialReferences'
 import { WorldWiki } from '../components/WorldWiki'
+import { NameReferences } from '../components/MaterialDiscovery'
+import { CharacterDetails, CharacterDetailFocus } from '../components/CharacterDetails'
 import { CharacterReferenceImage } from '../components/CharacterReferenceImage'
 import { SelectiveExportPanel } from '../components/SelectiveExportPanel'
 import { cardAfterSave, useDraftRecovery } from '../lib/editorDrafts'
@@ -396,6 +398,7 @@ export default function App() {
   const [chapterTitleDraft, setChapterTitleDraft] = useState('')
   const [chapterContextDraft, setChapterContextDraft] = useState<any>(null)
   const chapterScopeKey = `${project}:${selectedChapter}`
+  const characterFocusKey = `${chapterScopeKey}:${storyForm.id}:${selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm.id}` ? `${selectedSceneAnchor.owner_card_id}:${selectedSceneAnchor.scene_id}` : ''}`
   const cachedChapterContext = cardDraftCache.current[`${chapterScopeKey}:contextDraft`]
   const hasChapterContextDraft = chapterContextDraft?.key === chapterScopeKey || Boolean(cachedChapterContext)
   const chapterContextSource = chapterContextDraft?.key === chapterScopeKey ? chapterContextDraft : cachedChapterContext || { key: chapterScopeKey, world_context: draft?.meta?.world_context, pov: draft?.meta?.pov || '', pov_character_id: draft?.meta?.pov_character_id || '', information_ids: draft?.meta?.information_ids || [], meta_revision: draft?.meta?._revision || '' }
@@ -403,7 +406,8 @@ export default function App() {
   const updateChapterContext = (patch: any) => { const next = { ...chapterContext, ...patch }; cardDraftCache.current[`${chapterScopeKey}:contextDraft`] = next; setChapterContextDraft(next) }
   const [chapterSaving, setChapterSaving] = useState(false)
   const [alignmentIdea, setAlignmentIdea] = useState('')
-  const [sceneDirection, setSceneDirection] = useState({ shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '' })
+  const [characterDetailFocus, setCharacterDetailFocus] = useState<Record<string, Record<string, string[]>>>({})
+  const [sceneDirection, setSceneDirection] = useState({ prose_strategy: '', shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '' })
   const sceneDirectionSavedRef = useRef({ key: '', value: '' })
   const [alignmentUnderstanding, setAlignmentUnderstanding] = useState('')
   const [alignmentAgreedDraft, setAlignmentAgreedDraft] = useState('')
@@ -762,7 +766,7 @@ export default function App() {
     }
     if (alignmentKey !== previousAlignment.key) { setAlignmentDiscussionInput(''); setAgreementEditingKey('') }
     alignmentSavedRef.current = { key: alignmentKey, value: JSON.stringify(nextAlignment), revision: alignmentKey !== previousAlignment.key || JSON.stringify(localAlignment) === previousAlignment.value ? draft?.meta?._revision || '' : previousAlignment.revision }
-    const scene = { shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '', ...(alignment.scene_direction || {}) }
+    const scene = { prose_strategy: '', shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '', ...(alignment.scene_direction || {}) }
     const key = `${project}:${selectedChapter}`
     const previous = sceneDirectionSavedRef.current
     if (key !== previous.key || JSON.stringify(sceneDirection) === previous.value) setSceneDirection(scene)
@@ -771,7 +775,7 @@ export default function App() {
 
   const alignmentEditor = alignmentSavedRef.current.key === chapterScopeKey ? { idea: alignmentIdea, understanding: alignmentUnderstanding, agreed_draft: alignmentAgreedDraft, confirmed: alignmentConfirmed, messages: alignmentMessages, scene_direction: sceneDirection, base_revision: alignmentSavedRef.current.revision } : null
   const savedAlignment = draft?.meta?.writing_alignment || {}
-  const alignmentLocal = useDraftRecovery(`${chapterScopeKey}:alignment`, alignmentEditor, JSON.stringify({ idea: savedAlignment.idea || '', understanding: savedAlignment.understanding || '', agreed_draft: savedAlignment.agreed_draft || '', confirmed: Boolean(savedAlignment.confirmed), messages: savedAlignment.messages || [], scene_direction: { shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '', ...(savedAlignment.scene_direction || {}) }, base_revision: draft?.meta?._revision || '' }), (value) => { setAlignmentIdea(value.idea || ''); setAlignmentUnderstanding(value.understanding || ''); setAlignmentAgreedDraft(value.agreed_draft || ''); setAlignmentConfirmed(Boolean(value.confirmed)); setAlignmentMessages(value.messages || []); if (value.scene_direction) setSceneDirection(value.scene_direction); alignmentSavedRef.current.revision = value.base_revision || ''; setAgreementEditingKey(chapterScopeKey) })
+  const alignmentLocal = useDraftRecovery(`${chapterScopeKey}:alignment`, alignmentEditor, JSON.stringify({ idea: savedAlignment.idea || '', understanding: savedAlignment.understanding || '', agreed_draft: savedAlignment.agreed_draft || '', confirmed: Boolean(savedAlignment.confirmed), messages: savedAlignment.messages || [], scene_direction: { prose_strategy: '', shots: '', setting: '', motivation: '', performance: '', focus: '', atmosphere: '', perception: '', reader_feeling: '', dramatic_function: '', ...(savedAlignment.scene_direction || {}) }, base_revision: draft?.meta?._revision || '' }), (value) => { setAlignmentIdea(value.idea || ''); setAlignmentUnderstanding(value.understanding || ''); setAlignmentAgreedDraft(value.agreed_draft || ''); setAlignmentConfirmed(Boolean(value.confirmed)); setAlignmentMessages(value.messages || []); if (value.scene_direction) setSceneDirection(value.scene_direction); alignmentSavedRef.current.revision = value.base_revision || ''; setAgreementEditingKey(chapterScopeKey) })
 
   const storyLocal = useDraftRecovery(`${project}:story:${storyForm.id}`, cardDraftCache.current.__formProject === project ? storyForm : null, JSON.stringify((Array.isArray(storyCards) ? storyCards : []).find((card: any) => card.id === storyForm.id) ? normalizeStoryCard((storyCards as any[]).find((card: any) => card.id === storyForm.id)) : normalizeStoryCard(null)), setStoryForm)
   const characterLocal = useDraftRecovery(`${project}:character:${characterForm.id}`, cardDraftCache.current.__formProject === project ? characterForm : null, JSON.stringify((Array.isArray(chars) ? chars : []).find((card: any) => card.id === characterForm.id) || { id: 'character_new', type: 'character', title: '', tags: [], links: [], payload: {} }), setCharacterForm)
@@ -1505,6 +1509,7 @@ export default function App() {
           include_cards: generationUseCards, include_techniques: generationUseTechniques, include_lines: generationUseLines,
           writing_alignment: buildWritingAlignmentPayload({ confirmed: alignmentConfirmed }),
           scene_direction: sceneDirection,
+          character_detail_focus: characterDetailFocus[characterFocusKey] || {},
         },
         constraints: { max_tokens: maxTokens },
       })
@@ -2020,11 +2025,14 @@ export default function App() {
     setCardSaveState((value) => ({ ...value, [key]: '保存中…' }))
     try {
       const result = await api.put(`/api/projects/${project}/cards/${id}`, body)
+      const saved = cardAfterSave(characterForm, body, result, snapshot)
+      const reconcile = (current: any) => cardAfterSave(current, body, result, snapshot)
       const cacheKey = `${project}:character:${id}`
-      cardDraftCache.current[cacheKey] = cardAfterSave(cardDraftCache.current[cacheKey] || characterForm, body, result, snapshot)
-      if (cardDraftCache.current.__formProject === project) setCharacterForm((current: any) => cardAfterSave(current, body, result, snapshot))
-      characterLocal.markSaved(characterForm, cardAfterSave(characterForm, body, result, snapshot))
-      setCardSaveState((value) => ({ ...value, [key]: '已保存', [`${project}:${id}`]: '已保存' })); void mutateCards(); refreshSharedMaterials()
+      cardDraftCache.current[cacheKey] = reconcile(cardDraftCache.current[cacheKey] || cardDraftCache.current[`${project}:character:${characterForm.id}`] || characterForm)
+      if (cardDraftCache.current.__formProject === project) setCharacterForm(reconcile)
+      characterLocal.markSaved(characterForm, saved)
+      void mutateCards((rows: any) => Array.isArray(rows) && rows.some((card: any) => card.id === id) ? rows.map((card: any) => card.id === id ? saved : card) : [...(Array.isArray(rows) ? rows : []), saved], { revalidate: false })
+      setCardSaveState((value) => ({ ...value, [key]: '已保存', [`${project}:${id}`]: '已保存' })); refreshSharedMaterials()
       push(result.change_suggestions?.error ? `人物已保存；${result.change_suggestions.error}` : '人物已保存，初始资料与共享引用保留。')
     } catch (error) { const message = error instanceof Error ? error.message : '保存未完成，编辑保留。'; setCardSaveState((value) => ({ ...value, [key]: `保存失败：${message}` })); push(message, 'error') }
   }
@@ -3436,7 +3444,7 @@ export default function App() {
     if (view === 'export') return <SelectiveExportPanel project={project} projectTitle={projectInfo?.title || storyForm?.title || '作品'} />
 
     if (view === 'planning') {
-      return <StoryPlanningTables project={project} storyCard={storyForm} characters={Array.isArray(chars) ? chars : []} chapters={chapterRows} profileId={useAgentAssignments ? undefined : llmProfileId} draftCache={cardDraftCache} onOpenStory={() => { setActiveActivity('story'); setView('story') }} onStoryCardChange={(card) => setStoryForm(normalizeStoryCard(card))} onSaveStory={saveStoryCard} onOpenMaterial={openMaterial} onSaved={refreshSharedMaterials} focusRequest={materialFocusRequest} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
+      return <StoryPlanningTables isTargetDirty={isSettingDirty} project={project} storyCard={storyForm} characters={Array.isArray(chars) ? chars : []} chapters={chapterRows} profileId={useAgentAssignments ? undefined : llmProfileId} draftCache={cardDraftCache} onOpenStory={() => { setActiveActivity('story'); setView('story') }} onStoryCardChange={(card) => setStoryForm(normalizeStoryCard(card))} onSaveStory={saveStoryCard} onOpenMaterial={openMaterial} onSaved={refreshSharedMaterials} focusRequest={materialFocusRequest} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
     }
 
     if (view === 'story') {
@@ -3735,7 +3743,8 @@ export default function App() {
           <details className='py-2'><summary className='cursor-pointer text-sm font-medium'>人物角色与年龄{payload.role ? `（${({protagonist:'主角',supporting:'配角',antagonist:'对手'} as Record<string,string>)[payload.role] || '其他'}${payload.initial_age !== undefined ? `，初始 ${payload.initial_age} 岁` : ''}）` : ''}</summary><section className='mt-4 space-y-4'><h2 className='sr-only'>人物在故事中的位置</h2><div className='grid grid-cols-1 gap-4 sm:grid-cols-2'><div><label className='mb-1 block text-sm text-muted' htmlFor='character-role'>人物角色</label><Select id='character-role' value={payload.role || 'other'} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, role: e.target.value } })}><option value='protagonist'>主角</option><option value='supporting'>配角</option><option value='antagonist'>对手</option><option value='other'>其他人物</option></Select></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-age'>初始年龄（可选）</label><Input id='character-initial-age' type='number' min={0} value={payload.initial_age ?? payload.age ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age: e.target.value === '' ? undefined : Number(e.target.value) } })} placeholder='未知时留空' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-initial-year'>这个年龄对应哪一年</label><Input id='character-initial-year' type='number' step={1} value={payload.initial_age_time?.year ?? ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, initial_age_time: { ...payload.initial_age_time, year: e.target.value === '' ? undefined : Number(e.target.value) } } })} placeholder='不清楚时不推算过去 / 未来年龄' /></div><div><label className='mb-1 block text-sm text-muted' htmlFor='character-birth-date'>明确的出生日期（可选）</label><Input id='character-birth-date' type='date' value={payload.birth_date || ''} onChange={(e) => setCharacterForm({ ...characterForm, payload: { ...payload, birth_date: e.target.value || undefined } })} /></div></div></section>
           </details>
           <CharacterReferenceImage key={`${project}:${characterForm.id}`} project={project} characterId={characterForm.id} value={payload.reference_image} appearance={payload.appearance || ''} profileId={useAgentAssignments ? undefined : llmProfileId} onImageChange={(image) => setCharacterForm((current: any) => { if (current.id !== characterForm.id) return current; const next = { ...current.payload }; if (image) next.reference_image = image; else delete next.reference_image; return { ...current, payload: next } })} onApplyAppearance={(appearance) => setCharacterForm((current: any) => current.id === characterForm.id ? { ...current, payload: { ...current.payload, appearance, field_provenance: { ...current.payload?.field_provenance, appearance: 'ai_addition' } } } : current)} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
-          <SchemaForm lockedPaths={characterLockedPaths} hiddenFields={['age', 'initial_age', 'initial_age_time', 'birth_date', 'role', 'relationships']} schema={charSchema} value={characterForm} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} onChange={(next) => setCharacterForm({ ...next, title: next.payload?.name || next.title })} />
+          <SchemaForm lockedPaths={characterLockedPaths} hiddenFields={['detail_sections', 'age', 'initial_age', 'initial_age_time', 'birth_date', 'role', 'relationships']} schema={charSchema} value={characterForm} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} onChange={(next) => setCharacterForm({ ...next, title: next.payload?.name || next.title })} />
+          <CharacterDetails key={`${project}:${characterForm.id}:details`} project={project} characterId={characterForm.id} value={payload.detail_sections || []} lockedPaths={characterLockedPaths} onChange={(detail_sections) => setCharacterForm({ ...characterForm, payload: { ...payload, detail_sections, field_provenance: { ...payload.field_provenance, detail_sections: 'author_edit' } } })} />
           <div className='space-y-2'><Button variant='primary' disabled={cardSaveState[`${project}:${characterForm.id}`] === '保存中…'} onClick={saveCurrentCharacter}>保存人物</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${characterForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${characterForm.id}`] === '保存中…' ? cardSaveState[`${project}:${characterForm.id}`] : characterLocal.dirty ? '有尚未保存的编辑' : cardSaveState[`${project}:${characterForm.id}`] || '已读取保存版'}</p></div>
           {characterForm.id !== 'character_new' && <><AuthorControls key={`${project}:${characterForm.id}:lock`} project={project} target={`cards/${characterForm.id}.yaml`} label='人物' value={characterForm} revision={characterForm._revision} dirty={characterLocal.dirty} onChanged={(value, result) => { const next = { ...value, _revision: result.base_revision }; setCharacterForm(next); characterLocal.markSaved(characterForm, next); refreshSharedMaterials() }} /><InformationPanel key={`${project}:${characterForm.id}:information`} project={project} characterId={characterForm.id} storyId={storyForm.id} title='经历中的关键信息与认知变化' value={payload.information_ids || []} onChange={(information_ids) => setCharacterForm({ ...characterForm, payload: { ...payload, information_ids } })} /></>}
           {characterForm.id && characterForm.id !== 'character_new' && <details open={materialFocusRequest?.id === characterForm.id && !materialFocusRequest?.editPath} className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>人物关系与阶段变化</summary><div className='mt-4'><KnowledgeGraph project={project} focusId={characterForm.id} onOpen={openMaterial} showStages title={`${payload.name || characterForm.title || '此人'}的共享关系`} /></div></details>}
@@ -3856,6 +3865,16 @@ export default function App() {
                 placeholder='开始写这一章...'
               />
           </section>
+          <NameReferences key={`${chapterScopeKey}:names`} project={project} chapterId={selectedChapter} storyId={storyForm.id} target={`drafts/${selectedChapter}.md`} revision={draft?.revision} metaRevision={hasChapterContextDraft ? chapterContext.meta_revision : editorSnapshotRef.current.metaRevision} text={chapterEditorText} dirty={chapterEditorText !== (draft?.content || '')} worldContext={chapterContext.world_context} onOpen={openMaterial} onSaved={(result) => {
+            if (editorSnapshotRef.current.key !== chapterScopeKey || !result.meta_revision) return
+            const before = { content: chapterEditorText, title: chapterTitleDraft, base_revision: editorSnapshotRef.current.revision, meta_revision: editorSnapshotRef.current.metaRevision, context: hasChapterContextDraft ? chapterContext : undefined }
+            if (chapterEditorText === editorSnapshotRef.current.content && chapterTitleDraft === editorSnapshotRef.current.title) chapterLocal.markSaved(before, { ...before, meta_revision: result.meta_revision, context: hasChapterContextDraft ? { ...chapterContext, meta_revision: result.meta_revision } : undefined })
+            const pending = cardDraftCache.current[`${chapterScopeKey}:contextDraft`]
+            if (pending) cardDraftCache.current[`${chapterScopeKey}:contextDraft`] = { ...pending, meta_revision: result.meta_revision }
+            setChapterContextDraft((current: any) => current?.key === chapterScopeKey ? { ...current, meta_revision: result.meta_revision } : current)
+            if (!alignmentLocal.dirty && alignmentEditor) alignmentLocal.markSaved(alignmentEditor, { ...alignmentEditor, base_revision: result.meta_revision })
+            editorSnapshotRef.current.metaRevision = result.meta_revision; alignmentSavedRef.current.revision = result.meta_revision; void mutateDraft()
+          }} />
             <AuthorControls key={`${project}:${selectedChapter}:bodylock`} project={project} target={`drafts/${selectedChapter}.md`} label='正文' value={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} onChanged={(content, result) => { setChapterEditorText(content); editorSnapshotRef.current.revision = result.base_revision; void mutateDraft(); void mutateVersions() }} />
           <WritingRunPanel project={project} hasUnsavedChanges={chapterEditorText !== (draft?.content || '') || Boolean(pendingChapterReferences || pendingChapterMaterials)} onProgress={refreshWritingOutputs} />
           <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>本章准备、场景安排与写法</summary><div className='mt-4'>
@@ -3871,6 +3890,7 @@ export default function App() {
             <ChapterSceneRehearsals project={project} chapterId={selectedChapter} storyId={storyForm?.id} selectedScene={selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm?.id}` ? selectedSceneAnchor : undefined} onSelectScene={(row) => setSelectedSceneAnchor(row ? { key: `${project}:${selectedChapter}:${storyForm?.id}`, owner_card_id: row.owner_card_id, scene_id: row.scene_id } : null)} onOpen={openSceneRehearsal} onOpenPlanning={() => { setActiveActivity('planning'); setView('planning') }} />
             <details className='mt-5 border-t border-border pt-4'><summary className='cursor-pointer text-sm font-medium'>这一段怎么写（可选）</summary><section className='mt-4 space-y-4' aria-label='场景写法'>
               <div><p className='text-sm text-muted'>从人的感受出发，想清楚这段在故事中的作用。下面都可选，不必填满；最终仍写成小说正文。</p></div>
+              <ProseStrategy value={sceneDirection.prose_strategy} onChange={(prose_strategy) => updateSceneDirection((current) => ({ ...current, prose_strategy }))} />
               <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                 <div><label htmlFor='scene-perception' className='mb-1 block text-sm font-medium'>谁在感受？他此刻最在意什么？</label><Textarea id='scene-perception' value={sceneDirection.perception} onChange={(e) => updateSceneDirection((previous) => ({ ...previous, perception: e.target.value }))} placeholder='例如：林秋只在意信上的日期，暂时没注意门外的脚步。' /></div>
                 <div><label htmlFor='scene-reader_feeling' className='mb-1 block text-sm font-medium'>希望读者感受到什么？</label><Textarea id='scene-reader_feeling' value={sceneDirection.reader_feeling} onChange={(e) => updateSceneDirection((previous) => ({ ...previous, reader_feeling: e.target.value }))} placeholder='例如：先松一口气，再慢慢感到不安。' /></div>
@@ -3883,9 +3903,10 @@ export default function App() {
               </details>
 
             </section></details>
+            <CharacterDetailFocus chapterId={selectedChapter} storyId={storyForm.id} eventRef={selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm.id}` ? selectedSceneAnchor : undefined} project={project} value={characterDetailFocus[characterFocusKey] || {}} onChange={(value) => setCharacterDetailFocus((current) => ({ ...current, [characterFocusKey]: value }))} />
             <div className='my-4'><Button onClick={() => { setAlignmentConfirmed(false); void saveWritingAlignment({ confirmed: false }) }}>保存本章补充</Button></div>
-            <TrialWritingTools key={`${project}:${selectedChapter}:trial`} storyId={storyForm.id} project={project} chapterId={selectedChapter} text={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} isGenerating={isChapterGenerating} profileId={useAgentAssignments ? undefined : llmProfileId} onApplied={(content) => { setChapterEditorText(content); void mutateDraft(); void mutateVersions() }} />
-            <RevisionTools project={project} chapterId={selectedChapter} text={chapterEditorText} profileId={useAgentAssignments ? undefined : llmProfileId} storyCardId={storyForm?.id} onChange={setChapterEditorText} onApplied={() => { void mutateDraft(); void mutateVersions(); void mutateDraftDetails() }} />
+            <TrialWritingTools sceneDirection={sceneDirection} key={`${project}:${selectedChapter}:trial`} storyId={storyForm.id} project={project} chapterId={selectedChapter} text={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} isGenerating={isChapterGenerating} profileId={useAgentAssignments ? undefined : llmProfileId} onApplied={(content) => { setChapterEditorText(content); void mutateDraft(); void mutateVersions() }} />
+            <RevisionTools sceneDirection={sceneDirection} project={project} chapterId={selectedChapter} text={chapterEditorText} profileId={useAgentAssignments ? undefined : llmProfileId} storyCardId={storyForm?.id} onChange={setChapterEditorText} onApplied={() => { void mutateDraft(); void mutateVersions(); void mutateDraftDetails() }} />
             <section className='chapter-agreement' aria-label='本章写法预览'>
               <div className='flex flex-wrap items-baseline justify-between gap-2'><h3 className='text-base font-semibold'>本章写法</h3><span className='text-xs text-muted'>{alignmentAgreedDraft && alignmentAgreedDraft !== alignmentUnderstanding ? '保留你的修订' : '根据已保存策划整理'}</span></div>
               <p className='mt-2 text-xs leading-5 text-muted'>已有计划与上面的补充会自动整理在这里，不额外消耗模型额度。看过后确认即可，也可以修改这份写法。</p>
@@ -4840,7 +4861,7 @@ export default function App() {
     chapterTitleDraft, chapterContextDraft,
     chapterSaving,
     chapterReferenceSelection, chapterMaterialSelection,
-    alignmentIdea, sceneDirection,
+    alignmentIdea, sceneDirection, characterDetailFocus,
     alignmentUnderstanding, agreementEditingKey,
     alignmentAgreedDraft,
     alignmentConfirmed,
@@ -5417,7 +5438,7 @@ export default function App() {
 
   return (
     <>
-      <Layout left={left} center={view === 'context' ? <>{center}{technicalDetails}</> : center} right={view === 'settings' ? <p className='text-sm leading-7 text-muted'>模型按任务分工；密钥只在本机保存。连接状态与配置在当前页面查看。</p> : ['chapter', 'scene-rehearsal'].includes(view) ? right : <div className='space-y-4'><p className='text-xs leading-6 text-muted'>与当前内容有关的资料</p><ul className='space-y-3'>{(Array.isArray(allCards) ? allCards : []).filter((card: any) => view === 'story' || view === 'planning' ? ['story', 'outline', 'character', 'world'].includes(card.type) : view === 'characters' || view === 'relationships' ? ['character', 'world'].includes(card.type) : view === 'style' ? card.type === 'style' : ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)).slice(0, 18).map((card: any) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => openMaterial(card)}>{referenceLabel(card)}</button></li>)}</ul></div>} header={header} inspectorTitle={view === 'settings' ? '模型说明' : ['chapter', 'scene-rehearsal'].includes(view) ? '本章材料与检查' : '本页资料'} surface={view} navigationKey={`${view}:${selectedChapter}`} />
+      <Layout left={left} center={view === 'context' ? <>{center}{technicalDetails}</> : center} right={view === 'settings' ? <p className='text-sm leading-7 text-muted'>模型按任务分工；密钥只在本机保存。连接状态与配置在当前页面查看。</p> : ['chapter', 'scene-rehearsal'].includes(view) ? right : <div className='space-y-4'><p className='text-xs leading-6 text-muted'>本作品中可查看的资料</p><ul className='space-y-3'>{(Array.isArray(allCards) ? allCards : []).filter((card: any) => view === 'story' || view === 'planning' ? ['story', 'outline', 'character', 'world'].includes(card.type) : view === 'characters' || view === 'relationships' ? ['character', 'world'].includes(card.type) : view === 'style' ? card.type === 'style' : ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)).slice(0, 18).map((card: any) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => openMaterial(card)}>{referenceLabel(card)}</button></li>)}</ul></div>} header={header} inspectorTitle={view === 'settings' ? '模型说明' : ['chapter', 'scene-rehearsal'].includes(view) ? '本章材料与检查' : '作品资料'} surface={view} navigationKey={`${view}:${selectedChapter}`} />
       <WritingReferencePanel open={chapterReferencesOpen && view === 'chapter'} onClose={() => setChapterReferencesOpen(false)} title='本章写法参考'>
         <p className='mb-4 text-xs leading-6 text-muted'>为“{chapterTitleDraft || '当前章节'}”选择需要的写法。选择和查阅不调用模型，保存后供本章写作使用。</p>
         <WritingReferencePicker project={project} value={selectedChapterReferenceIds} onChange={updateChapterReferences} onOpen={openMaterial} saveHint={pendingChapterReferences ? '参考有未保存的选择。关闭侧栏仍会保留，点击下方保存后生效。' : '已保存的参考用于本章生成与修改。'} />

@@ -7,6 +7,7 @@ from services.writing_reference_service import WritingReferenceService
 from services.world_scope_service import WorldScopeService
 from services.author_data_service import AuthorDataService, STAGES_PATH
 from services.information_service import InformationService, REGISTRY_PATH
+from services.character_detail_service import strip_author_only, select_character_details
 
 
 class ContextPackService:
@@ -38,7 +39,7 @@ class ContextPackService:
             event_ref=control.get('scene_ref'), branch_id=control.get('branch_id'), pov_character_id=control.get('pov_character_id'),
             world_context=control.get('world_context') or requirements.get('场景', {}).get('world_context'), pov=control.get('pov'))
         scope = resolved['scope']
-        requirements = dict(requirements)
+        requirements = strip_author_only(requirements)
         if requirements.get('场景'):
             filtered_scene = scope_service.filter_value(project_id, requirements['场景'], scope)
             if filtered_scene is None:
@@ -77,6 +78,7 @@ class ContextPackService:
 
         def add(kind, value, source='', item_id='', *, required=False):
             nonlocal dropped, deduplicated
+            value = strip_author_only(value)
             if value in (None, '', [], {}):
                 return
             text_key = self._json(value)
@@ -194,8 +196,10 @@ class ContextPackService:
             effective = character_states.get(cid) or world_states.get(cid)
             if effective:
                 card = {**card, 'payload': effective['state']}
-            payload = at_this_chapter(card.get('payload', {}))
+            payload = at_this_chapter(strip_author_only(card.get('payload', {})))
             payload = scope_service.filter_value(project_id, payload, scope)
+            from services.world_map_material_service import filter_map_scope
+            payload = filter_map_scope(self.store, project_id, payload, scope)
             if not isinstance(payload, dict) or payload.get('canon_status') in {'hypothesis', 'inspiration'} or payload.get('setting_status') == 'unset' or payload.get('confirmation_status') in {'pending', 'pending_author_review'}:
                 continue
             if payload.get('setting_status') == 'not_applicable':
@@ -203,6 +207,8 @@ class ContextPackService:
             else:
                 payload = {key: value for key, value in payload.items() if key not in {'writing_references', 'links', 'map_url', 'versions', 'content', 'description', 'updated_at', 'created_at'}}
                 if card.get('type') == 'character':
+                    payload['detail_sections'] = select_character_details(self.store, project_id, {**card, 'payload': payload}, scope,
+                        requirements.get('场景', {}), focus_ids=(control.get('character_detail_focus') or {}).get(cid, []))
                     if payload.get('arc'):
                         payload['成长安排（未定位事件，不当作此时状态）'] = payload.pop('arc')
                     if event_context.get('scene_ref'):

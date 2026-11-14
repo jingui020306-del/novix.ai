@@ -103,7 +103,13 @@ class SharedMaterialService:
             available = {row['id'] for row in InformationService(self.store).list(project_id)}
             if not isinstance(refs, list) or any(not isinstance(ref, str) or ref not in available for ref in refs):
                 raise ValueError('关联信息须选择已保存的信息条目，不复制秘密或事件。')
+        if 'maps' in payload:
+            from services.world_map_material_service import validate_maps
+            validate_maps(self.store, project_id, card)
         if card.get('type') == 'character':
+            if 'detail_sections' in payload:
+                from services.character_detail_service import validate_detail_sections
+                validate_detail_sections(self.store, project_id, payload['detail_sections'])
             if payload.get('detail_level') not in {None, 'brief', 'detailed'}:
                 raise ValueError('人物资料请选择简略或详细。')
             if 'initial_age' in payload and (isinstance(payload['initial_age'], bool) or not isinstance(payload['initial_age'], (int, float)) or payload['initial_age'] < 0):

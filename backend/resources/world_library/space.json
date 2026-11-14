@@ -1,0 +1,141 @@
+{
+  "format": "novix_world_pack",
+  "schema_version": 1,
+  "id": "space",
+  "title": "潮汐航路共同体",
+  "summary": "分散的轨道聚落通过少数可通行航道交换水、技术与消息；航程与通信延迟塑造各地差异。",
+  "category": "星际文明",
+  "tags": [
+    "星际文明",
+    "原创虚构示例"
+  ],
+  "world_id": "world_example_space",
+  "source": {
+    "kind": "original_example",
+    "label": "novix 原创虚构示例",
+    "usage": "可按作品需要采用和改编；示例规则不代表该题材的统一规范。"
+  },
+  "cards": [
+    {
+      "id": "world_example_space",
+      "type": "world",
+      "title": "潮汐航路共同体",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "world",
+        "summary": "分散的轨道聚落通过少数可通行航道交换水、技术与消息；航程与通信延迟塑造各地差异。",
+        "content": "分散的轨道聚落通过少数可通行航道交换水、技术与消息；航程与通信延迟塑造各地差异。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete",
+        "rules": [
+          "船只能沿已测绘航道跳跃，偏离航道风险不可忽略。信息传播需要时间；远端人物不能即时得知尚未抵达的消息。"
+        ]
+      }
+    },
+    {
+      "id": "world_example_space_rule",
+      "type": "world",
+      "title": "基础规则",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_space",
+        "summary": "船只能沿已测绘航道跳跃，偏离航道风险不可忽略。",
+        "content": "船只能沿已测绘航道跳跃，偏离航道风险不可忽略。信息传播需要时间；远端人物不能即时得知尚未抵达的消息。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_space_place",
+      "type": "world",
+      "title": "白环空间港",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_space",
+        "summary": "船坞、居住环与储水舱分区，通过转运廊连接；广播可以延迟，封舱会改变人物的可达路线。",
+        "content": "船坞、居住环与储水舱分区，通过转运廊连接；广播可以延迟，封舱会改变人物的可达路线。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_space_org",
+      "type": "world",
+      "title": "航路议席",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "organization",
+        "parent_id": "world_example_space",
+        "summary": "各聚落按航道维护贡献派代表，地方保留生活习惯；共同体的规定不代表所有外来文明都接受。",
+        "content": "各聚落按航道维护贡献派代表，地方保留生活习惯；共同体的规定不代表所有外来文明都接受。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_space_detail",
+      "type": "world",
+      "title": "第七补给站",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_space",
+        "summary": "远离主港，储量、维修能力与通信窗口有限。",
+        "content": "远离主港，储量、维修能力与通信窗口有限。补给选择可以改变后续航程，而非凭空补满资源。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_space_method",
+      "type": "world",
+      "title": "尺度与通信",
+      "tags": [
+        "星际文明",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_space",
+        "summary": "旅行时间、消息时间与章节叙述顺序分别记录。",
+        "content": "旅行时间、消息时间与章节叙述顺序分别记录。展示远景可以建立空间，有限视角仍只写人物能感知的内容。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    }
+  ],
+  "stages": [],
+  "relationships": [],
+  "facts": [],
+  "attachments": [],
+  "sources": []
+}

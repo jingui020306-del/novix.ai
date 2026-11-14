@@ -1,0 +1,141 @@
+{
+  "format": "novix_world_pack",
+  "schema_version": 1,
+  "id": "modern",
+  "title": "澄川市",
+  "summary": "一座原创的当代河港城市，旧工业区与新居民区在同一条渡线上相遇。制度细节可按作品需要另行设定。",
+  "category": "现代",
+  "tags": [
+    "现代",
+    "原创虚构示例"
+  ],
+  "world_id": "world_example_modern",
+  "source": {
+    "kind": "original_example",
+    "label": "novix 原创虚构示例",
+    "usage": "可按作品需要采用和改编；示例规则不代表该题材的统一规范。"
+  },
+  "cards": [
+    {
+      "id": "world_example_modern",
+      "type": "world",
+      "title": "澄川市",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "world",
+        "summary": "一座原创的当代河港城市，旧工业区与新居民区在同一条渡线上相遇。",
+        "content": "一座原创的当代河港城市，旧工业区与新居民区在同一条渡线上相遇。制度细节可按作品需要另行设定。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete",
+        "rules": [
+          "信息依赖采访、记录与可核实的亲历。公共公告、个人说法和作者确定的事实分开；未经确认的传闻不会自动成为城市通则。"
+        ]
+      }
+    },
+    {
+      "id": "world_example_modern_rule",
+      "type": "world",
+      "title": "基础规则",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_modern",
+        "summary": "信息依赖采访、记录与可核实的亲历。",
+        "content": "信息依赖采访、记录与可核实的亲历。公共公告、个人说法和作者确定的事实分开；未经确认的传闻不会自动成为城市通则。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_modern_place",
+      "type": "world",
+      "title": "南岸渡口",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_modern",
+        "summary": "早晚通勤拥挤，雨季会调整班次；对岸的灯光可见，具体对话与室内动作则无法从河边听清。",
+        "content": "早晚通勤拥挤，雨季会调整班次；对岸的灯光可见，具体对话与室内动作则无法从河边听清。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_modern_org",
+      "type": "world",
+      "title": "河港维修所",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "organization",
+        "parent_id": "world_example_modern",
+        "summary": "维修员、调度与社区代表共同安排旧设施检修；工作责任与私人交情可以产生冲突。",
+        "content": "维修员、调度与社区代表共同安排旧设施检修；工作责任与私人交情可以产生冲突。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_modern_detail",
+      "type": "world",
+      "title": "旧街档案室",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_modern",
+        "summary": "保存街区改造、旧船票与口述资料，记录可能缺页，口述者也可能只知道局部。",
+        "content": "保存街区改造、旧船票与口述资料，记录可能缺页，口述者也可能只知道局部。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_modern_method",
+      "type": "world",
+      "title": "现实参照与改编",
+      "tags": [
+        "现代",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_modern",
+        "summary": "这是虚构城市的可修改起点，不代表真实城市或现实法规。",
+        "content": "这是虚构城市的可修改起点，不代表真实城市或现实法规。故事使用具体制度之前，由作者补充或核实。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    }
+  ],
+  "stages": [],
+  "relationships": [],
+  "facts": [],
+  "attachments": [],
+  "sources": []
+}

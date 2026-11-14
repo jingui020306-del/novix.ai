@@ -250,6 +250,8 @@ class ChangeSuggestionService:
 
     @staticmethod
     def _changes(before, after, path=''):
+        from services.character_detail_service import strip_author_only
+        before, after = strip_author_only(before), strip_author_only(after)
         if isinstance(before, dict) and isinstance(after, dict):
             rows = []
             for key in sorted(set(before) | set(after)):
@@ -281,7 +283,8 @@ class ChangeSuggestionService:
             self._save(project_id, task_id, status='running')
             excerpts, coverage = self._excerpts(task['source_text'], task.get('mentions', []))
             changes = [change for item in task.get('setting_changes') or [task] for change in self._changes(item['before'], item['after'], item.get('card_title', ''))]
-            changes.extend(change for item in task.get('setting_changes') or [task] for change in item.get('extra_changes', []))
+            from services.character_detail_service import strip_author_only
+            changes.extend(strip_author_only(change) for item in task.get('setting_changes') or [task] for change in item.get('extra_changes', []))
             bounded_changes = []
             for change in changes:
                 item = {key: value if key == 'field' else json.dumps(value, ensure_ascii=False)[:1000] for key, value in change.items()}

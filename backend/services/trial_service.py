@@ -109,12 +109,15 @@ class TrialService:
         calls = []
         try:
             scope, chapter = value['scope'], value['chapter_id']
+            from services.prose_strategy_service import prose_guidance
+            direction = body.get('scene_direction') or self.store.read_json(project_id, f'drafts/{chapter}.meta.json').get('writing_alignment', {}).get('scene_direction', {})
+            guidance = prose_guidance(direction)
             linked = KnowledgeGraphService(self.store).materials(project_id, chapter, {'world_context': scope}, world_context=scope, scene_ref=scope.get('event_ref'), max_chars=8000)
             materials = InformationService(self.store).materials(project_id, scope, max_chars=4000)
             manifest = {'author_scope': {'scope': scope, 'narrative_pov': value.get('narrative_pov', ''), 'sources': [], 'warnings': []},
                 'linked_materials': linked, 'generation_control': {'world_context': scope}, 'information_materials': materials}
             prompt, report = ContextPackService(self.store).build(project_id, chapter, manifest, {'作者试写要求': body.get('instructions', value.get('instructions', '')),
-                '原选区（只作参考）': value['source_text'][value['target_range']['start']:value['target_range']['end']], '当前试写稿': value['text'], '场景': {}}, max_chars=18000)
+                '小说观察顺序': guidance, '原选区（只作参考）': value['source_text'][value['target_range']['start']:value['target_range']['end']], '当前试写稿': value['text'], '场景': {}}, max_chars=18000)
             if len(prompt) > 19000:
                 raise ValueError('本次试写材料过长，请缩小范围。')
             text = await self.authoring.complete(project_id, body, 'chapter_writer',

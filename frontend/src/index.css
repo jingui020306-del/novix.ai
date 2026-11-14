@@ -255,3 +255,12 @@ html[data-editor-size='large'] .editor-text { font-size: 16px; }
 .graph-controls-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .graph-controls-grid > :last-child { grid-column: 1 / -1; }
 @media (max-width: 599px) { .world-context-overview, .graph-controls-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.name-reference { color: rgb(var(--c-accent)); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; border-radius: 2px; }
+.name-reference:hover { background: rgb(var(--c-accent) / .08); }
+.name-reference-reading { max-width: 75ch; }
+
+.world-map-canvas { position: relative; display: inline-block; max-width: 100%; touch-action: none; line-height: 0; }
+.world-map-marker { position: absolute; transform: translate(-50%, -50%); min-width: 26px; height: 26px; padding-inline: 6px; border-radius: 50%; background: rgb(var(--c-panel)); color: rgb(var(--c-accent)); border: 1px solid rgb(var(--c-accent)); font-size: 12px; line-height: 24px; cursor: grab; }
+.world-map-marker.is-current { background: rgb(var(--c-accent)); color: rgb(var(--c-on-accent)); }
+.world-map-marker:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 3px; }

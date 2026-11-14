@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 
 export function cardAfterSave(current: any, submitted: any, result: any, before = JSON.stringify(submitted)) {
+  if (JSON.stringify(current) === before && result.id === submitted.id && result.type === submitted.type && result.payload && typeof result.payload === 'object' && !Array.isArray(result.payload)) {
+    const saved = { ...result }; delete saved.change_suggestions; delete saved._source_versions
+    return saved
+  }
   const metadata = { _revision: result._revision ?? submitted._revision ?? '', ...(result.updated_at ? { updated_at: result.updated_at } : {}) }
   let beforeValue: any = null
   try { beforeValue = JSON.parse(before) } catch {}

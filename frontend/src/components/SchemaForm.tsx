@@ -9,7 +9,7 @@ import { MaterialReferences, OpenMaterial } from './MaterialReferences'
 const LABELS: Record<string, string> = {
   detail_level: '人物资料深度', initial_age: '初始年龄', initial_age_time: '初始年龄对应时间', birth_date: '出生日期', initial_pov: '默认人物视角', world_context: '世界与发生时间', time: '发生时间', year: '年份',
   notes: '备注', plot: '发生的事', outcome: '本场结果', next_question: '留给下一场的问题', placement: '使用位置', reason: '原因', effect: '希望达到的效果', information_ids: '关联的关键信息', truth_status: '作者是否确定真相', truth_value: '作者确定的真相',
-  payload: '设定内容', title: '名称', tags: '标签', name: '姓名', identity: '身份', appearance: '基础外貌',
+  maps: '地图与插图', hotspots: '图中标记', detail_sections: '补充人物细节', usage: '写作使用方式', situation: '适用处境', prose_strategy: '描写顺序', payload: '设定内容', title: '名称', tags: '标签', name: '姓名', identity: '身份', appearance: '基础外貌',
   core_motivation: '最想得到什么', personality_traits: '性格', family_background: '成长经历',
   voice: '表达习惯', boundaries: '不能突破的底线', relationships: '人物关系', arc: '成长变化',
   target: '关联人物', type: '关系', beat: '发生在何处', goal: '目标', role: '人物角色',
@@ -106,7 +106,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
     <div className={path === 'card.payload' ? 'schema-fields-grid' : 'space-y-5'}>
       {Object.entries(properties || {}).map(([key, spec]: any) => {
         if (hiddenFields.includes(key)) return null
-        if (['field_provenance', 'information_ids', 'writing_references', '_revision', 'detail_level', 'world_context', 'importance', 'stars'].includes(key)) return null
+        if (['maps', 'detail_sections', 'field_provenance', 'information_ids', 'writing_references', '_revision', 'detail_level', 'world_context', 'importance', 'stars'].includes(key)) return null
         if (value?.type === 'character' && value.payload?.detail_level === 'brief' && path === 'card.payload' && !['name', 'identity', 'initial_age', 'initial_age_time', 'gender', 'pronouns'].includes(key)) return null
         if (key === 'reference_image') return null
         if (key === 'extra_context' && value?.type === 'world') return null

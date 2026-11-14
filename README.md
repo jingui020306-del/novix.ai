@@ -20,6 +20,16 @@ It keeps detailed literary planning assets such as story control, characters, wo
 - Evidence marks and trust reports: AI claims must map back to quotes and line ranges before they can be treated as supported.
 - Patch review: AI patches are pending by default and can be accepted, rejected, or rolled back.
 - Local backup and export: project ZIP backup, backup restore as a new project, manuscript Markdown export.
+- Reusable world library: five original genre examples, private material workspaces, partial selection with dependency previews, and independent work instances pinned to a source version.
+- Character detail sections with scene/time applicability and an author-only setting; optional prose observation strategies are used by writing, revision, and review.
+
+## World Materials
+
+Open **作品设定 → 世界总览 → 世界资料库** to choose an original example or create a private library. Raw TXT/PDF/images/ZIP files remain source material until you review and apply extracted candidates. When several entries could be the world root, use the entry type **世界简介** to identify it explicitly. Adopting a world creates an independent instance; choose it under the story's world background before writing. Source updates are compared, never silently applied.
+
+Canonical settings remain in `cards/*.yaml`, changes and facts in `canon/*.jsonl`, and original materials in attachment files. `meta/material_index.sqlite3` is a rebuildable query copy, with Chinese short-name and alias matching; losing it does not lose your settings. Search can fall back to saved files when rebuilding fails. ZIP backups include canonical data and sources, omit this index, and rebuild it after restoration.
+
+ZIP and PDF uploads support up to 512 MB; other individual files support up to 12 MB. Packages are inventoried before bounded extraction. PDF text and visual pages report coverage separately; unrecognized pages stay unread. Vision/OCR and semantic extraction require a configured model and an explicit AI action. External world-building tools are links, with no automatic cross-site synchronization.
 
 ## Current Trust Model
 

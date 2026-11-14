@@ -1,0 +1,141 @@
+{
+  "format": "novix_world_pack",
+  "schema_version": 1,
+  "id": "xianxia",
+  "title": "青砚诸山",
+  "summary": "灵气沿山脉与河谷流动，修行者、工匠和凡人城镇共同依赖可耗竭的山泉。",
+  "category": "修仙",
+  "tags": [
+    "修仙",
+    "原创虚构示例"
+  ],
+  "world_id": "world_example_xianxia",
+  "source": {
+    "kind": "original_example",
+    "label": "novix 原创虚构示例",
+    "usage": "可按作品需要采用和改编；示例规则不代表该题材的统一规范。"
+  },
+  "cards": [
+    {
+      "id": "world_example_xianxia",
+      "type": "world",
+      "title": "青砚诸山",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "world",
+        "summary": "灵气沿山脉与河谷流动，修行者、工匠和凡人城镇共同依赖可耗竭的山泉。",
+        "content": "灵气沿山脉与河谷流动，修行者、工匠和凡人城镇共同依赖可耗竭的山泉。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete",
+        "rules": [
+          "修行提升可承受的灵气与精细控制，但不能凭境界自动获知真相。借用山泉修复伤势会减少旱季供水，代价由各城共同协商。"
+        ]
+      }
+    },
+    {
+      "id": "world_example_xianxia_rule",
+      "type": "world",
+      "title": "基础规则",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_xianxia",
+        "summary": "修行提升可承受的灵气与精细控制，但不能凭境界自动获知真相。",
+        "content": "修行提升可承受的灵气与精细控制，但不能凭境界自动获知真相。借用山泉修复伤势会减少旱季供水，代价由各城共同协商。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_xianxia_place",
+      "type": "world",
+      "title": "青砚渡",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_xianxia",
+        "summary": "渡口连接三座山门与下游农田，客船、药材和雨水记录都由此经过。",
+        "content": "渡口连接三座山门与下游农田，客船、药材和雨水记录都由此经过。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_xianxia_org",
+      "type": "world",
+      "title": "三泉盟约",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "organization",
+        "parent_id": "world_example_xianxia",
+        "summary": "各山门共同维护泉眼，轮值公开取水账册；争议可以通过见证与补偿处理，而非只由修为决定。",
+        "content": "各山门共同维护泉眼，轮值公开取水账册；争议可以通过见证与补偿处理，而非只由修为决定。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_xianxia_detail",
+      "type": "world",
+      "title": "旧药圃",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_xianxia",
+        "summary": "药圃种植周期漫长，盗采会影响数年供给。",
+        "content": "药圃种植周期漫长，盗采会影响数年供给。守圃人认识植物却未必认得山门密令。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_xianxia_method",
+      "type": "world",
+      "title": "修为的限制",
+      "tags": [
+        "修仙",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_xianxia",
+        "summary": "修为说明能力范围，不替代经验、证据和人物意愿。",
+        "content": "修为说明能力范围，不替代经验、证据和人物意愿。誓约由当事人确认；是否违约需要记录与见证。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    }
+  ],
+  "stages": [],
+  "relationships": [],
+  "facts": [],
+  "attachments": [],
+  "sources": []
+}

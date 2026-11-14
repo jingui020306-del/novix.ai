@@ -39,6 +39,9 @@ from services.trial_service import TrialService
 from services.edit_version_service import revision
 from services.scene_rehearsal_service import SceneRehearsalService
 from services.knowledge_graph_service import KnowledgeGraphService
+from services.character_detail_service import select_character_details, validate_detail_sections
+from services.context_engine import ContextEngine
+from jobs.manager import JobManager
 from storage.fs_store import FSStore
 
 
@@ -220,6 +223,11 @@ def test_four_participant_relationship_is_one_record_with_directed_addresses_and
 
 
 def test_same_named_events_keep_identity_and_explicit_alias_updates_one_source(store):
+    for identity in ['person_a', 'person_b']:
+        card(store, identity, 'character', {'name': '同名人物', 'identity': '', 'aliases': ['共同别名']})
+    observer = card(store, 'observer', 'world', {'summary': '只关联确定身份'})
+    observer['links'] = ['同名人物', '共同别名', 'person_a']
+    store.write_yaml('p', 'cards/observer.yaml', observer)
     card(store, 'story_1', 'story', {'important_scenes': [
         {'id': 'first', 'scene': '同名相遇', 'summary': '第一次', 'rehearsal': {'text': '作者已确认安排'}},
         {'id': 'second', 'scene': '同名相遇', 'summary': '第二次', 'causal_scene_ids': ['first']},
@@ -238,6 +246,7 @@ def test_same_named_events_keep_identity_and_explicit_alias_updates_one_source(s
     assert arrangement['owner_card_id'] == 'story_1' and arrangement['scene_id'] == 'first'
     graph = KnowledgeGraphService(store).graph('p')
     assert any(edge['label'] == '同一事件的来源映射' and edge['target'] == 'story_1:important_scenes:first' for edge in graph['edges'])
+    assert {edge['target'] for edge in graph['edges'] if edge['source'] == 'observer' and edge['label'] == '引用'} == {'person_a'}
     nodes = {node['id']: node for node in graph['nodes']}
     scenes = [node for node in graph['nodes'] if node['type'] == 'scene']
     assert len(scenes) == 3 and 'outline_1:important_scenes:mapped' not in nodes
@@ -1420,3 +1429,403 @@ def test_amendment_publish_and_restore_retry_once_and_atomic_writes_keep_old_byt
                 writer('p', path, new)
         assert destination.read_bytes() == raw
         assert not list(destination.parent.glob(destination.name + '.*.tmp'))
+
+
+def test_character_details_keep_stable_stage_identity_scope_and_author_private_boundary(store):
+    card(store, 'world_1', 'world', {})
+    card(store, 'person_b', 'character', {'name': '乙', 'identity': ''})
+    card(store, 'person_c', 'character', {'name': '丙', 'identity': ''})
+    sections = [
+        {'id': 'habit', 'title': '紧张时', 'content': '起点习惯', 'usage': 'relevant', 'sources': ['作者原设定']},
+        {'id': 'remove_later', 'title': '后来放下', 'content': '旧习惯', 'usage': 'relevant'},
+        {'id': 'private', 'title': '作者秘密', 'content': 'PRIVATE_DETAIL_NEVER_MODEL', 'usage': 'author_only'},
+        {'id': 'for_b', 'title': '面对乙', 'content': '只在乙面前调整措辞', 'usage': 'relevant', 'target_ids': ['person_b']},
+        {'id': 'for_c', 'title': '面对丙', 'content': '不属于当前对象', 'usage': 'focus', 'target_ids': ['person_c']},
+    ]
+    base = card(store, 'person_a', 'character', {'name': '甲', 'identity': '', 'detail_sections': sections})
+    validate_detail_sections(store, 'p', sections)
+    with pytest.raises(ValueError):
+        validate_detail_sections(store, 'p', [sections[0], sections[0]])
+    before = store._safe_path('p', 'cards/person_a.yaml').read_bytes()
+    author = AuthorDataService(store)
+    author.add_stage('p', 'character', 'person_a', {'status': 'confirmed', 'scope': {'world_id': 'world_1', 'time': {'year': 2010}},
+        'changes': {'detail_sections': [{**sections[0], 'content': '经历后不再回避目光'}, {'id': 'remove_later', 'removed': True}]}, 'source': {'kind': 'author'}})
+    author.add_stage('p', 'character', 'person_a', {'status': 'confirmed', 'scope': {'world_id': 'world_1', 'time': {'year': 2030}},
+        'changes': {'detail_sections': [{**sections[0], 'content': '未来终局习惯不得提前'}]}, 'source': {'kind': 'author'}})
+    scope = {'world_id': 'world_1', 'time': {'year': 2020}}
+    state = author.character_state('p', 'person_a', world_context=scope)['state']
+    assert {row['id'] for row in state['detail_sections']} == {'habit', 'private', 'for_b', 'for_c'}
+    assert next(row['content'] for row in state['detail_sections'] if row['id'] == 'habit') == '经历后不再回避目光'
+    selected = select_character_details(store, 'p', {**base, 'payload': state}, scope,
+                                        {'cast': ['person_a', 'person_b']}, focus_ids=['private', 'for_c'])
+    assert {row['id'] for row in selected} == {'habit', 'for_b'}
+    assert 'PRIVATE_DETAIL_NEVER_MODEL' not in json.dumps(selected)
+    assert store._safe_path('p', 'cards/person_a.yaml').read_bytes() == before
+    early = author.character_state('p', 'person_a', world_context={'world_id': 'world_1', 'time': {'year': 2000}})['state']
+    assert early['detail_sections'] == sections
+
+
+def test_author_only_details_are_absent_at_actual_gateway_across_authoring_paths(store, monkeypatch):
+    async def scenario():
+        private = 'PRIVATE_SENTINEL_DO_NOT_SEND_20261114'
+        public = '面对乙时先把话说完整，再移开视线'
+        scope = {'world_id': 'world_1', 'time': {'year': 2020}}
+        card(store, 'world_1', 'world', {})
+        person = card(store, 'person_a', 'character', {'name': '阿青', 'identity': '信使',
+            'sources': [{'path': 'sessions/original-reference.txt', 'quote': private, 'note': private}], 'detail_sections': [
+            {'id': 'public', 'title': '交往细节', 'content': public, 'usage': 'focus'},
+            {'id': 'private', 'title': '作者私密底稿', 'content': private, 'usage': 'author_only'}]})
+        card(store, 'person_b', 'character', {'name': '乙', 'identity': '守门人'})
+        card(store, 'story_1', 'story', {'world_context': scope, 'important_scenes': [
+            {'id': 'meeting', 'scene': '门边交谈', 'chapter': 'chapter_001', 'characters': ['person_a', 'person_b'], 'cast': ['person_a', 'person_b']}]})
+        store.write_md('p', 'drafts/chapter_001.md', '阿青走到门边，把信递给乙。')
+        store.write_md('p', 'drafts/.chapter_order', 'chapter_001')
+        store.write_json('p', 'drafts/chapter_001.meta.json', {'story_card_id': 'story_1', 'world_context': scope, 'material_ids': ['person_a']})
+        prompts, outputs = [], []
+
+        class Gateway:
+            async def chat_complete(self, messages, model, *args):
+                prompts.append(copy.deepcopy(messages))
+                return {'text': outputs.pop(0), 'usage': {'prompt_tokens': 2, 'completion_tokens': 2, 'total_tokens': 4, 'estimated': False}}
+
+        manager = SimpleNamespace(store=store, llm_gateway=Gateway(), context_engine=SimpleNamespace(kb=KBService(store)),
+            _resolve_profile=lambda p, body, module: ('isolated', {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid'}, None))
+        authoring = AuthoringService(manager)
+        pack, _ = ContextPackService(store).build('p', 'chapter_001', {'included_cards': [person], 'generation_control': {
+            'world_context': scope, 'character_detail_focus': {'person_a': ['private']}}}, {'场景': {'cast': ['person_a', 'person_b']}})
+        assert private not in pack and public in pack
+        outputs.append('{"value":"新的候选身份"}')
+        await authoring.generate_field('p', {'card': person, 'path': ['payload', 'identity'], 'world_context': scope})
+        rehearsal = SceneRehearsalService(store, authoring)
+        current = rehearsal.get('p', 'story_1', 'meeting')
+        outputs.append('{"draft":{"text":"阿青递信，乙接过后追问来意。","outcome":"信件已交付","next_question":"乙会不会放行？","technique_ids":[],"technique_applications":[]},"literary_impacts":[]}')
+        await rehearsal.propose('p', 'story_1', 'meeting', {key: current[key] for key in ['draft', 'source_versions', 'base_hash']})
+        text = store.read_md('p', 'drafts/chapter_001.md')
+        outputs.append('阿青来到门边，将信交到乙手里。')
+        revision_candidate = await authoring.revise('p', 'chapter_001', {'source_text': text, 'mode': 'cinematic', 'story_card_id': 'story_1',
+            'scene_direction': {'prose_strategy': 'spatial_flow'}, 'allow_plot_change': False})
+        assert revision_candidate['candidate_kind'] == 'expression_only' and store.read_md('p', 'drafts/chapter_001.md') == text
+        trials = TrialService(store, authoring)
+        trial = trials.create('p', 'chapter_001', {'story_card_id': 'story_1'})
+        outputs.append('阿青在门前停步，递出折好的信。')
+        await trials.generate('p', trial['id'], {'revision': trial['revision'], 'scene_direction': {'prose_strategy': 'delayed_reveal'}})
+        changed = copy.deepcopy(person)
+        changed['payload']['detail_sections'][0]['content'] = '面对乙时先问清规矩，再递出信件'
+        changed['payload']['detail_sections'][1]['content'] = private + '_CHANGED'
+        store.write_yaml('p', 'cards/person_a.yaml', changed)
+        changes = ChangeSuggestionService(store, authoring)
+        queued = changes.enqueue('p', 'person_a', person, changed)
+        assert queued['queued_count'] == 1
+        monkeypatch.setitem(change_module._EDITED_AT, str(store._project_dir('p')), 0)
+        outputs.append('{"changes":[]}')
+        await changes.process('p', queued['task_ids'])
+        assert len(prompts) == 5 and not outputs
+        for label, messages in zip(['field', 'scene', 'rewrite', 'trial', 'change_suggestion'], prompts):
+            assert private not in json.dumps(messages, ensure_ascii=False), label
+        assert any(public in json.dumps(messages, ensure_ascii=False) for messages in prompts)
+        assert 'spatial_flow' in prompts[2][-1]['content'] and 'delayed_reveal' in prompts[3][-1]['content']
+        assert store.read_yaml('p', 'cards/person_a.yaml')['payload']['sources'][0]['quote'] == private
+
+    asyncio.run(scenario())
+
+
+def test_prose_strategy_uses_original_pipeline_calls_and_reviews_only_verifiable_range(store, monkeypatch):
+    async def scenario():
+        scope = {'world_id': 'world_1', 'time': {'year': 1930}}
+        private = 'PRIVATE_WRITER_AND_REVIEWER_BOUNDARY'
+        card(store, 'world_1', 'world', {'summary': '河港'})
+        card(store, 'person_a', 'character', {'name': '阿青', 'identity': '信使', 'detail_sections': [
+            {'id': 'private', 'title': '作者底稿', 'content': private, 'usage': 'author_only'},
+            {'id': 'habit', 'title': '注意对象', 'content': '先看门闩，再判断是否开门', 'usage': 'relevant'}]})
+        card(store, 'style_001', 'style', {'style_guide': {'pov': '有限第三人称'}})
+        card(store, 'outline_001', 'outline', {'beats': []})
+        store.write_md('p', 'drafts/chapter_001.md', '')
+        store.write_md('p', 'drafts/.chapter_order', 'chapter_001')
+        store.write_json('p', 'drafts/chapter_001.meta.json', {'world_context': scope, 'pov_character_id': 'person_a'})
+        store.write_json('p', 'cards/blueprint_1.json', {'id': 'blueprint_1', 'scene_plan': [
+            {'cast': ['person_a'], 'purpose': '递信', 'situation': '走到门边交付信件', 'beats': []}]})
+        calls = []
+        sample = '阿青推开门。' + '他沿着墙根走到窗下，停住脚步。' * 1200
+
+        class Gateway:
+            async def chat_stream(self, messages, model, *args):
+                calls.append((model, copy.deepcopy(messages)))
+                yield sample
+
+            async def chat_complete(self, messages, model, *args):
+                calls.append((model, copy.deepcopy(messages)))
+                if model == 'chapter_reviewer':
+                    text = json.dumps({'issues': [
+                        {'category': 'space_action', 'issue': '供作者判断的空间建议', 'quote': '阿青推开门。'},
+                        {'category': 'repetition', 'issue': '无法回查的模型建议', 'quote': '这句话根本不在正文里'}]}, ensure_ascii=False)
+                else:
+                    text = '{"ops":[]}'
+                return {'text': text, 'usage': {'prompt_tokens': 2, 'completion_tokens': 2, 'total_tokens': 4, 'estimated': False}}
+
+        manager = JobManager(store, ContextEngine(store, KBService(store)), Gateway())
+        monkeypatch.setattr(manager, '_resolve_profile', lambda p, body, module='writer': ('isolated',
+            {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid'},
+            {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid'}))
+        await manager._pipeline('job_prose', 'p', {'chapter_id': 'chapter_001', 'blueprint_id': 'blueprint_1', 'scene_index': 0,
+            'writing_run': {'label': '本章'}, 'generation_control': {'world_context': scope, 'pov_character_id': 'person_a',
+                'scene_direction': {'prose_strategy': 'spatial_flow'}}, 'auto_apply_patch': False})
+        job = manager.get_job('p', 'job_prose')
+        assert job['status'] == 'completed', job.get('last_error')
+        assert [model for model, _ in calls] == ['chapter_writer', 'chapter_reviewer', 'proofreader']
+        assert 'spatial_flow' in calls[0][1][-1]['content']
+        assert all(private not in json.dumps(messages, ensure_ascii=False) for _, messages in calls)
+        review = next(row['data'] for row in job['events'] if row['event'] == 'CRITIC_REVIEW')
+        assert review['format'] == 'structured' and review['coverage']['partial'] is True
+        assert review['coverage']['examined_chars'] == 18000 < review['coverage']['total_chars']
+        assert review['issues'][0]['support_level'] == 'supported' and review['issues'][0]['evidence']['quote'] == '阿青推开门。'
+        assert review['issues'][1]['support_level'] == 'unsupported' and review['issues'][1]['evidence']['quote'] == ''
+        assert not store.read_jsonl('p', 'canon/facts.jsonl')
+        assert not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+
+    asyncio.run(scenario())
+
+
+def test_zip_import_preserves_paths_resumes_completed_units_and_links_candidates(store, monkeypatch):
+    async def scenario():
+        def archive(entries):
+            output = io.BytesIO()
+            with zipfile.ZipFile(output, 'w') as package:
+                for path, content in entries:
+                    package.writestr(path, content)
+            return output.getvalue()
+
+        raw = archive([('文明/规则.txt', '规则：每夜闭门。'), ('地区/规则.txt', '地区：北岸临河。'), ('其他/未知.bin', b'unknown-format')])
+        calls, fail = [], [True]
+
+        class Authoring:
+            async def complete(self, *args, **kwargs):
+                prompt = json.loads(args[-1])
+                path = prompt['来源'].get('package_path') or prompt['来源'].get('filename')
+                calls.append(path)
+                if path == '新补充.txt':
+                    return json.dumps({'cleaned_text': prompt['原文'], 'candidates': []}, ensure_ascii=False)
+                if path.startswith('地区') and fail[0]:
+                    fail[0] = False
+                    raise RuntimeError('模拟第二文件模型暂时失败')
+                parent = path.startswith('文明')
+                candidate = {'id': 'parent' if parent else 'child', 'kind': 'world', 'label': '河港' if parent else '北岸',
+                    'values': {'title': '河港' if parent else '北岸', 'entry_type': 'world' if parent else 'place', 'summary': prompt['原文']},
+                    'evidence': [{'quote': prompt['原文']}]}
+                if not parent:
+                    candidate.update(parent_candidate_id='parent', material_candidate_ids=['parent'])
+                return json.dumps({'cleaned_text': prompt['原文'], 'candidates': [candidate]}, ensure_ascii=False)
+
+        class Stream(io.BytesIO):
+            def read(self, size=-1):
+                assert 0 < size <= 1024 * 1024
+                return super().read(size)
+
+        service = MaterialImportService(store, Authoring())
+        work = service.create_upload('p', {'purpose': 'world'}, Stream(raw), '世界.zip')
+        members = [source for source in work['sources'] if source.get('package_path')]
+        assert {source['package_path'] for source in members} == {'文明/规则.txt', '地区/规则.txt', '其他/未知.bin'}
+        assert len({source['raw_path'] for source in members}) == 3
+        assert store._safe_path('p', work['source']['raw_path']).read_bytes() == raw
+        work = await service.extract('p', work['id'], {'base_revision': work['revision'], 'max_units': 1})
+        assert not work['progress']['complete'] and work['progress']['completed_units'] == 1
+        with pytest.raises(RuntimeError, match='第二文件'):
+            await service.extract('p', work['id'], {'base_revision': work['revision'], 'max_units': 1})
+        failed = service.get('p', work['id'])
+        assert failed['status'] == 'failed' and len(failed['extraction_units']) == 1 and failed['candidates'][0]['id'] == 'parent'
+        work = await service.extract('p', work['id'], {'base_revision': failed['revision'], 'max_units': 2})
+        assert calls == ['文明/规则.txt', '地区/规则.txt', '地区/规则.txt']
+        assert work['progress']['completed_units'] == 2 and work['progress']['unread'] and not work['progress']['complete']
+        assert {candidate['id'] for candidate in work['candidates']} == {'parent', 'child'}
+        work = service.add_source('p', work['id'], {'base_revision': work['revision']}, raw='补充材料：守门会。'.encode(), filename='新补充.txt')
+        work = await service.extract('p', work['id'], {'base_revision': work['revision'], 'max_units': 5})
+        assert calls == ['文明/规则.txt', '地区/规则.txt', '地区/规则.txt', '新补充.txt']
+        applied = service.apply('p', work['id'], {'base_revision': work['revision'], 'selected_ids': ['parent', 'child']})
+        parent = next(row['target_id'] for row in applied['results'] if row['candidate_id'] == 'parent')
+        child = next(row['target_id'] for row in applied['results'] if row['candidate_id'] == 'child')
+        payload = store.read_yaml('p', f'cards/{child}.yaml')['payload']
+        assert payload['parent_id'] == parent and parent in payload['material_ids']
+        for entries in [[('../escape.txt', '越界')], [('A.txt', '一个版本'), ('a.txt', '另一个版本')]]:
+            with pytest.raises(ValueError):
+                service.create('p', {'purpose': 'world'}, raw=archive(entries), filename='bad.zip')
+        from services import material_package_service
+        monkeypatch.setattr(material_package_service, 'MAX_PACKAGE_FILES', 1)
+        with pytest.raises(ValueError, match='文件|拆包'):
+            service.create('p', {'purpose': 'world'}, raw=archive([('1.txt', '甲'), ('2.txt', '乙')]), filename='too-many.zip')
+        assert not (store.data_dir.parent / 'escape.txt').exists()
+
+    asyncio.run(scenario())
+
+
+def test_pdf_text_and_visual_progress_and_map_coordinates_remain_separate(store, monkeypatch):
+    import struct
+    import zlib
+    def chunk(kind, data):
+        return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data))
+    png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!IIBBBBB', 1, 1, 8, 0, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(b'\x00\x00')) + chunk(b'IEND', b'')
+    monkeypatch.setattr(reader_module.shutil, 'which', lambda name: name)
+    def extracted(arguments, **kwargs):
+        if Path(arguments[0]).name == 'pdftotext':
+            if arguments[-1] != '-':
+                Path(arguments[-1]).write_text('规则：每夜闭门。' if arguments[2] == '1' else '', encoding='utf-8')
+                return SimpleNamespace(stdout=b'')
+            return SimpleNamespace(stdout='规则：每夜闭门。\f\f'.encode())
+        return SimpleNamespace(stdout=b'Pages: 2\n')
+    monkeypatch.setattr(reader_module.subprocess, 'run', extracted)
+    root = card(store, 'world_1', 'world', {'entry_type': 'world', 'summary': '河港'})
+    card(store, 'north', 'world', {'entry_type': 'place', 'parent_id': 'world_1'})
+    card(store, 'world_2', 'world', {'entry_type': 'world'})
+    card(store, 'foreign', 'world', {'entry_type': 'place', 'parent_id': 'world_2'})
+    text_calls, visuals = [], []
+
+    class Authoring:
+        async def complete(self, *args, **kwargs):
+            text_calls.append(json.loads(args[-1])['原文'])
+            return '{"cleaned_text":"","candidates":[]}'
+
+    service = MaterialImportService(store, Authoring())
+    work = service.create('p', {'purpose': 'world', 'world_context': {'world_id': 'world_1'}}, raw=b'%PDF-1.4\nmocked external tool input', filename='图文.pdf')
+    assert work['source']['page_count'] == 2 and work['source']['pages'][0]['text_status'] == 'read'
+    assert all(page['visual_status'] == 'pending' for page in work['source']['pages'])
+
+    def page_path(project, batch, source, page):
+        target = store._safe_path(project, f'sessions/material_imports/{batch}/pages/{source}/{page}.png')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(png)
+        return target
+
+    async def visual(project, record, body, calls):
+        visuals.append(body['page'])
+        return json.dumps({'transcription': '图示北岸' if body['page'] == 2 else '文字页视觉核对',
+            'kind': 'map' if body['page'] == 2 else 'none', 'title': '北岸图',
+            'hotspots': [{'label': '北岸', 'display_position': {'x': 0.2, 'y': 0.4}}]}, ensure_ascii=False)
+
+    monkeypatch.setattr(service, 'pdf_page_path', page_path)
+    monkeypatch.setattr(service, '_visual_text', visual)
+
+    async def process():
+        current = await service.extract('p', work['id'], {'base_revision': work['revision'], 'include_visual': False, 'max_units': 1})
+        assert len(text_calls) == 1 and not visuals and not current['progress']['complete']
+        current = await service.extract('p', work['id'], {'base_revision': current['revision'], 'max_units': 1})
+        assert visuals == [1] and not current['progress']['complete']
+        return await service.extract('p', work['id'], {'base_revision': current['revision'], 'max_units': 5})
+
+    finished = asyncio.run(process())
+    assert visuals == [1, 2] and finished['progress']['complete']
+    image = next(candidate['values']['maps'][0] for candidate in finished['candidates'] if candidate['values'].get('maps'))
+    assert image['source']['page'] == 2 and image['source']['version'] == work['source']['version']
+    assert image['hotspots'][0]['status'] == 'candidate'
+    image['coordinate_system'] = 'grid'
+    image['hotspots'][0].update(coordinates={'x': 40, 'y': 12}, display_position={'x': 0.6, 'y': 0.3}, entity_id='north', status='confirmed')
+    app = FastAPI()
+    from fastapi.responses import JSONResponse
+    # Mirror the production conflict handler without importing main or real data.
+    app.add_exception_handler(FileExistsError, lambda request, exc: JSONResponse(status_code=409, content={'detail': str(exc)}))
+    app.include_router(cards.router)
+    app.dependency_overrides[cards.get_store] = lambda: store
+    app.dependency_overrides[cards.get_change_service] = lambda: ChangeSuggestionService(store)
+    canon = {path.name: path.read_bytes() for path in store._safe_path('p', 'canon').glob('*') if path.is_file()}
+    with TestClient(app) as client:
+        url = '/api/projects/p/cards/world_1'
+        current = client.get(url).json()
+        current['payload']['maps'] = [image]
+        response = client.put(url, json=current)
+        assert response.status_code == 200, response.text
+        legacy = client.get(url).json()
+        legacy['payload'].pop('entry_type')
+        assert client.put(url, json=legacy).status_code == 200
+        saved = store._safe_path('p', 'cards/world_1.yaml').read_bytes()
+        assert store.read_yaml('p', 'cards/world_1.yaml')['payload']['maps'][0]['hotspots'][0]['coordinates'] == {'x': 40, 'y': 12}
+        for field, value, code in [('entity_id', 'foreign', 400), ('version', 'stale_image_source', 409)]:
+            bad = client.get(url).json()
+            if field == 'entity_id':
+                bad['payload']['maps'][0]['hotspots'][0][field] = value
+            else:
+                bad['payload']['maps'][0]['source'][field] = value
+            assert client.put(url, json=bad).status_code == code
+            assert store._safe_path('p', 'cards/world_1.yaml').read_bytes() == saved
+    assert canon == {path.name: path.read_bytes() for path in store._safe_path('p', 'canon').glob('*') if path.is_file()}
+    large = b'%PDF-1.4\n%' + b'x' * (13 * 1024 * 1024)
+    read_bytes = Path.read_bytes
+    def reject_reading_full_pdf(path):
+        assert path.name != 'upload' and path.suffix != '.pdf', 'large original PDF must be streamed, not read_bytes'
+        return read_bytes(path)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'read_bytes', reject_reading_full_pdf)
+        lazy = service.create_upload('p', {'purpose': 'world'}, io.BytesIO(large), 'large.pdf')
+        assert lazy['source']['lazy_pdf'] and lazy['source']['page_count'] == 2
+        assert all(page['text_status'] == 'pending' for page in lazy['source']['pages'])
+        local = asyncio.run(service.extract('p', lazy['id'], {'base_revision': lazy['revision'], 'use_ai': False}))
+        assert local['source']['pages'][0]['text_status'] == 'read' and local['source']['pages'][1]['text_status'] == 'empty'
+        assert not local['progress']['complete'] and all(page['visual_status'] == 'pending' for page in local['source']['pages'])
+    assert store._safe_path('p', lazy['source']['raw_path']).read_bytes() == large
+    with pytest.raises(ValueError, match='12 MB'):
+        service.create_upload('p', {'purpose': 'world'}, io.BytesIO(large), 'too-large.txt')
+
+
+def test_card_operations_preview_versions_locks_and_display_order_do_not_rewrite_history(store):
+    from services.card_operation_service import CardOperationService
+    service = CardOperationService(store)
+    card(store, 'world_1', 'world', {'entry_type': 'world'})
+    card(store, 'note', 'world', {'entry_type': 'custom', 'parent_id': 'world_1', 'content': '第一部分。\n\n第二部分。'})
+    card(store, 'story_1', 'story', {'world_context': {'world_id': 'world_1'}, 'important_scenes': [
+        {'id': 'first', 'scene': '先发生', 'rehearsal': {'status': 'confirmed', 'text': '旧确认安排'}, 'world_context': {'time': {'year': 1930}}},
+        {'id': 'second', 'scene': '后发生', 'world_context': {'time': {'year': 1940}}, 'causal_scene_ids': ['first']}]})
+    store.write_md('p', 'drafts/chapter_001.md', '正式正文。')
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_001\nchapter_002')
+    draft = store._safe_path('p', 'drafts/chapter_001.md').read_bytes()
+    order = store._safe_path('p', 'drafts/.chapter_order').read_bytes()
+    original = store._safe_path('p', 'cards/note.yaml').read_bytes()
+    preview = service.preview('p', {'action': 'split', 'source_id': 'note'})
+    assert preview['can_apply'] and store._safe_path('p', 'cards/note.yaml').read_bytes() == original
+    changed = store.read_yaml('p', 'cards/note.yaml')
+    changed['payload']['summary'] = '预览后作者新增'
+    store.write_yaml('p', 'cards/note.yaml', changed)
+    with pytest.raises(FileExistsError):
+        service.apply('p', preview['id'], {'revision': preview['revision']})
+    fresh = service.preview('p', {'action': 'split', 'source_id': 'note'})
+    adopted = service.apply('p', fresh['id'], {'revision': fresh['revision']})
+    child = adopted['result']['ids'][0]
+    value = store.read_yaml('p', f'cards/{child}.yaml')
+    value['payload']['summary'] = '拆分后作者继续写的内容'
+    store.write_yaml('p', f'cards/{child}.yaml', value)
+    before = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    with pytest.raises(FileExistsError):
+        service.undo('p', fresh['id'], {'revision': adopted['revision']})
+    assert before == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    with pytest.raises(ValueError, match='循环'):
+        service.preview('p', {'action': 'reparent', 'source_id': 'world_1', 'parent_id': child})
+    display = service.preview('p', {'action': 'reorder', 'source_id': 'story_1:important_scenes:first',
+        'order': ['story_1:important_scenes:second', 'story_1:important_scenes:first']})
+    service.apply('p', display['id'], {'revision': display['revision']})
+    rows = store.read_yaml('p', 'cards/story_1.yaml')['payload']['important_scenes']
+    assert [row['id'] for row in rows] == ['first', 'second']
+    assert [row['sort_order'] for row in rows] == [1, 0]
+    assert rows[0]['world_context']['time']['year'] == 1930 and rows[1]['causal_scene_ids'] == ['first']
+    assert store._safe_path('p', 'drafts/chapter_001.md').read_bytes() == draft
+    assert store._safe_path('p', 'drafts/.chapter_order').read_bytes() == order
+    split_event = service.preview('p', {'action': 'split', 'source_id': 'story_1:important_scenes:first',
+        'parts': [{'title': '第一小段', 'content': '一个动作'}, {'title': '第二小段', 'content': '另一个动作'}]})
+    service.apply('p', split_event['id'], {'revision': split_event['revision']})
+    parts = store.read_yaml('p', 'cards/story_1.yaml')['payload']['important_scenes'][:2]
+    assert all(not part.get('rehearsal') for part in parts)
+    assert not parts[1].get('causal_scene_ids') and not parts[1].get('causal_event_refs')
+    card(store, 'merge_a', 'world', {'parent_id': 'world_1', 'entry_type': 'custom', 'rules': ['规则甲'], 'content': '甲文'})
+    card(store, 'merge_b', 'world', {'parent_id': 'world_1', 'entry_type': 'custom', 'rules': ['规则乙'], 'content': '乙文'})
+    child_card = card(store, 'merge_child', 'world', {'parent_id': 'merge_b'})
+    store.write_json('p', 'drafts/chapter_001.meta.json', {'material_ids': ['merge_b']})
+    merged = service.preview('p', {'action': 'merge', 'ids': ['merge_a', 'merge_b'], 'target_id': 'merge_a'})
+    service.apply('p', merged['id'], {'revision': merged['revision']})
+    assert store.read_yaml('p', 'cards/merge_a.yaml')['payload']['rules'] == ['规则甲', '规则乙']
+    assert not store._safe_path('p', 'cards/merge_b.yaml').exists()
+    assert store.read_yaml('p', 'cards/merge_child.yaml')['payload']['parent_id'] == 'merge_a'
+    assert store.read_json('p', 'drafts/chapter_001.meta.json')['material_ids'] == ['merge_a']
+    assert store._safe_path('p', 'drafts/chapter_001.md').read_bytes() == draft
+    card(store, 'locked_note', 'world', {'content': '甲。\n\n乙。'})
+    locked = service.preview('p', {'action': 'split', 'source_id': 'locked_note'})
+    AuthorControlService(store).confirm('p', {'targets': [{'target': 'cards/locked_note.yaml', 'paths': ['/payload/content'],
+        'base_revision': revision(store, 'p', 'cards/locked_note.yaml')}]})
+    before = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    with pytest.raises(FileExistsError):
+        service.apply('p', locked['id'], {'revision': locked['revision']})
+    assert before == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    assert not store.read_jsonl('p', 'canon/facts.jsonl') and not store.read_jsonl('p', 'canon/author_stages.jsonl')

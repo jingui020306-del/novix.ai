@@ -212,10 +212,15 @@ class SceneRehearsalService:
                 continue
             if cid in states:
                 card = {**card, 'payload': states[cid]['state']}
-            p = self._visible(card.get('payload', {}), visible, known)
+            from services.character_detail_service import strip_author_only, select_character_details
+            p = self._visible(strip_author_only(card.get('payload', {})), visible, known)
             p = scope_service.filter_value(project_id, p, scope)
+            from services.world_map_material_service import filter_map_scope
+            p = filter_map_scope(self.store, project_id, p, scope)
             if p is None:
                 continue
+            if card.get('type') == 'character':
+                p['detail_sections'] = select_character_details(self.store, project_id, {**card, 'payload': p}, scope, {'cast': sorted(cast), **scene})
             if p.get('setting_status', 'set') != 'set' or p.get('canon_status', 'canon') != 'canon' or p.get('confirmation_status') in {'pending', 'pending_author_review'}:
                 context['notices'].append(f"{card.get('title') or cid}尚未作为确定设定，不把它当作硬事实。")
                 versions[path] = self._source_hash(project_id, path, owner_id, scene_id)

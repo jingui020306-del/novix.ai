@@ -103,7 +103,21 @@ class KnowledgeGraphService:
                 if re.fullmatch(r'[a-z]+_扩展技法_\d+', label):
                     label = '待完善的写作参考'
                 nodes[rid] = {'id': rid, 'label': label, 'type': card['type'], 'source': f'cards/{rid}.yaml', 'confirmed': True, 'status': 'author_saved'}
-        aliases = {str(value): card['id'] for card in cards for value in [card['id'], card.get('title'), card.get('payload', {}).get('name')] if value}
+        aliases, alias_candidates = {}, {}
+        def register_alias(value, node_id):
+            if not isinstance(value, str) or not value:
+                return
+            candidates = alias_candidates.setdefault(value, set())
+            candidates.add(node_id)
+            if value in nodes:
+                aliases[value] = value
+            elif len(candidates) == 1:
+                aliases[value] = node_id
+            else:
+                aliases.pop(value, None)
+        for card in cards:
+            for value in [card['id'], card.get('title'), card.get('payload', {}).get('name'), *(card.get('payload', {}).get('aliases') or [])]:
+                register_alias(value, card['id'])
         for chapter in order:
             if chapter not in visible:
                 continue
@@ -233,7 +247,7 @@ class KnowledgeGraphService:
                     if table == 'important_scenes':
                         nodes[nid].update(thread_id=row.get('thread_id') or 'main', thread_name=threads.get(row.get('thread_id') or 'main', '未归类故事线'))
                     rows.append((nid, row, node_source))
-                    aliases.setdefault(str(row.get('id') or ''), nid)
+                    register_alias(str(row.get('id') or ''), nid)
                     if table == 'important_scenes' and not row.get('id'):
                         aliases[f'{cid}:important_scenes:index_{index}'] = nid
                     edge(cid, nid, '情节规划', evidence={'path': source, 'field': f'payload.{table}.{index}'})
@@ -743,9 +757,18 @@ class KnowledgeGraphService:
                     item['payload'] = {key: card.get('payload', {})[key] for key in ['direction', 'setting_status', 'canon_status', 'domain_status'] if key in card.get('payload', {})}
                     item['constraint_only'] = True
                 item = visible_value(item)
+                from services.character_detail_service import strip_author_only, select_character_details
+                item = strip_author_only(item)
                 item = scope_service.filter_value(project_id, item, scope)
+                from services.world_map_material_service import filter_map_scope
+                if isinstance(item, dict) and isinstance(item.get('payload'), dict):
+                    item['payload'] = filter_map_scope(self.store, project_id, item['payload'], scope)
                 if item is None:
                     continue
+                if item.get('type') == 'character':
+                    from services.author_data_service import AuthorDataService
+                    item['payload'] = strip_author_only(AuthorDataService(self.store).character_state(project_id, item['id'], world_context=scope)['state'])
+                    item['payload']['detail_sections'] = select_character_details(self.store, project_id, item, scope, scene)
                 item['source'] = node['source']
                 bucket = 'cards'
             else:

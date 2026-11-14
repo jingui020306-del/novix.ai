@@ -26,7 +26,9 @@ class RevisionRequest(BaseModel):
     source_text: str = Field(min_length=1, max_length=100000)
     start: int = Field(default=0, ge=0)
     end: int | None = Field(default=None, ge=1)
-    mode: Literal['polish', 'rewrite'] = 'polish'
+    mode: Literal['polish', 'rewrite', 'cinematic'] = 'polish'
+    scene_direction: dict | None = None
+    allow_plot_change: bool = False
     instructions: str = Field(default='', max_length=4000)
     llm_profile_id: str | None = None
     story_card_id: str | None = Field(default=None, pattern=r'^[\w-]+$', max_length=120)
@@ -90,6 +92,12 @@ class SkeletonRequest(BaseModel):
 
 
 router = APIRouter(prefix='/api/projects/{project_id}', tags=['authoring'])
+
+
+@router.get('/writing-strategies')
+def writing_strategies(project_id: str):
+    from services.prose_strategy_service import STRATEGIES
+    return {'items': STRATEGIES}
 
 
 @router.post('/story-planning/skeleton/prepare')

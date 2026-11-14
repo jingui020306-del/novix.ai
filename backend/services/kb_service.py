@@ -187,7 +187,8 @@ class KBService:
         cards_dir = self.store._safe_path(project_id, "cards")
         for y in sorted(cards_dir.glob("world_rule_*.yaml")) + sorted(cards_dir.glob("lore_*.yaml")) + sorted(cards_dir.glob("worldview_*.yaml")):
             data = self.store.read_yaml(project_id, f"cards/{y.name}")
-            text = str(data.get("payload", {}))
+            from services.character_detail_service import strip_author_only
+            text = str(strip_author_only(data.get("payload", {})))
             chunk_id = f"{y.stem}_c0000"
             rows.append({"chunk_id": chunk_id, "kb_id": "kb_world", "asset_id": None, "ordinal": 0, "text": text, "cleaned_text": text, "features": text_features(text), "source": {"path": f"cards/{y.name}", "kind": "world_card", "card_id": data.get("id", y.stem), "field_path": "payload"}})
         rows.extend(self.world_fact_rows(project_id))

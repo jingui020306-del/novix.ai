@@ -1,0 +1,141 @@
+{
+  "format": "novix_world_pack",
+  "schema_version": 1,
+  "id": "fantasy",
+  "title": "盐风诸邦",
+  "summary": "沿盐风海岸分布的城邦通过贸易、航道与旧誓约连接，语言、工艺与信仰因地区而异。",
+  "category": "西幻",
+  "tags": [
+    "西幻",
+    "原创虚构示例"
+  ],
+  "world_id": "world_example_fantasy",
+  "source": {
+    "kind": "original_example",
+    "label": "novix 原创虚构示例",
+    "usage": "可按作品需要采用和改编；示例规则不代表该题材的统一规范。"
+  },
+  "cards": [
+    {
+      "id": "world_example_fantasy",
+      "type": "world",
+      "title": "盐风诸邦",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "world",
+        "summary": "沿盐风海岸分布的城邦通过贸易、航道与旧誓约连接，语言、工艺与信仰因地区而异。",
+        "content": "沿盐风海岸分布的城邦通过贸易、航道与旧誓约连接，语言、工艺与信仰因地区而异。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete",
+        "rules": [
+          "法术依赖材料、准备与可见代价，不能无条件解决所有冲突。每种能力的限制可以由作者另定，不把示例当成所有西幻世界的法则。"
+        ]
+      }
+    },
+    {
+      "id": "world_example_fantasy_rule",
+      "type": "world",
+      "title": "基础规则",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_fantasy",
+        "summary": "法术依赖材料、准备与可见代价，不能无条件解决所有冲突。",
+        "content": "法术依赖材料、准备与可见代价，不能无条件解决所有冲突。每种能力的限制可以由作者另定，不把示例当成所有西幻世界的法则。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_fantasy_place",
+      "type": "world",
+      "title": "北境盐港",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_fantasy",
+        "summary": "盐仓、潮沟与高处的旧堡分层相接，贸易车队要经过窄桥；涨潮会改变路线与视线。",
+        "content": "盐仓、潮沟与高处的旧堡分层相接，贸易车队要经过窄桥；涨潮会改变路线与视线。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_fantasy_org",
+      "type": "world",
+      "title": "灯誓商会",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "organization",
+        "parent_id": "world_example_fantasy",
+        "summary": "不同城邦的运输者协商航标与仓储，账册能提供线索，但组织成员并不天然共享秘密。",
+        "content": "不同城邦的运输者协商航标与仓储，账册能提供线索，但组织成员并不天然共享秘密。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_fantasy_detail",
+      "type": "world",
+      "title": "断潮旧堡",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "place",
+        "parent_id": "world_example_fantasy",
+        "summary": "旧堡能看到海岸与桥头，却看不到盐仓内部；遗物的历史需要铭文、传承或见证支持。",
+        "content": "旧堡能看到海岸与桥头，却看不到盐仓内部；遗物的历史需要铭文、传承或见证支持。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    },
+    {
+      "id": "world_example_fantasy_method",
+      "type": "world",
+      "title": "魔法的边界",
+      "tags": [
+        "西幻",
+        "原创示例"
+      ],
+      "links": [],
+      "payload": {
+        "entry_type": "rule",
+        "parent_id": "world_example_fantasy",
+        "summary": "先明确法术能做什么、不能做什么、使用代价，再用人物的选择推动情节。",
+        "content": "先明确法术能做什么、不能做什么、使用代价，再用人物的选择推动情节。传说与亲历分开保存。",
+        "setting_status": "set",
+        "canon_status": "canon",
+        "creation_status": "complete"
+      }
+    }
+  ],
+  "stages": [],
+  "relationships": [],
+  "facts": [],
+  "attachments": [],
+  "sources": []
+}

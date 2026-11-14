@@ -289,6 +289,11 @@ class AuthorDataService:
             raise ValueError('状态变化为对象，人物已知为含value文字的列表；两者不可混作人物初始设定。')
         if 'knowledge' in changes or 'known_by' in changes:
             raise ValueError('人物认知请写入单独knowledge，不混入状态字段。')
+        if 'detail_sections' in changes:
+            if entity_type != 'character':
+                raise ValueError('人物补充阶段须追加到同一人物，不写入世界或关系。')
+            from services.character_detail_service import validate_detail_sections
+            validate_detail_sections(self.store, project_id, changes['detail_sections'], allow_removed=True, extra_entities=extra_entities)
         naming = changes.get('name_change')
         if naming is not None and (not isinstance(naming, dict) or naming.get('kind') not in {'rename', 'alias', 'period_address'} or not isinstance(naming.get('name'), str) or not naming['name'].strip()):
             raise ValueError('剧情改名、别名与阶段称呼须分开标明kind和name；初始姓名纠错请编辑原人物卡。')
@@ -428,6 +433,27 @@ class AuthorDataService:
         state, fields, uncertain = copy.deepcopy(base), {}, []
         for row in rows:
             for key, value in row['changes'].items():
+                if key == 'detail_sections':
+                    sections = {item['id']: copy.deepcopy(item) for item in state.get(key, [])}
+                    baseline = {item['id']: item for item in base.get(key, [])}
+                    for section in value:
+                        identity = ('detail_sections', section['id'])
+                        prior = fields.get(identity)
+                        compared = self.world.compare_time(project_id, prior['scope'].get('time'), row['scope'].get('time')) if prior else -1
+                        old = next((item for item in prior['changes'][key] if item['id'] == section['id']), None) if prior else None
+                        if prior and compared in (None, 0) and old != section:
+                            uncertain.append({'field': f"detail_sections.{section['id']}", 'stage_ids': [prior['id'], row['id']], 'reason': '同段变化先后未明，保留起点，不按保存顺序猜测。'})
+                            if section['id'] in baseline:
+                                sections[section['id']] = copy.deepcopy(baseline[section['id']])
+                            else:
+                                sections.pop(section['id'], None)
+                        elif section.get('removed'):
+                            sections.pop(section['id'], None)
+                        else:
+                            sections[section['id']] = copy.deepcopy(section)
+                        fields[identity] = row
+                    state[key] = list(sections.values())
+                    continue
                 prior = fields.get(key)
                 compared = self.world.compare_time(project_id, prior['scope'].get('time'), row['scope'].get('time')) if prior else -1
                 if prior and compared in (None, 0) and prior['changes'][key] != value:
