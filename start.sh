@@ -11,6 +11,8 @@ if ! pip install -r backend/requirements.txt; then
   exit 1
 fi
 
+python backend/rehearsal_engines/install.py || echo "[backend] 本地分析组件未就绪，修复后可重跑安装程序。" >&2
+
 npm_install_with_retry() {
   local cmd="$1"
   local log_file

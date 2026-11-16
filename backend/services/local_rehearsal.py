@@ -1,7 +1,7 @@
 """Local scene rehearsal. Only the visible consequence is passed to the next actor."""
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, ValidationError, field_validator, model_validator
 
 from services import rehearsal_tools
 
@@ -26,6 +26,9 @@ class Choices(BaseModel):
         return self
 
 
+PAIR_ENGINES = ('praxish', 'sabre', 'fatima')
+
+
 class LocalRehearsal(BaseModel):
     model_config = ConfigDict(extra='forbid')
     mode: Literal['pair'] = Field(default='pair', exclude=True)
@@ -39,9 +42,15 @@ class LocalRehearsal(BaseModel):
     actor_loss: Literal[2, 5, 8] = 5
     partner_loss: Literal[2, 5, 8] = 5
     choices: Choices
-    engines: list[Literal['praxish', 'sabre', 'fatima']] = Field(default_factory=list, max_length=3)
+    engines: list[Literal['praxish', 'sabre', 'fatima']] = Field(default_factory=lambda: list(PAIR_ENGINES), max_length=3)
     desirability: int = Field(default=0, ge=-10, le=10)
     plan_goal: Literal['respond', 'check'] = 'respond'
+
+    @field_validator('engines')
+    @classmethod
+    def require_pair_engines(cls, value):
+        # Older clients and confirmed plans can contain a subset.
+        return list(PAIR_ENGINES)
 
 
 OptionalText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]
@@ -209,25 +218,18 @@ def rehearse(context, spec):
                 'name': name, 'goal': goals.get(person_id) or person['payload'].get('core_motivation') or ''}
     choices = spec.choices
     reports = {}
-    opportunity = spec.available
-    if 'praxish' in spec.engines:
-        reports['praxish'] = rehearsal_tools.social_actions(spec.available)
-        opportunity = 'act' in reports['praxish']['first']
+    reports['praxish'] = rehearsal_tools.social_actions(spec.available)
+    opportunity = 'act' in reports['praxish']['first']
     first = turn(spec.actor_id, opportunity, spec.actor_confidence, spec.actor_loss, choices.act, choices.hold)
     steps = [first]
-    witnessed = first['acts']
-    if 'praxish' in reports:
-        witnessed = 'respond' in reports['praxish']['after']['act' if first['acts'] else 'hold']
+    witnessed = 'respond' in reports['praxish']['after']['act' if first['acts'] else 'hold']
     partner_loss = spec.partner_loss
     if witnessed:
-        if 'fatima' in spec.engines:
-            emotion = rehearsal_tools.appraise(spec.desirability)
-            # Novix policy: adverse mood increases the perceived cost, within a bounded range.
-            partner_loss = max(1, min(12, partner_loss - float(emotion['mood']) / 2))
-            reports['fatima'] = {**emotion, 'adjusted_loss': round(partner_loss, 2)}
+        emotion = rehearsal_tools.appraise(spec.desirability)
+        partner_loss = max(1, min(12, partner_loss - float(emotion['mood']) / 2))
+        reports['fatima'] = {**emotion, 'adjusted_loss': round(partner_loss, 2)}
         steps.append(turn(spec.partner_id, True, spec.partner_confidence, partner_loss, choices.respond, choices.check))
-    if 'sabre' in spec.engines:
-        reports['sabre'] = rehearsal_tools.plan(spec, partner_loss)
+    reports['sabre'] = rehearsal_tools.plan(spec, partner_loss)
     text = [f'围绕“{spec.topic}”，{first["name"]}选择{first["chosen"]}。']
     if len(steps) == 2:
         second = steps[1]

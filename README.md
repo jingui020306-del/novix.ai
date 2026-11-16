@@ -146,11 +146,11 @@ The demo project is `demo_project_001`. It includes:
 
 ## Local Scene Rehearsal
 
-Save a scene that links at least two character cards. Novix prepares a candidate in the backend, even if the author never opens the rehearsal editor. The chapter shows the outcome. Open the scene to read each character’s choices, or expand **调整本场排演假设** to change the participants, actions, beliefs, or costs. Edits recalculate the candidate. Preview and confirm to use it in chapter planning.
+Save a scene with character cards and actions for rehearsal. Novix prepares a candidate in the backend, even if the author never opens the rehearsal editor. The chapter shows the outcome. Open the scene to read each character’s choices, or expand **调整本场排演假设** to change the participants, actions, beliefs, or costs. Edits recalculate the candidate. Preview and confirm to use it in chapter planning.
 
-The first version covers one action and one response. Novix reuses a saved scenario or the two actions from an authored interaction. For the latter, it assumes the partner can observe the first action. With only a cast, it starts from a generic conversation. Initial confidence is 70% and the default failure cost is 5. These are editable assumptions. Free-text goals provide context to the author. Action availability and payoffs use structured inputs.
+Solo and ensemble scenes use their participant actions and visibility settings. For pairs, the simulation covers one action and one response. Novix reuses a saved scenario or the two actions from an authored interaction. For the latter, it assumes the partner can observe the first action. With only a cast, it starts from a generic conversation. Initial confidence is 70% and the default failure cost is 5. These are editable assumptions. Free-text goals provide context to the author. Action availability and payoffs use structured inputs.
 
-Local rehearsal runs without a cloud model or API key. Install the Python dependencies on the FastAPI host. The three additional engines run on the same machine.
+Local rehearsal runs without a cloud model or API key. Install the Python dependencies on the FastAPI host. Pair rehearsal requires all three supporting engines on the same machine, including for older plans saved with fewer engines.
 
 | Engine | What it contributes | Runtime |
 | --- | --- | --- |
@@ -166,7 +166,11 @@ python -m pip install -r backend/requirements.txt
 python backend/rehearsal_engines/install.py
 ```
 
-The installer downloads the pinned Sabre JAR and builds the pinned FAtiMA bridge. Pass `sabre` or `fatima` to install one. The default location is `~/.novix/engines`; set `NOVIX_ENGINE_DIR` to use another directory readable by the backend. Ready engines are selected automatically for a new scene.
+The native launchers run the installer automatically. Start Ollama on the backend machine at `127.0.0.1:11434`. The installer prepares Sabre, FAtiMA and the required local model `qwen2.5:7b`. Existing weights and engine installations are reused. For native deployment install Node 20+, Java 21+, Git and the .NET 8 SDK. The engine directory defaults to `~/.novix/engines`; set `NOVIX_ENGINE_DIR` to relocate it.
+
+For an installation with all runtimes included, run `docker compose up --build` from the repository root, then open `http://127.0.0.1:8000`. The first run needs internet access to download dependencies and model weights. Compose persists the model and uses the repository's data directory for projects.
+
+In the story worksheet, open **节奏编排**. Full text includes the outline and chapters belonging to the current story. Select a chapter to inspect just that draft. Text analysis automatically uses the local model; it reports candidate marks with exact source quotes and positions. If this service is unavailable, analysis reports the error and can be retried. No cloud profile is used.
 
 ## First Run Checklist
 
