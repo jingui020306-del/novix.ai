@@ -21,6 +21,7 @@ The smoke script writes to `/tmp/novix_frontend_smoke.log`. When starting Vite m
 
 ## Commit and PR expectations
 
+- Follow the [repository agent rules](AGENTS.md) for automated changes.
 - Keep changes small and focused.
 - Prefer multiple clear commits over one giant commit.
 - Describe motivation, scope, and validation commands in PR.
