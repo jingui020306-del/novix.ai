@@ -136,6 +136,10 @@ The demo project is `demo_project_001`. It includes:
 - tool skills,
 - canon and evidence examples.
 
+## Local Scene Rehearsal
+
+Use **本地人物排演** in a scene to compare two characters’ choices without a language-model account. The backend integrates PsychSim, Praxish, Sabre and FAtiMA. See the [local engine setup and scene rules](docs/LOCAL_REHEARSAL.md).
+
 ## First Run Checklist
 
 Open the app, go to **Projects**, and use the **首次启动检查** card.

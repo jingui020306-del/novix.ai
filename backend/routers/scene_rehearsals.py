@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from routers.authoring import get_authoring
 from routers.cards import get_change_service, get_store
+from services.local_rehearsal import LocalRehearsal
 from services.scene_rehearsal_service import SceneRehearsalService
 
 
@@ -12,6 +13,10 @@ class RehearsalRequest(BaseModel):
     base_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
     instructions: str = Field(default='', max_length=4000)
     llm_profile_id: str | None = None
+
+
+class SimulationRequest(RehearsalRequest):
+    simulation: LocalRehearsal
 
 
 router = APIRouter(prefix='/api/projects/{project_id}/scene-rehearsals', tags=['scene-rehearsals'])
@@ -47,6 +52,14 @@ def preview_rehearsal(project_id: str, owner_card_id: str, scene_id: str, body: 
 def service_lock(service, project_id):
     from services.change_suggestion_service import ChangeSuggestionService
     return ChangeSuggestionService(service.store).lock(project_id)
+
+
+@router.post('/{owner_card_id}/{scene_id}/simulate')
+def simulate_rehearsal(project_id: str, owner_card_id: str, scene_id: str, body: SimulationRequest, store=Depends(get_store)):
+    try:
+        return SceneRehearsalService(store).simulate(project_id, owner_card_id, scene_id, body.model_dump(), body.simulation)
+    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+        raise _error(exc) from exc
 
 
 @router.post('/{owner_card_id}/{scene_id}/propose')
