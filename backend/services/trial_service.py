@@ -74,6 +74,42 @@ class TrialService:
                 'source_versions': {f'drafts/{chapter_id}.md': revision(self.store, project_id, f'drafts/{chapter_id}.md')},
                 'usage_calls': [], 'usage': summarize_usage([]), 'created_at': now_iso()})
 
+    def fork(self, project_id, chapter_id, body):
+        """Open a separate manuscript in an existing world branch, pinned to its source."""
+        from services.chapter_version_service import chapter_source
+        from hashlib import sha256
+        chapter = entity_id(chapter_id, '章节')
+        world_id = entity_id(body.get('world_id'), '世界')
+        branch_id = entity_id(body.get('branch_id'), '分支')
+        with self._lock(project_id):
+            world = WorldScopeService(self.store)
+            branch = next((row for row in world.branches(project_id, world_id) if row['id'] == branch_id), {})
+            fork_event = branch.get('fork_event_ref')
+            if not fork_event:
+                raise ValueError('请选择有分歧事件的剧情分支。')
+            version_id = body.get('version_id', 'current')
+            source_path, source = chapter_source(self.store, project_id, chapter, version_id)
+            world_path = f'cards/{world_id}.yaml'
+            key = sha256(json.dumps([world_id, branch_id, chapter]).encode()).hexdigest()[:24]
+            trial_id = f'branch_{key}'
+            if self.store.read_json(project_id, self._path(trial_id)):
+                previous = self.get(project_id, trial_id)
+                if previous.get('origin', {}).get('version_id') != version_id:
+                    raise FileExistsError('该分支已有本章的推演稿，请打开已有分支稿。')
+                return previous
+            check_revision(self.store, project_id, source_path, body.get('source_revision'))
+            resolved = world.resolve(project_id, chapter_id=chapter, story_card_id=body.get('story_card_id'),
+                event_ref=fork_event, branch_id=branch_id, world_context={'world_id': world_id,
+                'time': {'event_ref': fork_event, 'position': 'immediate_after'}})
+            versions = {path: revision(self.store, project_id, path) for path in [world_path, source_path]}
+            origin = {'version_id': version_id, 'source_revision': versions[source_path], 'setting_revision': versions[world_path],
+                      'world_id': world_id, 'branch_id': branch_id, 'label': branch.get('label') or branch_id, 'event_ref': fork_event}
+            return self._save(project_id, {'id': trial_id, 'origin': origin, 'chapter_id': chapter,
+                'status': 'draft', 'text': source, 'source_text': source, 'target_range': {'start': 0, 'end': len(source)},
+                'scope': resolved['scope'], 'narrative_pov': resolved['narrative_pov'], 'instructions': '',
+                'base_revision': versions[source_path], 'source_versions': versions, 'usage_calls': [],
+                'usage': summarize_usage([]), 'created_at': now_iso()})
+
     def update(self, project_id, trial_id, body):
         with self._lock(project_id):
             check_revision(self.store, project_id, self._path(trial_id), body.get('revision', ''))
@@ -97,7 +133,12 @@ class TrialService:
             value = self.get(project_id, trial_id)
             if value['status'] in {'applied', 'discarded', 'generating'}:
                 raise ValueError('这份试写正在生成或已经结束，请先查看当前状态。')
-            check_revision(self.store, project_id, f"drafts/{value['chapter_id']}.md", value['base_revision'])
+            if value.get('origin'):
+                # The original text is pinned in the branch. Later mainline text edits are independent.
+                origin = value['origin']
+                check_revision(self.store, project_id, f"cards/{origin['world_id']}.yaml", origin['setting_revision'])
+            else:
+                check_revision(self.store, project_id, f"drafts/{value['chapter_id']}.md", value['base_revision'])
             if not self.authoring:
                 raise ValueError('尚未配置试写模型；仍可手写、编辑和放弃试写。')
             value.pop('revision', None)
@@ -113,7 +154,7 @@ class TrialService:
             direction = body.get('scene_direction') or self.store.read_json(project_id, f'drafts/{chapter}.meta.json').get('writing_alignment', {}).get('scene_direction', {})
             guidance = prose_guidance(direction)
             linked = KnowledgeGraphService(self.store).materials(project_id, chapter, {'world_context': scope}, world_context=scope, scene_ref=scope.get('event_ref'), max_chars=8000)
-            materials = InformationService(self.store).materials(project_id, scope, max_chars=4000)
+            materials = InformationService(self.store).materials(project_id, scope, reader_chapter_id=chapter, reader_offset=value['target_range']['start'], max_chars=4000)
             controls = {**body.get('generation_control', {}), 'world_context': scope}
             manifest = {'author_scope': {'scope': scope, 'narrative_pov': value.get('narrative_pov', ''), 'sources': [], 'warnings': []},
                 'linked_materials': linked, 'generation_control': controls, 'information_materials': materials}
@@ -164,6 +205,8 @@ class TrialService:
         from services.author_control_service import AuthorControlService
         with self._lock(project_id):
             value = self.get(project_id, trial_id)
+            if value.get('origin'):
+                raise ValueError('剧情分支稿独立保存，不能直接覆盖主线。')
             if value['status'] == 'applied':
                 return value
             check_revision(self.store, project_id, self._path(trial_id), body.get('revision', ''))
@@ -191,6 +234,8 @@ class TrialService:
         with self._lock(project_id):
             check_revision(self.store, project_id, self._path(trial_id), body.get('revision', ''))
             value = self.get(project_id, trial_id)
+            if value.get('origin'):
+                raise ValueError('此稿属于已保存的剧情分支。')
             if value['status'] == 'applied':
                 raise ValueError('已采用的正文请使用正文版本恢复，不覆盖后来的编辑。')
             value.pop('revision', None)

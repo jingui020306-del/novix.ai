@@ -1,9 +1,16 @@
 export type LocalChoices = Record<'act' | 'hold' | 'effect' | 'respond' | 'check', string>
-export type LocalSimulation = {
-  version: 1; actor_id: string; partner_id: string; topic: string; available: boolean;
+export type PairSimulation = {
+  mode?: 'pair'; version: 1; actor_id: string; partner_id: string; topic: string; available: boolean;
   actor_confidence: number; partner_confidence: number; actor_loss: number; partner_loss: number;
   choices: LocalChoices; engines: ('praxish' | 'sabre' | 'fatima')[]; desirability: number; plan_goal: 'respond' | 'check';
 }
+
+export type CastParticipant = {
+  actor_id: string; goal?: string; act?: string; hold?: string; effect?: string;
+  available?: boolean; confidence?: number; loss?: number; visible_to?: string[] | null;
+}
+export type CastSimulation = { mode: 'solo' | 'ensemble'; topic?: string; participants: CastParticipant[] }
+export type LocalSimulation = PairSimulation | CastSimulation
 
 export type RehearsalDraft = {
   local_simulation?: LocalSimulation;

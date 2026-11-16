@@ -103,7 +103,7 @@ class WorldScopeService:
     def validate_context(self, project_id, value, *, extra_entities=None):
         if not isinstance(value, dict):
             raise ValueError('世界与发生时间须为对象。')
-        if set(value) - {'world_id', 'branch_id', 'story_card_id', 'time', 'base_setting_ids', 'local_adjustments', 'pov_character_id', 'chapter_id', 'event_ref', 'period_id', 'region_ids', 'overrides'}:
+        if set(value) - {'world_id', 'branch_id', 'story_card_id', 'time', 'base_setting_ids', 'local_adjustments', 'pov_character_id', 'chapter_id', 'event_ref', 'period_id', 'region_ids', 'overrides', 'until'}:
             raise ValueError('世界与时间范围含有未知字段。')
         for key in ['world_id', 'branch_id', 'story_card_id', 'pov_character_id', 'chapter_id', 'period_id']:
             if value.get(key):
@@ -144,6 +144,14 @@ class WorldScopeService:
                 raise ValueError('局部改动仅修改设定内容，不改变身份、所属世界或分支定义。')
         if value.get('event_ref'):
             self.event(project_id, value['event_ref'])
+        if 'until' in value:
+            end = value['until']
+            if not isinstance(end, dict) or not any(end.get(k) is not None for k in ('year', 'date', 'elapsed_years', 'event_ref')):
+                raise ValueError('失效时间须包含年份、日期或事件。')
+            self.validate_context(project_id, {'time': end}, extra_entities=extra_entities)
+            order = self.compare_time(project_id, value.get('time'), end)
+            if order is not None and order >= 0:
+                raise ValueError('失效时间须晚于生效时间。')
         time = value.get('time', {})
         if not isinstance(time, dict):
             raise ValueError('发生时间格式不正确。')
@@ -433,6 +441,10 @@ class WorldScopeService:
                 if relation is None or relation > 0:
                     return False, '只能继承分歧点前有时间依据的历史'
                 cursor = row['parent_branch_id']
+        if source.get('until'):
+            order = self.compare_time(project_id, target.get('time'), source['until'])
+            if order is None or order >= 0:
+                return False, '失效时间未能核实或已超出有效时期'
         if dynamic or self.has_time(source):
             relation = self.compare_time(project_id, source.get('time'), target.get('time'))
             if relation is None:

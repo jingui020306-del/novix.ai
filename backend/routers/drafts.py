@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from difflib import unified_diff
+from uuid import uuid4
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from services.chapter_version_service import chapter_source, compare_version
 from services.kb_service import KBService
 from services.incremental_memory_service import IncrementalMemoryService
 from services.shared_material_service import SharedMaterialService
@@ -232,6 +235,10 @@ def put_draft(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends
 @router.get('/{chapter_id}/versions')
 def get_versions(project_id: str, chapter_id: str, s: FSStore = Depends(get_store)):
     meta = _chapter_meta(s, project_id, chapter_id)
+    # A snapshot taken before a manual edit is the latest backup, not the current text.
+    candidate = meta.get('current_version')
+    if candidate and revision(s, project_id, f'drafts/versions/{chapter_id}/{candidate}.md') != revision(s, project_id, f'drafts/{chapter_id}.md'):
+        meta['current_version'] = None
     return {"chapter_id": chapter_id, "current_version": meta.get('current_version'), "versions": _version_rows(meta)}
 
 
@@ -272,24 +279,36 @@ def put_patch_review(project_id: str, chapter_id: str, review_id: str, body: dic
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get('/{chapter_id}/versions/{version_id}/compare')
+def compare_snapshot(project_id: str, chapter_id: str, version_id: str, s: FSStore = Depends(get_store)):
+    from routers.author_data import _call
+    return _call(compare_version, s, project_id, chapter_id, version_id)
+
+
 @router.post('/{chapter_id}/rollback')
 def rollback(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(get_store), kb: KBService = Depends(get_kb)):
     with ChangeSuggestionService(s).lock(project_id):
         version_id = body.get('version_id')
         if not version_id:
             raise HTTPException(status_code=400, detail='version_id required')
-        content = s.read_md(project_id, f'drafts/versions/{chapter_id}/{version_id}.md')
-        if not content:
-            raise HTTPException(status_code=404, detail='version not found')
+        from routers.author_data import _call
+        _call(check_revision, s, project_id, f'drafts/{chapter_id}.md', body.get('base_revision'))
+        _, content = _call(chapter_source, s, project_id, chapter_id, version_id)
         current = s.read_md(project_id, f'drafts/{chapter_id}.md')
         from services.author_control_service import AuthorControlService
         AuthorControlService(s).assert_write(project_id, f'drafts/{chapter_id}.md', current, content)
-        if current:
-            _save_snapshot(s, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}')
+        patch_id = f'restore_{uuid4().hex[:12]}'
+        if current != content:
+            _save_snapshot(s, project_id, chapter_id, current, reason=f'rollback_backup:{version_id}', patch_id=patch_id)
         s.write_md(project_id, f'drafts/{chapter_id}.md', content)
         meta = _chapter_meta(s, project_id, chapter_id)
         meta['current_version'] = version_id
         s.write_json(project_id, f'drafts/{chapter_id}.meta.json', meta)
+        if current != content:
+            s.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', {
+                'patch_id': patch_id, 'restored_version': version_id, 'accepted_op_ids': ['restore'],
+                'patch_ops': [{'op_id': 'restore', 'type': 'replace', 'target_range': {'start': 0, 'end': len(current.splitlines())}, 'before': current, 'after': content}],
+                'diff': '\n'.join(unified_diff(current.splitlines(), content.splitlines(), fromfile='before', tofile='after', lineterm=''))})
         s.append_jsonl(project_id, 'sessions/session_001.jsonl', {"event": "ROLLBACK", "data": {"chapter_id": chapter_id, "version_id": version_id}})
         IncrementalMemoryService(s, kb).mark(project_id, f'drafts/{chapter_id}.md')
         return {"chapter_id": chapter_id, "version_id": version_id, "content": content}

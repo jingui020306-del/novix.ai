@@ -7,7 +7,7 @@ import re
 from difflib import unified_diff
 
 from services.change_suggestion_service import ChangeSuggestionService
-from services.local_rehearsal import LocalRehearsal, PRESETS, rehearse, scene_cast
+from services.local_rehearsal import PRESETS, participant_risks, rehearse, scene_cast, simulation_format, validate_cast
 from rehearsal_engines.runtime import availability
 from services.automatic_rehearsal import candidate, logger
 from services.token_usage import summarize_usage
@@ -77,6 +77,8 @@ class SceneRehearsalService:
                 if key == 'previous':
                     saved = rows[neighbor].get('rehearsal') or {}
                     item['confirmed_outcome'] = {field: saved.get(field) for field in ['status', 'outcome', 'next_question']}
+                    if saved.get('status') == 'confirmed' and (risks := participant_risks(saved)):
+                        item['actor_risks'] = risks
                 basis[key] = item
         return _without_metadata(basis)
 
@@ -266,6 +268,7 @@ class SceneRehearsalService:
                         fresh = not self._snapshot(project_id, owner_id, previous_id, previous.get('technique_ids', []), include_previous=False)['stale']
                     item.update(outcome=previous.get('outcome', '') if fresh else '', next_question=previous.get('next_question', '') if fresh else '', stale=bool(previous and not fresh))
                     if fresh:
+                        item['actor_risks'] = {person: risk for person, risk in participant_risks(previous).items() if person in cast}
                         versions.update({path: self._source_hash(project_id, path, owner_id, scene_id) for path in previous.get('source_versions', {}) if path != source})
                 context[key] = item
         event_context = KnowledgeGraphService(self.store).event_context(project_id, scene_ref={'owner_card_id': owner_id, 'scene_id': scene_id}, story_card_id=story_id, max_chars=6000)
@@ -350,7 +353,7 @@ class SceneRehearsalService:
             raise ValueError('场景安排格式不正确。')
         draft = self._draft(value)
         if 'local_simulation' in draft:
-            draft['local_simulation'] = LocalRehearsal.model_validate(draft['local_simulation']).model_dump(mode='json')
+            draft['local_simulation'] = simulation_format.validate_python(draft['local_simulation']).model_dump(mode='json')
         for key, maximum in [('text', 16000), ('outcome', 3000), ('next_question', 3000)]:
             if not isinstance(draft[key], str) or len(draft[key]) > maximum:
                 raise ValueError('请缩短本场安排或后果说明后重试。')
@@ -475,6 +478,8 @@ class SceneRehearsalService:
             owner, rows, index = self._check(project_id, owner_id, scene_id, body, require_draft_sources=True)
             draft = self._validate_draft(project_id, body.get('draft'), require_text=True)
             snapshot = self._snapshot(project_id, owner_id, scene_id, draft['technique_ids'])
+            if draft.get('local_simulation'):
+                validate_cast(scene_cast(snapshot['context']), simulation_format.validate_python(draft['local_simulation']))
             current = rows[index].get('rehearsal') or {}
             if current.get('status') == 'confirmed' and not snapshot['stale'] and self._draft(current) == draft and current.get('source_versions') == snapshot['source_versions'] == body['source_versions']:
                 return {**snapshot, 'updated_at': owner.get('updated_at'), 'change_suggestions': {'queued_count': 0, 'task_ids': []}}

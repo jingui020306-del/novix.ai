@@ -9,7 +9,7 @@ from time import monotonic
 
 from pydantic import ValidationError
 
-from services.local_rehearsal import Choices, LocalRehearsal, rehearse, scene_cast
+from services.local_rehearsal import CastRehearsal, Choices, LocalRehearsal, Participant, rehearse, scene_cast, simulation_format
 
 logger = logging.getLogger(__name__)
 _cache = OrderedDict()
@@ -21,15 +21,18 @@ _workers = [Lock() for _ in range(32)]
 def initial_spec(snapshot, engines):
     context = snapshot['context']
     cast = scene_cast(context)
-    if len(cast) < 2:
+    if not cast:
         return None
     saved = snapshot['draft'].get('local_simulation')
+    previous = None
     if isinstance(saved, dict):
         try:
-            previous = LocalRehearsal.model_validate(saved)
+            previous = simulation_format.validate_python(saved)
         except ValidationError:
             previous = None
-        if previous and previous.actor_id != previous.partner_id and previous.actor_id in cast and previous.partner_id in cast:
+        if isinstance(previous, CastRehearsal) and {p.actor_id for p in previous.participants} == set(cast):
+            return previous
+        if isinstance(previous, LocalRehearsal) and {previous.actor_id, previous.partner_id} == set(cast):
             return previous.model_copy(update={'engines': [k for k in previous.engines if engines.get(k)]})
     scene = context['scene']['values']
     # Use the order of an authored interaction when it identifies both participants.
@@ -37,7 +40,10 @@ def initial_spec(snapshot, engines):
                      if len(set(r['values'].get('characters') or []) & cast.keys()) >= 2), {})
     ordered = list(dict.fromkeys([*(exchange.get('characters') or []), *(scene.get('characters') or []),
                                   *(scene.get('cast') or []), *cast]))
-    first, other = [key for key in ordered if key in cast][:2]
+    ordered = [key for key in ordered if key in cast]
+    if len(ordered) != 2:
+        return cast_spec(context, cast, ordered, previous)
+    first, other = ordered
     choices = Choices(act='表明自己的打算', hold='暂不表态', effect='对方已经听到这一打算',
                       respond='作出回应', check='先问清对方的意思')
     # The outcome of a completed exchange cannot be used as its own precondition.
@@ -55,13 +61,68 @@ def initial_spec(snapshot, engines):
                           engines=[key for key, ready in engines.items() if ready])
 
 
+def cast_spec(context, cast, ordered, previous):
+    def short(value):
+        return value.strip()[:120] if isinstance(value, str) else ''
+
+    scene = context['scene']['values']
+    goals, actions, addressed = {}, {}, set()
+    for row in context['storylines']:
+        story = row['values']
+        person = story.get('character_id')
+        if short(story.get('goal')):
+            goals[person] = short(story['goal'])
+        if short(story.get('choice')):
+            actions[person] = short(story['choice'])
+    for row in context['intersections']:
+        exchange = row['values']
+        speakers = exchange.get('characters') or []
+        if len(speakers) == 2 and short(exchange.get('protagonist_action')) and short(exchange.get('opponent_action')):
+            addressed.add(tuple(speakers))
+        for person, field in zip(speakers, ('protagonist_action', 'opponent_action')):
+            if short(exchange.get(field)):
+                actions.setdefault(person, short(exchange[field]))
+    old = {p.actor_id: p for p in previous.participants} if isinstance(previous, CastRehearsal) else {}
+    participants = []
+    for index, person in enumerate(ordered):
+        if person in old:
+            part = old[person]
+            if part.visible_to is not None:
+                part = part.model_copy(update={'visible_to': [witness for witness in part.visible_to if witness in cast]})
+            participants.append(part)
+            continue
+        goal = goals.get(person) or short(cast[person]['payload'].get('core_motivation'))
+        audience = None
+        if person in actions:
+            act = actions[person]
+            # An authored choice may be private. The author can supply its public effect.
+            next_actor = ordered[index + 1] if index + 1 < len(ordered) else None
+            effect = ''
+            if (person, next_actor) in addressed:
+                effect, audience = '对方观察到了这一行动', [next_actor]
+        elif len(ordered) == 1:
+            act = short(scene.get('attack')) or (f'着手为“{goal}”做准备'[:120] if goal else '')
+            effect = ''
+        elif index == 0:
+            act, effect = '开口提出请求', '有人提出了请求'
+        else:
+            act, effect = '提出自己的条件', '有人提出了条件'
+        previous_risk = (context.get('previous_scene') or {}).get('actor_risks', {}).get(person, {}) if len(ordered) == 1 else {}
+        participants.append(Participant(actor_id=person, goal=goal, act=act, hold='暂缓行动' if act else '',
+                                        effect=effect, visible_to=audience, **previous_risk))
+    return CastRehearsal(mode='solo' if len(ordered) == 1 else 'ensemble',
+                         topic=short(scene.get('scene')), participants=participants)
+
+
 def candidate(namespace, snapshot, engines, *, compute):
     spec = initial_spec(snapshot, engines)
     if spec is None:
-        return {'status': 'waiting', 'notice': '本场关联两位有效人物后，后端将自动排演。'}
+        return {'status': 'waiting', 'notice': '本场关联人物后即可排演。'}
     settings = spec.model_dump(mode='json')
     if snapshot['saved'] and not snapshot['stale']:
         return {'status': 'confirmed', 'settings': settings}
+    if isinstance(spec, CastRehearsal) and not any(p.act or p.hold for p in spec.participants):
+        return {'status': 'waiting', 'notice': '可在排演假设中填写人物的行动，也可以补充人物目标。', 'settings': settings}
     source = [namespace, snapshot['owner_card_id'], snapshot['scene_id'], snapshot['base_hash'], settings]
     key = hashlib.sha256(json.dumps(source, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     def cached():

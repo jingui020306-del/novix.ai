@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 from routers.authoring import get_authoring
 from routers.cards import get_change_service, get_store
-from services.local_rehearsal import LocalRehearsal
+from services.local_rehearsal import Simulation
 from services.scene_rehearsal_service import SceneRehearsalService
 
 
@@ -16,7 +16,7 @@ class RehearsalRequest(BaseModel):
 
 
 class SimulationRequest(RehearsalRequest):
-    simulation: LocalRehearsal
+    simulation: Simulation
 
 
 router = APIRouter(prefix='/api/projects/{project_id}/scene-rehearsals', tags=['scene-rehearsals'])

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Input, Select } from './ui/Fields'
-import { LocalChoices, LocalSimulation } from '../lib/sceneRehearsal'
+import { CastParticipant, CastSimulation, LocalChoices, LocalSimulation, PairSimulation } from '../lib/sceneRehearsal'
 
-type Engine = LocalSimulation['engines'][number]
+type Engine = PairSimulation['engines'][number]
 type Options = { cast: string[]; presets: Record<string, LocalChoices>; engines: Record<Engine, boolean> }
 type Person = { id: string; label: string; payload?: { name?: string } }
 const choiceLabels: Record<keyof LocalChoices, string> = {
@@ -11,16 +11,89 @@ const choiceLabels: Record<keyof LocalChoices, string> = {
 const engineLabels: Record<Engine, string> = {
   praxish: 'Praxish · 情境允许的行动', sabre: 'Sabre · 通往指定结果的路径', fatima: 'FAtiMA · 对方对事件的情绪评价',
 }
-export function LocalRehearsalForm({ options, people, initial, busy, onChange }: {
+type FormProps = {
   options: Options; people: Person[]; initial: LocalSimulation; busy: boolean;
   onChange: (spec: LocalSimulation | null) => void;
-}) {
+}
+
+export function LocalRehearsalForm(props: FormProps) {
+  const {initial} = props
+  return 'participants' in initial
+    ? <CastForm {...props} initial={initial} />
+    : <PairForm {...props} initial={initial} />
+}
+
+function CastForm({initial, people, busy, onChange}: FormProps & {initial: CastSimulation}) {
+  const [form, setForm] = useState(initial)
+  const dirty = useRef(false)
+  useEffect(() => { if (!dirty.current) setForm(initial) }, [initial])
+  const fields = {goal: '目标', act: '主动行动', hold: '保留选择', effect: '可见后果'}
+  const nameOf = (id: string) => {
+    const person = people.find(p => p.id === id)
+    return person?.payload?.name || person?.label || '场内人物'
+  }
+  function change(next: CastSimulation) {
+    dirty.current = true
+    setForm(next)
+    onChange(next)
+  }
+  function editMember(index: number, patch: Partial<CastParticipant>) {
+    change({...form, participants: form.participants.map((person, i) => i === index ? {...person, ...patch} : person)})
+  }
+  function changeOrder(index: number, target: number) {
+    const members = [...form.participants]
+    const [person] = members.splice(index, 1)
+    members.splice(target, 0, person)
+    change({...form, participants: members})
+  }
+  return <details className='py-3'>
+    <summary className='cursor-pointer font-medium'>调整本场排演假设</summary>
+    <fieldset disabled={busy} className='mt-4 space-y-4 text-sm'>
+      <label className='block'>场景中的事项<Input value={form.topic || ''} maxLength={120} onChange={e => change({...form, topic:e.target.value})}/></label>
+      {form.participants.map((person, index) => {
+        const name = nameOf(person.actor_id)
+        const audience = person.visible_to
+        const audienceLabel = audience == null ? '全场' : audience.length ? audience.map(nameOf).join('、') : '仅本人'
+        return <details key={person.actor_id} open={form.mode === 'solo' || undefined}>
+          <summary className='cursor-pointer text-sm font-medium'>{form.mode === 'ensemble' && `${index + 1}. `}{name}</summary>
+          <div className='mt-3 grid gap-3 sm:grid-cols-2'>
+            {form.mode === 'ensemble' && <label className='block'>行动顺序<Select aria-label={`${name}的行动顺序`} value={index} onChange={e => changeOrder(index, Number(e.target.value))}>
+              {form.participants.map((p,i) => <option key={p.actor_id} value={i}>第 {i + 1} 位</option>)}
+            </Select></label>}
+            {(Object.keys(fields) as (keyof typeof fields)[]).map(key => <label key={key} className='block'>{fields[key]}
+              <Input aria-label={`${name}的${fields[key]}`} value={person[key] || ''} maxLength={120} onChange={e => editMember(index, {[key]:e.target.value})}/>
+            </label>)}
+            {form.mode === 'ensemble' && <details className='sm:col-span-2'>
+              <summary className='cursor-pointer text-muted'>后果可见范围 · {audienceLabel}</summary>
+              <div className='mt-2 flex flex-wrap gap-3' role='group' aria-label={`${name}的后果可见范围`}>
+                <label><input type='radio' name={`audience-${person.actor_id}`} checked={audience == null} onChange={() => editMember(index, {visible_to:null})}/> 全场可见</label>
+                <label><input type='radio' name={`audience-${person.actor_id}`} checked={Array.isArray(audience) && !audience.length} onChange={() => editMember(index, {visible_to:[]})}/> 仅本人</label>
+                {form.participants.filter(other => other.actor_id !== person.actor_id).map(other => <label key={other.actor_id}>
+                  <input type='checkbox' aria-label={`${name}的后果对${nameOf(other.actor_id)}可见`} checked={audience?.includes(other.actor_id) ?? false}
+                    onChange={e => editMember(index,{visible_to:e.target.checked?[...(audience || []),other.actor_id]:(audience || []).filter(id => id !== other.actor_id)})}/> {nameOf(other.actor_id)}
+                </label>)}
+              </div>
+            </details>}
+            <label className='block'>行动把握 {Math.round((person.confidence ?? .7) * 100)}%
+              <input type='range' className='w-full' min={0} max={100} value={Math.round((person.confidence ?? .7) * 100)} onChange={e => editMember(index,{confidence:Number(e.target.value)/100})}/></label>
+            <label className='block'>失败代价<Select value={person.loss ?? 5} onChange={e => editMember(index, {loss:Number(e.target.value)})}>
+              <option value={2}>较小</option><option value={5}>中等</option><option value={8}>较大</option>
+            </Select></label>
+            <label><input type='checkbox' checked={person.available !== false} onChange={e => editMember(index, {available:e.target.checked})}/> 具备主动行动的前提</label>
+          </div>
+        </details>
+      })}
+    </fieldset>
+  </details>
+}
+
+function PairForm({ options, people, initial, busy, onChange }: FormProps & {initial: PairSimulation}) {
   const cast = people.filter(p => options.cast.includes(p.id))
   const presets = Object.keys(options.presets)
   const [form, setForm] = useState(initial)
   const dirty = useRef(false)
   useEffect(() => { if (!dirty.current) setForm(initial) }, [initial])
-  function change(patch: Partial<LocalSimulation>) {
+  function change(patch: Partial<PairSimulation>) {
     dirty.current = true
     const next = { ...form, ...patch }
     setForm(next)
@@ -53,7 +126,7 @@ export function LocalRehearsalForm({ options, people, initial, busy, onChange }:
       <div className='space-y-1'>{(Object.keys(engineLabels) as Engine[]).map(k => <label key={k} className='block'><input type='checkbox' disabled={!options.engines[k] && !selected(k)} checked={selected(k)} onChange={e => change({ engines: e.target.checked ? [...form.engines, k] : form.engines.filter(v => v !== k) })} /> {engineLabels[k]}{!options.engines[k] && '（后端未就绪）'}</label>)}</div>
       {selected('fatima') && <label className='block'>对方如何看待这个后果（−10 不利，+10 有利）：{form.desirability}
         <input className='w-full' type='range' min={-10} max={10} value={form.desirability} onChange={e => change({ desirability: Number(e.target.value) })} /></label>}
-      {selected('sabre') && <label className='block'>希望比较的路径终点<Select className='w-full' value={form.plan_goal} onChange={e => change({ plan_goal: e.target.value as LocalSimulation['plan_goal'] })}>
+      {selected('sabre') && <label className='block'>希望比较的路径终点<Select className='w-full' value={form.plan_goal} onChange={e => change({ plan_goal: e.target.value as PairSimulation['plan_goal'] })}>
         <option value='respond'>{form.choices.respond}</option><option value='check'>{form.choices.check}</option></Select></label>}
       {Object.values(options.engines).some(v => !v) && <details><summary className='cursor-pointer'>安装本地引擎</summary><p>后端主机使用 Node 20、Java 21 或更高版本、.NET 8 SDK 和 Git。在项目根目录运行 <code>python backend/rehearsal_engines/install.py</code>，完成后刷新页面。</p></details>}
       {!idsValid && <p role='status'>请选择两位不同的本场人物。</p>}
