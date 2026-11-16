@@ -8,6 +8,14 @@ from services.world_scope_service import WorldScopeService
 from services.author_data_service import AuthorDataService, STAGES_PATH
 from services.information_service import InformationService, REGISTRY_PATH
 from services.character_detail_service import strip_author_only, select_character_details
+from services.material_reference_service import MaterialReferenceService, references as source_references, paragraph_references, effective_provenance
+
+
+class MaterialBudgetError(ValueError):
+    def __init__(self, report):
+        self.report = report
+        names = '、'.join(item['label'] for item in report.get('overflow', [])[:6])
+        super().__init__('必用材料无法完整放入本次范围，请调整预算或拆分：' + names)
 
 
 class ContextPackService:
@@ -20,12 +28,12 @@ class ContextPackService:
     def _json(value):
         return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
 
-    def build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000):
+    def build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000, allow_overflow=False, max_input_bytes=None):
         from services.change_suggestion_service import ChangeSuggestionService
         with ChangeSuggestionService(self.store).lock(project_id):
-            return self._build(project_id, chapter_id, manifest, requirements, previous_end=previous_end, current_end=current_end, max_chars=max_chars)
+            return self._build(project_id, chapter_id, manifest, requirements, previous_end=previous_end, current_end=current_end, max_chars=max_chars, allow_overflow=allow_overflow, max_input_bytes=max_input_bytes)
 
-    def _build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000):
+    def _build(self, project_id, chapter_id, manifest, requirements, *, previous_end='', current_end='', max_chars=14000, allow_overflow=False, max_input_bytes=None):
         if not 2000 <= max_chars <= 100000:
             raise ValueError('取材范围必须在 2000 至 100000 字符之间。')
         order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
@@ -70,13 +78,13 @@ class ContextPackService:
         body['阅读边界'] += '发生时间优先于章节讲述顺序；分支只共享分歧前的历史。人物已知单列，只能把明确属于该人物的知识写成其认知，其他设定是作者约束。局部调整不能默默改写世界基础。'
         if fixed.get('technique_style_constraints'):
             body['技法约束'] = fixed['technique_style_constraints']
-        if len(self._json(body)) > max_chars - 700:
-            raise ValueError('本章目标和硬约束超出取材范围，请缩小本次场景或精简重复要求后再生成。')
         seen_ids, seen_texts = set(), set()
+        material_items = []
+        automatic_expansions = []
         used_ids, citations = [], []
         dropped, deduplicated = 0, 0
 
-        def add(kind, value, source='', item_id='', *, required=False):
+        def add(kind, value, source='', item_id='', *, required=False, raw_text=None, label=None, mode=None, material_id=None):
             nonlocal dropped, deduplicated
             value = strip_author_only(value)
             if value in (None, '', [], {}):
@@ -91,14 +99,11 @@ class ContextPackService:
             if source:
                 item['来源'] = source
             body['材料'].append(item)
-            if len(self._json(body)) > max_chars - 350:
-                body['材料'].pop()
-                if required:
-                    if kind in {'作者确认的场景安排', '作者确认的场景技法'}:
-                        raise ValueError('已确认的场景推演超出本次取材范围，请缩小生成范围后再生成。')
-                    raise ValueError('本章人物或世界硬设定超出取材范围，请缩小本次场景或精简重复设定后再生成。')
-                dropped += 1
-                return
+            material_items.append({'id': item_id or hashlib.sha256((kind + source + text_key).encode()).hexdigest()[:20],
+                'label': label or (value.get('名称') if isinstance(value, dict) else None) or kind, 'reason': kind,
+                'mode': mode or ('summary' if '摘要' in kind or '摘录' in kind else 'full'), 'required': required,
+                'text': raw_text if raw_text is not None else value if isinstance(value, str) else self._json(value),
+                'source': source, 'material_id': material_id or item_id or '', 'type': kind})
             seen_texts.add(text_key)
             if item_id:
                 seen_ids.add(item_id)
@@ -175,10 +180,20 @@ class ContextPackService:
         base_cards = {base['card_id'] for base in world_baselines}
         cast = set(requirements.get('场景', {}).get('cast', []))
         cards = [*linked.get('cards', []), *manifest.get('included_cards', [])]
+        for cid in (control.get('character_detail_focus') or {}):
+            if cid in character_states:
+                cards.append(character_states[cid]['base'])
+        def has_hard_rules(card_type, payload):
+            explicit = card_type == 'world_rule' or payload.get('entry_type') == 'rule' or bool(payload.get('required') or payload.get('hard_constraint')) or any(payload.get(key) for key in ['rules', 'requirements', 'limits', 'costs', 'conditions', 'exceptions'])
+            mixed = card_type in {'world', 'worldview', 'lore'} and any(marker in str(payload.get(field) or '') for field in ['content', 'description'] for marker in ['规则', '必须', '不得', '禁止', '条件：', '例外：'])
+            return explicit or mixed
+
+        if control.get('include_cards') is not False:
+            cards.extend(item['base'] for item in world_states.values() if has_hard_rules(item['base'].get('type'), item['state']))
         seen_cards = set()
         for card in cards:
             cid = card.get('id')
-            if not cid or card.get('type') not in {'character', 'world', 'world_rule', 'lore', 'style'}:
+            if not cid or card.get('type') not in {'character', 'world', 'world_rule', 'worldview', 'lore', 'style'}:
                 continue
             if cid in seen_cards:
                 deduplicated += 1
@@ -190,7 +205,7 @@ class ContextPackService:
             if not scope_service.card_visible(project_id, card, scope):
                 dropped += 1
                 continue
-            if card.get('type') in {'world', 'world_rule', 'lore'} and scope.get('world_id') and cid not in world_states:
+            if card.get('type') in {'world', 'world_rule', 'worldview', 'lore'} and scope.get('world_id') and cid not in world_states:
                 dropped += 1
                 continue
             effective = character_states.get(cid) or world_states.get(cid)
@@ -205,31 +220,60 @@ class ContextPackService:
             if payload.get('setting_status') == 'not_applicable':
                 payload = {'适用性': '作者明确不采用此设定，不得据此添加能力或事件。', 'summary': payload.get('summary', '')}
             else:
-                payload = {key: value for key, value in payload.items() if key not in {'writing_references', 'links', 'map_url', 'versions', 'content', 'description', 'updated_at', 'created_at'}}
+                payload = {key: value for key, value in payload.items() if key not in {'writing_references', 'links', 'map_url', 'versions', 'content', 'description', 'updated_at', 'created_at', 'sources', 'source_origin', 'import_source_keys', 'field_provenance'}}
                 if card.get('type') == 'character':
-                    payload['detail_sections'] = select_character_details(self.store, project_id, {**card, 'payload': payload}, scope,
-                        requirements.get('场景', {}), focus_ids=(control.get('character_detail_focus') or {}).get(cid, []))
+                    focused = (control.get('character_detail_focus') or {}).get(cid, [])
+                    selection_scene = {**requirements.get('场景', {}), '本次作者要求': {key: requirements[key] for key in ['作者共识', '作者试写要求', '场景表达参考（可选，转成小说语言）'] if key in requirements}}
+                    sections = select_character_details(self.store, project_id, {**card, 'payload': payload}, scope, selection_scene, focus_ids=focused)
+                    payload.pop('detail_sections', None)
+                    for section in sections:
+                        full = section['id'] in focused or section.get('usage') == 'focus' or section.get('expanded_for_task')
+                        add('作者重点人物原文' if full else '相关人物表现参考',
+                            {'人物': cid, '标题': section['title'], '正文': section['content'], **{key: section[key] for key in ['scope', 'target_ids', 'relationship_ids', 'situation', 'portrayal'] if section.get(key)}},
+                            f"cards/{cid}.yaml#payload.detail_sections.@{section['id']}.content", f"{cid}:detail:{section['id']}",
+                            required=full, raw_text=section['content'], label=f"{card.get('title') or cid} · {section['title']}", material_id=cid, mode=section.get('material_mode', 'full'))
+                        if material_items and material_items[-1]['id'] == f"{cid}:detail:{section['id']}":
+                            material_items[-1]['reason'] = section['selection_reason']
+                            material_items[-1]['references'] = [{'label': '查看完整人物段', 'source': f"cards/{cid}.yaml#payload.detail_sections.@{section['id']}.content", 'material_id': cid}]
+                            if full:
+                                material_items[-1]['references'] += source_references(section['content'])
+                                for ref in material_items[-1]['references'][1:]:
+                                    path = ref['source'].split('#', 1)[0]
+                                    if '/' not in path:
+                                        path = f'cards/{path}.yaml'
+                                    if self.store._safe_path(project_id, path).is_file():
+                                        automatic_expansions.append({**ref, 'follow_refs': True, 'automatic': True})
+                            effective_provenance(material_items[-1], effective, field='detail_sections', section_id=section['id'], scope=scope)
                     if payload.get('arc'):
                         payload['成长安排（未定位事件，不当作此时状态）'] = payload.pop('arc')
                     if event_context.get('scene_ref'):
                         payload.pop('relationships', None)
                 original = card.get('payload', {})
-                detail = str(original.get('content') or original.get('description') or '')
-                if detail:
-                    # shortcut: local excerpts preserve wording, not a semantic model summary.
-                    payload['正文摘录'] = detail[:1200]
-                    if len(detail) > 1200:
-                        payload['摘录说明'] = '正文未完整载入；不能把摘录未写出的内容当作已知。'
+                for field in ['content', 'description']:
+                    detail = original.get(field)
+                    if not isinstance(detail, str) or not detail:
+                        continue
+                    full = card.get('type') in {'world', 'world_rule', 'worldview', 'lore'} and has_hard_rules(card.get('type'), original)
+                    if full:
+                        add('适用世界原文（规则、条件和例外完整）', detail, f'cards/{cid}.yaml#payload.{field}', f'{cid}:{field}',
+                            required=True, raw_text=detail, label=card.get('title') or cid, material_id=cid)
+                        if material_items and material_items[-1]['id'] == f'{cid}:{field}':
+                            effective_provenance(material_items[-1], effective, field=field, scope=scope)
+                    else:
+                        payload['原文摘要'] = original.get('summary') or original.get('identity') or '原文未带入，可按稳定引用展开。'
+                        payload['摘要说明'] = '这是摘要，详细原文可沿稳定引用按需展开。'
                 if isinstance(payload.get('extra_context'), dict):
                     payload['extra_context'] = {key: value for key, value in payload['extra_context'].items() if key != 'map_url' and not (key == 'address_rules' and cid in rule_cards or key == 'world_base' and cid in base_cards)}
             value = {'名称': card.get('title', ''), '设定': payload}
             kind = '人物设定' if card.get('type') == 'character' else '已保存设定'
-            must_keep = cid in cast or card.get('type') in {'world', 'world_rule', 'lore'}
-            if must_keep and len(self._json(body)) + len(self._json(value)) + 500 > max_chars:
-                keys = {'name', 'identity', 'gender', 'pronouns', 'address_notes', 'relationships', 'core_motivation', 'voice', 'boundaries', 'summary', 'rules', 'requirements', 'limits', 'costs', 'setting_status', 'canon_status', 'domain_status'}
-                value = {'名称': card.get('title', ''), '设定': {key: child for key, child in payload.items() if key in keys}, '摘录说明': '其他描写按预算省略，硬设定保留。'}
-                dropped += 1
+            must_keep = cid in cast or has_hard_rules(card.get('type'), card.get('payload', {}))
             add(kind, value, card.get('source') or f'cards/{cid}.yaml', cid, required=must_keep)
+            if material_items and material_items[-1]['id'] == cid:
+                material_items[-1]['references'] = [{'label': f'展开{field}原文', 'source': f'cards/{cid}.yaml#payload.{field}', 'material_id': cid} for field in ['content', 'description'] if isinstance(card.get('payload', {}).get(field), str) and card['payload'][field]]
+                for field in ['content', 'description']:
+                    if isinstance(card.get('payload', {}).get(field), str):
+                        material_items[-1]['references'] += paragraph_references(card['payload'][field], f'cards/{cid}.yaml#payload.{field}', cid)
+                effective_provenance(material_items[-1], effective, scope=scope)
 
         for fact in event_context.get('facts', []) if event_context.get('scene_ref') else linked.get('facts', []):
             value = fact if event_context.get('scene_ref') else at_this_chapter(fact)
@@ -251,7 +295,12 @@ class ContextPackService:
         for relation in states['relations']:
             if not any(item['entity_id'] in selected_entities for item in relation['participants']):
                 continue
-            add('共享关系（称呼有明确发出人与对象）', {'id': relation['id'], **relation['state']}, relation['sources'][-1]['path'], relation['id'])
+            add('共享关系（称呼有明确发出人与对象）', {'id': relation['id'], **relation['state']}, relation['sources'][-1]['path'], relation['id'], label=relation['state'].get('label') or '人物关系')
+            if material_items and material_items[-1]['id'] == relation['id']:
+                material_items[-1].update(material_type='relationship', material_id=relation['id'])
+                if relation.get('stages') and not relation.get('uncertainties'):
+                    stage_id = relation['stages'][-1]['id']
+                    material_items[-1].update(source=f'{STAGES_PATH}#{stage_id}', stage_id=stage_id, source_record_id=stage_id)
         planning = manifest.get('story_planning', {})
         event_order = event_context.get('event_order') or {}
         event_owner = event_order.get('owner_card_id')
@@ -275,7 +324,7 @@ class ContextPackService:
                     dropped += 1
                     continue
             row_id = str(row.get('id') or '')
-            add('作者规划（不是已发生事实）', row, item.get('source', ''), f'plan:{row_id}' if row_id else '')
+            add('作者规划（不是已发生事实）', row, item.get('source', ''), f'plan:{row_id}' if row_id else '', label=str(row.get('scene') or row.get('title') or row.get('beat') or row.get('goal') or '相关情节规划'))
         for item in planning.get('beat_summary', []):
             row_id = str(item.get('id') or '')
             add('整书节拍（结构参考，不能提前揭示）', {key: value for key, value in item.items() if key not in {'source', 'id'}}, item.get('source', ''), f'plan:{row_id}' if row_id else '')
@@ -294,11 +343,16 @@ class ContextPackService:
                 add('过去章节摘要', item.get('summary', ''), item.get('source', ''), item.get('chapter_id', ''))
         for item in manifest.get('evidence', []):
             source = item.get('source', {})
+            if str(source.get('path') or '').startswith('assets/') and not source.get('card_id'):
+                # Raw imports lack formal world/time/knowledge applicability; author browsing remains available.
+                continue
             if source.get('path') in {'canon/facts.jsonl', 'canon/revisions.jsonl', STAGES_PATH}:
                 continue
             if source.get('card_id'):
                 source_card = self.store.read_yaml(project_id, f"cards/{source['card_id']}.yaml")
                 if not scope_service.card_visible(project_id, source_card, scope):
+                    continue
+                if strip_author_only(source_card.get('payload', {})) != source_card.get('payload', {}):
                     continue
             if source.get('chapter_id') and scope_service.has_time(scope):
                 excerpt_scope = scope_service.resolve(project_id, chapter_id=source['chapter_id'])['scope']
@@ -334,27 +388,67 @@ class ContextPackService:
             item = {key: relation[key] for key in ['source', 'target', 'label', 'confirmed'] if key in relation}
             if item in body['关系']:
                 continue
-            body['关系'].append(item)
-            if len(self._json(body)) > max_chars - 100:
-                body['关系'].pop()
-                dropped += 1
-                break
+            add('已保存引用关系', item, (relation.get('evidence') or {}).get('path', ''), relation.get('id', ''))
+        expanded = MaterialReferenceService(self.store).expand(project_id, [*control.get('material_expansions', []), *automatic_expansions], scope, requirements.get('场景', {}), chapter_id)
+        for item in expanded['items']:
+            before = len(material_items)
+            add(item['type'], item['text'], item['source'], item['id'], required=True, raw_text=item['text'], label=item['label'], mode='expanded', material_id=item['material_id'])
+            if len(material_items) > before:
+                material_items[-1].update({key: item[key] for key in ['depth', 'via', 'references']})
+                material_items[-1]['reason'] = item['reason']
+                material_items[-1].update({key: item[key] for key in ['logical_source', 'material_type', 'stage_id', 'source_record_id', 'sources', 'local_override'] if key in item})
         dropped += int(references.get('omitted_count', len(references.get('omitted', [])))) + int(planning.get('omitted_rows', 0))
         body['省略数量'] = dropped
+        for item, meta in zip(body['材料'], material_items):
+            if meta.get('stage_id') or meta.get('local_override'):
+                item['来源'] = meta['source']
+                item['来源记录'] = {key: meta[key] for key in ['stage_id', 'sources', 'local_override'] if key in meta}
+        pairs = list(zip(body['材料'], material_items))
+        body['材料'] = [item for item, meta in pairs if meta['required']]
+        required_chars = len(self._json(body))
+        overflow = list(expanded['overflow'])
+        if required_chars > max_chars:
+            overflow += [{key: meta[key] for key in ['id', 'label', 'source', 'required']} | {'chars': len(meta['text']), 'reason': '必用内容须全文保留，合计超过本次输入范围。'} for _, meta in pairs if meta['required']]
+            if not overflow:
+                overflow = [{'id': 'request', 'label': '当前目标与硬约束', 'source': '', 'required': True, 'chars': required_chars, 'reason': '当前要求自身已超过输入范围。'}]
+        chosen = {meta['id'] for _, meta in pairs if meta['required']}
+        if not overflow:
+            for item, meta in pairs:
+                if meta['required']:
+                    continue
+                body['材料'].append(item)
+                candidate = self._json(body)
+                if len(candidate) > max_chars - 32 or max_input_bytes is not None and len(candidate.encode('utf-8')) > max_input_bytes:
+                    body['材料'].pop()
+                    dropped += 1
+                else:
+                    chosen.add(meta['id'])
+        selected_pairs = [(item, meta) for item, meta in pairs if meta['id'] in chosen]
+        body['材料'] = [item for item, _ in selected_pairs]
+        body['省略数量'] = dropped
         text = self._json(body)
-        if len(text) > max_chars:
-            raise ValueError('本次材料超出取材范围，请缩小生成场景后重试。')
-        versions = {}
+        used_ids = [meta['id'] for _, meta in selected_pairs]
+        citations = [{'id': meta['id'], 'source': meta['source']} for _, meta in selected_pairs if meta['source']]
+        versions = dict(expanded['source_versions'])
         for source in {citation['source'].split('#', 1)[0] for citation in citations} | rehearsal_dependencies:
             if source.startswith(('cards/', 'drafts/', 'canon/')):
                 path = self.store._safe_path(project_id, source)
                 versions[source] = hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest()
-        return text, {'used_chars': len(text), 'max_chars': max_chars, 'used_ids': used_ids,
+        report = {'ready': not overflow, 'overflow': overflow, 'items': [meta for _, meta in selected_pairs], 'required_chars': required_chars,
+                      'used_chars': len(text), 'max_chars': max_chars, 'used_ids': used_ids,
                       'dropped_count': dropped, 'deduplicated_count': deduplicated, 'citations': citations,
                       'source_versions': versions, 'rehearsal_ids': rehearsal_ids, 'author_scope': resolved}
+        if overflow and not allow_overflow:
+            raise MaterialBudgetError(report)
+        return text, report
 
     def sources_unchanged(self, project_id, versions):
         for source, digest in versions.items():
+            if digest.startswith(('author-meta:', 'inventory:')):
+                from services.generation_material_service import source_version
+                if source_version(self.store, project_id, source) != digest:
+                    return False
+                continue
             path = self.store._safe_path(project_id, source)
             actual = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ''
             if actual != digest and not (not path.exists() and digest == hashlib.sha256(b'').hexdigest()):

@@ -57,6 +57,13 @@ class MaterialIndexService:
     def _objects(self, project_id):
         from services.author_data_service import AuthorDataService
         from services.author_control_service import AuthorControlService
+        stage_names = defaultdict(list)
+        for row in self.store.read_jsonl(project_id, 'canon/author_stages.jsonl'):
+            changes = row.get('changes') or {}
+            naming = changes.get('name_change') or {}
+            aliases = changes.get('aliases') or []
+            if row.get('status') == 'confirmed':
+                stage_names[row.get('entity_id')].extend(name for name in [naming.get('name'), changes.get('name'), changes.get('period_address'), *(aliases if isinstance(aliases, list) else [aliases])] if isinstance(name, str) and name.strip())
         for path in sorted(self.store._safe_path(project_id, 'cards').glob('*.yaml')):
             card = self.store.read_yaml(project_id, f'cards/{path.name}')
             if not card.get('id') or card.get('id') == 'outline_author_registry':
@@ -69,7 +76,7 @@ class MaterialIndexService:
                 aliases = [aliases]
             aliases = [item for item in aliases if isinstance(item, str) and item.strip()]
             label = str(payload.get('name') or card.get('title') or card['id'])
-            names = list(dict.fromkeys([label, str(card.get('title') or ''), *aliases]))
+            names = list(dict.fromkeys([label, str(card.get('title') or ''), *aliases, *stage_names[card['id']]]))
             labels = list(dict.fromkeys([TYPE_LABELS.get(card.get('type'), card.get('type', '资料')), TYPE_LABELS.get(kind, kind)]))
             yield {'id': card['id'], 'label': label, 'type': kind, 'card_type': card.get('type'), 'type_labels': labels,
                             'tags': list(dict.fromkeys(tag.strip() for tag in card.get('tags', []) if isinstance(tag, str) and tag.strip())),
@@ -150,7 +157,7 @@ class MaterialIndexService:
             for row in self.store.read_jsonl(project_id, 'canon/author_stages.jsonl'):
                 if row.get('id'):
                     db.execute('INSERT OR REPLACE INTO stages VALUES (?,?,?)', (row['id'], row.get('entity_id', ''), json.dumps(row, ensure_ascii=False)))
-            db.executemany('INSERT INTO metadata VALUES (?,?)', [('generation', signature), ('fts_enabled', str(int(fts))), ('schema', '1')])
+            db.executemany('INSERT INTO metadata VALUES (?,?)', [('generation', signature), ('fts_enabled', str(int(fts))), ('schema', '2')])
             db.commit()
         return {'objects': count, 'fts_enabled': fts}
 
@@ -171,7 +178,7 @@ class MaterialIndexService:
                 values = dict(db.execute('SELECT key,value FROM metadata'))
                 count = db.execute('SELECT count(*) FROM objects').fetchone()[0]
             pending = self.store.read_json(project_id, STATE_PATH)
-            state = 'ready' if values.get('generation') == self._signature(project_id) and not pending.get('error') else 'pending'
+            state = 'ready' if values.get('schema') == '2' and values.get('generation') == self._signature(project_id) and not pending.get('error') else 'pending'
             return {'state': state, 'revision': values.get('generation'), 'counts': {'objects': count}, 'fts_enabled': values.get('fts_enabled') == '1', 'error': pending.get('error')}
         except (sqlite3.Error, OSError, ValueError):
             return {'state': 'degraded', 'counts': {}, 'fts_enabled': False, 'error': '检索副本需要重建，正式资料仍保留。'}
@@ -248,6 +255,41 @@ class MaterialIndexService:
     def _public(item):
         return {key: value for key, value in item.items() if key not in {'text', 'card', 'row', 'fact', 'relationship'}}
 
+    def _at_scope(self, project_id, item, scope):
+        if scope is None or item.get('card_type') != 'character':
+            return item
+        from services.author_data_service import AuthorDataService
+        state = AuthorDataService(self.store).character_state(project_id, item['id'], world_context=scope)
+        names = state['names']
+        aliases = [names.get('base_name'), *names.get('aliases', []), names.get('period_address')]
+        aliases.extend(name for row in state['changes'] for name in [row.get('changes', {}).get('name_change', {}).get('name'), row.get('changes', {}).get('name')])
+        return {**item, 'label': names.get('current_name') or item['label'],
+                'aliases': list(dict.fromkeys(name for name in aliases if name and name != names.get('current_name'))),
+                'summary': str(state['state'].get('identity') or state['state'].get('summary') or ''),
+                'text': words(state['state']), 'scope': scope, 'stage_sources': state['sources']}
+
+    def resolve_names(self, project_id, names, **filters):
+        """Find only names mentioned in one import unit; no project catalogue enters the prompt."""
+        if not isinstance(names, list) or len(names) > 1000 or any(not isinstance(name, str) or len(name) > 300 for name in names):
+            raise ValueError('请按片段提供至多1000个、每个300字以内的名称。')
+        wanted = {name.casefold() for name in names if name.strip()}
+        matches = {name: [] for name in wanted}
+        if not wanted:
+            return matches
+        rows, _ = self._rows(project_id)
+        scope = self._scope(project_id, filters)
+        for row in rows:
+            if row['type'] in {'source_material', 'chapter', 'scene', 'fact', 'relationship', 'outline'}:
+                continue
+            if not wanted.intersection(name.casefold() for name in [row['label'], *row['aliases']]) or not self._visible(project_id, row, scope):
+                continue
+            row = self._at_scope(project_id, row, scope)
+            matched = wanted.intersection(name.casefold() for name in [row['label'], *row['aliases']])
+            for name in matched:
+                matches[name].append({'id': row['id'], 'type': row.get('card_type') or row['type'], 'name': row['label'],
+                                      'identity': row['summary'][:500], 'source': row['source']})
+        return matches
+
     def search(self, project_id, **filters):
         query = str(filters.get('q') or '').strip()
         if len(query) > 200:
@@ -257,9 +299,10 @@ class MaterialIndexService:
         tags = filters.get('tags') or []
         if isinstance(tags, str):
             tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        rows = (self._at_scope(project_id, item, scope) for item in rows if self._visible(project_id, item, scope))
         rows = [self._public(item) for item in rows if (not query or query.casefold() in (item['label'] + ' ' + ' '.join(item['aliases']) + ' ' + item['text']).casefold())
                 and (not filters.get('type') or filters['type'] in {item['type'], item.get('card_type')})
-                and all(tag in item['tags'] or tag in item['type_labels'] for tag in tags) and self._visible(project_id, item, scope)]
+                and all(tag in item['tags'] or tag in item['type_labels'] for tag in tags)]
         rows.sort(key=lambda item: (item['label'] != query, query not in [item['label'], *item['aliases']], item['label'], item['id']))
         return {'items': [self._public(item) for item in rows], **state}
 
@@ -278,6 +321,9 @@ class MaterialIndexService:
         for item in rows:
             if item['type'] in {'source_material', 'chapter', 'scene', 'style', 'outline', 'story', 'fact', 'relationship'} or not self._visible(project_id, item, scope):
                 continue
+            if not any(name and name in text for name in [item['label'], *item['aliases']]):
+                continue
+            item = self._at_scope(project_id, item, scope)
             for name in [item['label'], *item['aliases']]:
                 if name.strip() and item['id'] not in {row['id'] for row in names[name]}:
                     names[name].append(item)

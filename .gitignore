@@ -50,3 +50,6 @@ coverage/
 # Rebuildable query copies; canonical cards, history, and attachments stay outside this rule.
 /data/**/meta/material_index.sqlite3*
 /data/**/meta/material_index_state.json
+
+# Prepared model requests contain local author material.
+/data/**/meta/generation_materials/

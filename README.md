@@ -31,6 +31,12 @@ Canonical settings remain in `cards/*.yaml`, changes and facts in `canon/*.jsonl
 
 ZIP and PDF uploads support up to 512 MB; other individual files support up to 12 MB. Packages are inventoried before bounded extraction. PDF text and visual pages report coverage separately; unrecognized pages stay unread. Vision/OCR and semantic extraction require a configured model and an explicit AI action. External world-building tools are links, with no automatic cross-site synchronization.
 
+Use **浏览当前阶段的世界** to inspect the selected world's settings, people, and relationships at a particular time, region, and branch. This browsing view is separate from the chapter's **本次生成材料**, which records the material prepared or sent for that writing request.
+
+Before generating, review why each item is included and whether it uses a summary, full text, or an expanded reference. Author-selected character details and applicable confirmed rules are reserved in full, including conditions and exceptions. Other details use saved summaries until the task calls for them or you select a linked passage. Following further references is optional and bounded; it still checks applicability, privacy, and the material budget. An oversized or unavailable required item blocks generation and is listed for review, rather than silently shortened.
+
+Segmented imports extract the current passage before looking up matching names and aliases. Only a small set of ambiguous identity candidates is sent for further comparison; a model suggestion never merges records without author confirmation.
+
 ## Current Trust Model
 
 The product is designed to avoid hiding AI uncertainty.
@@ -176,6 +182,8 @@ data/_global/llm_profiles.json
 ```
 
 The runtime status API reports `api_key_configured`, but does not return the raw API key.
+
+You can optionally enter the model's documented context capacity as `context_window`. Preflight reserves the requested output length and uses a conservative input estimate; it is not a provider token count. Without a declared capacity, the UI explicitly reports that model capacity is unverified and checks only the configured character budget.
 
 ## Assign Agent Profiles
 

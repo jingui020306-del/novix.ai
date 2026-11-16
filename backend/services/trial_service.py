@@ -114,21 +114,33 @@ class TrialService:
             guidance = prose_guidance(direction)
             linked = KnowledgeGraphService(self.store).materials(project_id, chapter, {'world_context': scope}, world_context=scope, scene_ref=scope.get('event_ref'), max_chars=8000)
             materials = InformationService(self.store).materials(project_id, scope, max_chars=4000)
+            controls = {**body.get('generation_control', {}), 'world_context': scope}
             manifest = {'author_scope': {'scope': scope, 'narrative_pov': value.get('narrative_pov', ''), 'sources': [], 'warnings': []},
-                'linked_materials': linked, 'generation_control': {'world_context': scope}, 'information_materials': materials}
+                'linked_materials': linked, 'generation_control': controls, 'information_materials': materials}
+            limit = body.get('context_max_chars', 20000)
+            if isinstance(limit, bool) or not isinstance(limit, int) or not 4000 <= limit <= 100000:
+                raise ValueError('试写取材范围须为4000至100000字符。')
+            system = ('你是小说试写合作者。只输出试写正文，不输出说明。仅在作者指定范围内探索另一种写法或发展，事实、表达、认知与读者信息分开。'
+                '人的误信不变成作者真相，不提前解释秘密；保留文风、视角和未改动的底线。新发展只是试写候选，不是正式事实。')
+            from services.shared_material_service import CHARACTER_PORTRAYAL_GUIDANCE
+            system += CHARACTER_PORTRAYAL_GUIDANCE
             prompt, report = ContextPackService(self.store).build(project_id, chapter, manifest, {'作者试写要求': body.get('instructions', value.get('instructions', '')),
-                '小说观察顺序': guidance, '原选区（只作参考）': value['source_text'][value['target_range']['start']:value['target_range']['end']], '当前试写稿': value['text'], '场景': {}}, max_chars=18000)
-            if len(prompt) > 19000:
-                raise ValueError('本次试写材料过长，请缩小范围。')
+                '小说观察顺序': guidance, '原选区（只作参考）': value['source_text'][value['target_range']['start']:value['target_range']['end']], '当前试写稿': value['text'], '场景': {}}, max_chars=max(2000, limit - len(system)))
+            messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}]
+            if hasattr(self.authoring, 'manager'):
+                from services.generation_material_service import GenerationMaterialService
+                report, _ = GenerationMaterialService(self.authoring.manager).finish(project_id, body, messages, report, max_chars=limit, output_tokens=tokens)
+                if not report['ready']:
+                    from services.context_pack_service import MaterialBudgetError
+                    raise MaterialBudgetError(report)
             text = await self.authoring.complete(project_id, body, 'chapter_writer',
-                '你是小说试写合作者。只输出试写正文，不输出说明。仅在作者指定范围内探索另一种写法或发展，事实、表达、认知与读者信息分开。'
-                '人的误信不变成作者真相，不提前解释秘密；保留文风、视角和未改动的底线。新发展只是试写候选，不是正式事实。',
-                prompt, max_tokens=body.get('max_tokens', 2400), usage_callback=calls.append, prepare_memory=False)
+                system, prompt, max_tokens=tokens, usage_callback=calls.append, prepare_memory=False,
+                **({'prepared_messages': messages} if hasattr(self.authoring, 'manager') else {}))
             with self._lock(project_id):
                 check_revision(self.store, project_id, self._path(trial_id), expected)
                 if not ContextPackService(self.store).sources_unchanged(project_id, report['source_versions']):
                     raise FileExistsError('试写期间依据已变化，原文和当前试写保留，请用最新材料重试。')
-                value.update(status='draft', text=text, source_versions=report['source_versions'], usage_calls=[*value['usage_calls'], *calls])
+                value.update(status='draft', text=text, source_versions=report['source_versions'], generation_materials=report, usage_calls=[*value['usage_calls'], *calls])
                 value['usage'] = summarize_usage(value['usage_calls'])
                 value['diff'] = '\n'.join(unified_diff(value['source_text'][value['target_range']['start']:value['target_range']['end']].splitlines(), text.splitlines(), fromfile='原选区', tofile='试写', lineterm=''))
                 return self._save(project_id, value)

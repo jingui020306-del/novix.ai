@@ -156,6 +156,8 @@ class JobManager:
         manifest = next((row.get("data") for row in reversed(events) if row.get("event") == "CONTEXT_MANIFEST"), None)
         trust_report = next((row.get("data") for row in reversed(events) if row.get("event") == "TRUST_REPORT"), None)
         if manifest is not None:
+            if rec.get('generation_materials_status') and manifest.get('generation_materials'):
+                manifest['generation_materials'] = {**manifest['generation_materials'], **rec['generation_materials_status']}
             detail["context_manifest"] = manifest
         if trust_report is not None:
             detail["trust_report_event"] = trust_report
@@ -363,36 +365,95 @@ class JobManager:
             out.append(op)
         return out
 
+    def _saved_scene_blueprint(self, project_id, payload):
+        """Existing books use their saved event rows; no second planning file is created."""
+        from services.author_data_service import AuthorDataService
+        chapter = payload['chapter_id']
+        control = payload.get('generation_control') or {}
+        world, author = WorldScopeService(self.store), AuthorDataService(self.store)
+        resolved = world.resolve(project_id, chapter_id=chapter, story_card_id=control.get('story_card_id'), event_ref=control.get('scene_ref'),
+            world_context=control.get('world_context'), branch_id=control.get('branch_id'), pov_character_id=control.get('pov_character_id'), pov=control.get('pov'))
+        story_id, scope = resolved['scope'].get('story_card_id'), resolved['scope']
+        explicit = control.get('scene_ref')
+        if explicit:
+            events = [author.event_projection(project_id, explicit, chapter)]
+            assigned = events[0]['effective_values'].get('chapter')
+            if assigned and assigned != chapter:
+                raise ValueError('所选场景安排在其他章节，请在章节正文中选择本章场景。')
+        else:
+            events = [item for item in author.events(project_id, story_id) if item['effective_values'].get('chapter') == chapter]
+        if not story_id:
+            stories = {item['story_card_id'] for item in events if item.get('story_card_id')}
+            if len(stories) > 1:
+                raise ValueError('本章关联多个故事，请先在章节正文中选择当前故事。')
+            if stories:
+                story_id = next(iter(stories))
+                resolved = world.resolve(project_id, chapter_id=chapter, story_card_id=story_id, world_context=control.get('world_context'),
+                    event_ref=explicit, branch_id=control.get('branch_id'), pov_character_id=control.get('pov_character_id'), pov=control.get('pov'))
+                scope = resolved['scope']
+        events.sort(key=lambda item: item['effective_values'].get('chapter') != chapter)
+        seen, scenes, sources = set(), [], set()
+        for item in events:
+            if item['canonical_id'] in seen or item.get('duplicate_conflicts') and any(row.get('kind') == 'broken_mapping' for row in item['duplicate_conflicts']):
+                continue
+            if story_id and item.get('story_card_id') and item['story_card_id'] != story_id:
+                continue
+            values = item['effective_values']
+            # A future scene may be an author plan, but another world's/branch's plan is not this chapter.
+            event_scope = world.resolve(project_id, event_ref=item['canonical_id'])['scope']
+            if not world.applies(project_id, {key: value for key, value in event_scope.items() if key != 'time'}, scope)[0]:
+                continue
+            seen.add(item['canonical_id'])
+            cast = [cid for cid in values.get('characters', []) if isinstance(cid, str) and self.store.read_yaml(project_id, f'cards/{cid}.yaml').get('type') == 'character'] if isinstance(values.get('characters'), list) else []
+            scenes.append({'scene_id': item['canonical_id'], 'phase': str(values.get('phase') or '作者安排'),
+                'purpose': str(values.get('purpose') or values.get('plot') or values.get('scene') or ''),
+                'situation': str(values.get('plot') or values.get('scene') or ''), 'choice_points': values.get('choice_points') if isinstance(values.get('choice_points'), list) else [],
+                'cast': cast, 'beats': values.get('beats') if isinstance(values.get('beats'), list) else [],
+                'world_context': event_scope, 'source': item['canonical_source'], 'projection_source': item['sources'][0]['path']})
+            sources.update([item['canonical_source'].split('#', 1)[0], item['sources'][0]['path'].split('#', 1)[0]])
+        if not scenes:
+            raise ValueError('本章还没有已保存的场景安排，请到章节正文关联已有场景，或在情节工作表中安排本章场景后再生成。')
+        return {'id': 'blueprint_001', 'story_card_id': story_id, 'scene_plan': scenes, 'derived_from_saved_scenes': True, 'sources': sorted(sources)}
+
     def _validate_write_payload(self, project_id: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any], int]:
         chapter_id = payload.get("chapter_id")
         if not isinstance(chapter_id, str) or not chapter_id.strip():
-            raise ValueError("chapter_id is required")
+            raise ValueError('请先选择要写的章节。')
 
         blueprint_id = payload.get("blueprint_id")
         if not isinstance(blueprint_id, str) or not blueprint_id.strip():
-            raise ValueError("blueprint_id is required")
+            raise ValueError('请选择已有写作安排。')
 
         bp = self.store.read_json(project_id, f"cards/{blueprint_id}.json")
         scene_plan = bp.get("scene_plan") if isinstance(bp, dict) else None
+        if blueprint_id == 'blueprint_001' and (not bp or scene_plan is None or scene_plan == []):
+            bp = self._saved_scene_blueprint(project_id, payload)
+            scene_plan = bp['scene_plan']
         if not isinstance(scene_plan, list) or not scene_plan:
-            raise ValueError("blueprint scene_plan is empty")
+            raise ValueError('所选写作安排还没有有效场景，请先在章节正文或情节工作表中保存场景安排。')
 
         scene_index = payload.get("scene_index", 0)
         try:
             scene_index = int(scene_index)
         except Exception as exc:
-            raise ValueError("scene_index must be an integer") from exc
+            raise ValueError('请选择有效的场景位置。') from exc
         if scene_index < 0 or scene_index >= len(scene_plan):
-            raise ValueError("scene_index out of range")
+            raise ValueError('所选场景位置已变化，请重新选择本章场景。')
 
         return chapter_id, bp, scene_index
 
     async def _pipeline(self, job_id: str, project_id: str, payload: dict[str, Any]) -> None:
         try:
             chapter_id, bp, scene_index = self._validate_write_payload(project_id, payload)
+            if bp.get('derived_from_saved_scenes') and bp.get('story_card_id'):
+                payload = {**payload, 'generation_control': {'story_card_id': bp['story_card_id'], **payload.get('generation_control', {})}}
             payload = {"agent_mode": "three_agent", "auto_apply_patch": False, "word_checkpoint_chars": 1500, **payload}
             word_checkpoint_chars = int(payload.get("word_checkpoint_chars") or 1500)
             previous_chapter_status = self.store.read_json(project_id, f'drafts/{chapter_id}.meta.json').get('chapter_status', 'drafting')
+            prepared_materials = None
+            if payload.get('writing_run'):
+                from services.generation_material_service import GenerationMaterialService
+                prepared_materials = GenerationMaterialService(self).load(project_id, payload)
             self._write_chapter_status(project_id, chapter_id, "生成中")
             selection_range = self._normalize_selection_range(payload)
             scene = bp.get("scene_plan", [])[scene_index]
@@ -454,7 +515,7 @@ class JobManager:
                 chapter_meta['writing_scene'] = {'blueprint_id': payload['blueprint_id'], 'scene_index': scene_index}
             self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", chapter_meta)
 
-            manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle)
+            manifest = self.context_engine.build_manifest(project_id, chapter_id, scene, payload.get("constraints", {}), technique_bundle, prepare_memory=not bool(writing_run))
             manifest['author_scope'] = author_scope
             if writing_run:
                 manifest['linked_materials'] = KnowledgeGraphService(self.store).materials(project_id, chapter_id, scene, max_chars=min(12000, max(2000, int(payload.get('constraints', {}).get('max_tokens', 2400)) * 3)), include_references=generation_control.get('include_techniques') is not False, world_context=scope, story_card_id=generation_control.get('story_card_id'), scene_ref=generation_control.get('scene_ref'), branch_id=scope.get('branch_id'), pov_character_id=scope.get('pov_character_id'))
@@ -484,55 +545,33 @@ class JobManager:
                 {"role": "user", "content": f"scene={scene}\nstyle_guide={guide_text}\nstyle_locks={manifest.get('fixed_blocks',{}).get('style_locks',{})}\nworld_facts={world_facts}\ntechnique_brief={manifest.get('fixed_blocks',{}).get('technique_brief','')}\ntechnique_checklist={manifest.get('fixed_blocks',{}).get('technique_checklist',[])}\ntechnique_agent_tags={manifest.get('fixed_blocks',{}).get('technique_agent_tags',[])}\n请写一段章节草稿。"},
             ]
             if writing_run:
-                order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
-                prior = order[order.index(chapter_id) - 1] if chapter_id in order and order.index(chapter_id) > 0 else None
-                direction = generation_control.get('scene_direction') or generation_control.get('writing_alignment', {}).get('scene_direction') or {}
-                direction = {key: str(direction[key]) for key in ['shots', 'setting', 'motivation', 'performance', 'focus', 'atmosphere', 'perception', 'reader_feeling', 'dramatic_function', 'prose_strategy'] if isinstance(direction, dict) and direction.get(key)}
-                writer_messages = [{'role': 'system', 'content': '你是中文小说写作助手。只输出小说正文，不输出写作说明或摄影脚本。根据章节计划与作者共识写作；承接前文，保持人物与事实一致，必须遵守文风约束。只使用给定材料；缺少依据时不要自创关键事实。作者设定不代表人物已知信息，不要把未来秘密写成人物已知。每次写作都要从全局故事线、当前章节目标落实到场景：作者意图优先，先按作者确定的段落作用（推进、人物、伏笔、回收、转折或蓄势）选择细节，再把感知、动作或反应、随后变化连成因果。从选定角色的注意与处境出发，选择真正有作用的视觉、听觉或触觉素材，不罗列五感、不并列堆放景物、不随意跳视角；不能擅自把素材升格为新伏笔或新事实。保持空间和时间连续，让人物动机驱动动作、表情、沉默与对话。描写焦点可由远及近，再落到推动情绪或冲突的具体细节；用人物不说话时的细小动作与环境变化烘托情绪，细节有主次，不堆满感官。参考镜头、画面和布景需要转换成自然小说叙述，不照搬机位或剪辑术语；适量运用贴合文风的描写、结构和抒情技法，修辞服务情节而非堆砌。已确认的场景推演是作者采用的创作安排，不是既成事实。依照它把重要人物各自的打算写成互相牵动的行动与回应：一个人的行为应改变另一个人能够或愿意作出的选择，再由反应改变局势。沉默、退让和注意转移同样可以形成变化；空间、物件与环境要实际影响行动，而非均匀堆砌景物。保留每个角色的底线，情绪、神态随处境变化，不把人物参考图的定格表情写成恒定状态。让本场后果形成后场问题；所选技法按作者指定的作用位置服务铺势与转折，不擅自增加秘密、人物或规则。引用的写作工具仅作为约束，不额外生成一轮规划或自动检查。'}, {'role': 'user', 'content': json.dumps({
-                    '本次范围': writing_run.get('label'),
-                    '写作方式': '只续写当前桥段，不重复已经写过的内容' if writing_run.get('append') else '完成当前章节的场景与目标',
-                    '章节计划': payload.get('constraints', {}).get('chapter_plan', {}),
-                    '故事要求': story_targets,
-                    '作者共识': generation_control.get('writing_alignment', {}),
-                    '叙述视角': author_scope.get('narrative_pov') or '沿用作者已有叙述，视角人物的知识不得超出本次资料范围。',
-                    '场景表达参考（可选，转成小说语言）': direction,
-                    '人物与设定': manifest.get('fixed_blocks', {}),
-                    '本章相关材料（最新保存版，包含来源）': manifest['linked_materials'],
-                    '作者选用的写作参考': manifest['writing_references'],
-                    '关联情节规划（作者规划，不代表人物已知）': manifest['story_planning'],
-                    '上一章结尾': self.store.read_md(project_id, f'drafts/{prior}.md')[-2500:] if prior else '',
-                    '本章已写内容': writing_run.get('append_base', '')[-6000:] if writing_run.get('append') else '',
-                }, ensure_ascii=False)}]
-                requirements = json.loads(writer_messages[-1]['content'])
-                requirements = {key: requirements[key] for key in ['本次范围', '写作方式', '章节计划', '故事要求', '作者共识', '叙述视角', '场景表达参考（可选，转成小说语言）']}
-                requirements['场景'] = scene
-                requirements['小说观察顺序'] = prose_guidance(direction)
-                input_limit = payload.get('constraints', {}).get('context_max_chars', 14000)
-                if isinstance(input_limit, bool) or not isinstance(input_limit, int) or not 4000 <= input_limit <= 100000:
-                    raise ValueError('本次取材范围必须在 4000 至 100000 字符之间。')
-                if generation_control.get('include_lines') is False:
-                    requirements.pop('故事要求')
-                pack_manifest = manifest
-                if generation_control.get('include_cards') is False:
-                    pack_manifest = {**manifest, 'included_cards': [], 'linked_materials': {**manifest['linked_materials'], 'cards': []}, 'fixed_blocks': {**manifest['fixed_blocks'], 'style_guide': {}, 'style_locks': {}}}
-                writer_messages[-1]['content'], report = ContextPackService(self.store).build(
-                    project_id, chapter_id, pack_manifest, requirements,
-                    previous_end=self.store.read_md(project_id, f'drafts/{prior}.md') if prior else '',
-                    current_end=writing_run.get('append_base', '') if writing_run.get('append') else '',
-                    max_chars=input_limit - 2000,
-                )
-                manifest['context_pack'] = {**report, 'request_char_limit': input_limit, 'writer_request_chars': sum(len(message['content']) for message in writer_messages)}
+                import copy
+                manifest = copy.deepcopy(prepared_materials['manifest'])
+                writer_messages = copy.deepcopy(prepared_materials['messages'])
             if not writing_run:
                 writer_messages[-1]['content'], report = ContextPackService(self.store).build(project_id, chapter_id, manifest,
                     {'场景': scene, '故事要求': story_targets, '小说观察顺序': prose_guidance(generation_control.get('scene_direction')), '叙述视角': author_scope.get('narrative_pov') or '沿用作者视角'}, max_chars=14000)
                 manifest['context_pack'] = report
                 writer_messages[0]['content'] += '只采用本次有来源资料，规划不等于已发生事实，人物不能提前知道未来秘密。'
             address_guidance = '遵守人物已保存的性别、代词、称呼说明和世界称谓通则；人物关系address_as表示当前人物如何称呼target，不能反用。不从外貌、ABO分类或性别推断亲属与称呼，未知时用姓名或保留未知。'
-            writer_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE + BASE_RULES
+            if not writing_run:
+                writer_messages[0]['content'] += address_guidance + CHARACTER_PORTRAYAL_GUIDANCE + BASE_RULES
             manifest['manifest_hash'] = self._hash_payload({key: value for key, value in manifest.items() if key != 'manifest_hash'})
             self._persist_memory_pack(project_id, chapter_id, job_id, manifest)
             await self.emit(project_id, job_id, "CONTEXT_MANIFEST", {**manifest, "input_summary": "组装上下文、证据、预算和压缩记录", "output_summary": f"使用证据 {len(manifest.get('evidence', []))} 条，压缩 {len(manifest.get('compression_steps', []))} 步"})
-            writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback, max_tokens=int(payload.get('constraints', {}).get('max_tokens', 2400)) if writing_run else 900, strict=bool(writing_run))
+            if writing_run and not ContextPackService(self.store).sources_unchanged(project_id, manifest['generation_materials']['source_versions']):
+                raise FileExistsError('材料来源已变化，请重新核对后生成。')
+            if writing_run:
+                self._write_job_record(project_id, job_id, {'generation_materials_status': {'request_status': 'sending', 'sent': False}})
+            try:
+                writer_text, writer_used, writer_tokens = await self._writer(project_id, job_id, writer_messages, selected, fallback, max_tokens=int(payload.get('constraints', {}).get('max_tokens', 2400)) if writing_run else 900, strict=bool(writing_run))
+            except BaseException:
+                if writing_run:
+                    self._write_job_record(project_id, job_id, {'generation_materials_status': {'request_status': 'failed', 'sent': False, 'delivery_unknown': True}})
+                raise
+            if writing_run:
+                manifest['generation_materials'].update(request_status='sent', sent=True)
+                self._write_job_record(project_id, job_id, {'generation_materials_status': {'request_status': 'sent', 'sent': True}})
             draft = f"# {chapter_id}\n\n{writer_text}" if writer_text else f"# {chapter_id}\n\n林秋在{scene.get('situation')}做出选择。"
             if writing_run:
                 if not writer_text.strip():

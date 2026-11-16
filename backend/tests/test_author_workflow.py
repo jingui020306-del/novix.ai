@@ -1435,12 +1435,14 @@ def test_character_details_keep_stable_stage_identity_scope_and_author_private_b
     card(store, 'world_1', 'world', {})
     card(store, 'person_b', 'character', {'name': '乙', 'identity': ''})
     card(store, 'person_c', 'character', {'name': '丙', 'identity': ''})
+    complete_focus = ''.join(f'{number:04d}：他停下脚步，把话讲完，再看向对方。\n' for number in range(200))[:3200]
     sections = [
         {'id': 'habit', 'title': '紧张时', 'content': '起点习惯', 'usage': 'relevant', 'sources': ['作者原设定']},
         {'id': 'remove_later', 'title': '后来放下', 'content': '旧习惯', 'usage': 'relevant'},
         {'id': 'private', 'title': '作者秘密', 'content': 'PRIVATE_DETAIL_NEVER_MODEL', 'usage': 'author_only'},
         {'id': 'for_b', 'title': '面对乙', 'content': '只在乙面前调整措辞', 'usage': 'relevant', 'target_ids': ['person_b']},
         {'id': 'for_c', 'title': '面对丙', 'content': '不属于当前对象', 'usage': 'focus', 'target_ids': ['person_c']},
+        {'id': 'complete_focus', 'title': '这次完整带入', 'content': complete_focus, 'usage': 'relevant'},
     ]
     base = card(store, 'person_a', 'character', {'name': '甲', 'identity': '', 'detail_sections': sections})
     validate_detail_sections(store, 'p', sections)
@@ -1454,11 +1456,12 @@ def test_character_details_keep_stable_stage_identity_scope_and_author_private_b
         'changes': {'detail_sections': [{**sections[0], 'content': '未来终局习惯不得提前'}]}, 'source': {'kind': 'author'}})
     scope = {'world_id': 'world_1', 'time': {'year': 2020}}
     state = author.character_state('p', 'person_a', world_context=scope)['state']
-    assert {row['id'] for row in state['detail_sections']} == {'habit', 'private', 'for_b', 'for_c'}
+    assert {row['id'] for row in state['detail_sections']} == {'habit', 'private', 'for_b', 'for_c', 'complete_focus'}
     assert next(row['content'] for row in state['detail_sections'] if row['id'] == 'habit') == '经历后不再回避目光'
     selected = select_character_details(store, 'p', {**base, 'payload': state}, scope,
-                                        {'cast': ['person_a', 'person_b']}, focus_ids=['private', 'for_c'])
-    assert {row['id'] for row in selected} == {'habit', 'for_b'}
+                                        {'cast': ['person_a', 'person_b']}, focus_ids=['private', 'for_c', 'complete_focus'])
+    assert {row['id'] for row in selected} == {'habit', 'for_b', 'complete_focus'}
+    assert len(complete_focus) == 3200 and next(row['content'] for row in selected if row['id'] == 'complete_focus') == complete_focus
     assert 'PRIVATE_DETAIL_NEVER_MODEL' not in json.dumps(selected)
     assert store._safe_path('p', 'cards/person_a.yaml').read_bytes() == before
     early = author.character_state('p', 'person_a', world_context={'world_id': 'world_1', 'time': {'year': 2000}})['state']
@@ -1531,12 +1534,17 @@ def test_author_only_details_are_absent_at_actual_gateway_across_authoring_paths
 
 def test_prose_strategy_uses_original_pipeline_calls_and_reviews_only_verifiable_range(store, monkeypatch):
     async def scenario():
+        from services.generation_material_service import GenerationMaterialService
+        from services.context_pack_service import MaterialBudgetError
+
         scope = {'world_id': 'world_1', 'time': {'year': 1930}}
         private = 'PRIVATE_WRITER_AND_REVIEWER_BOUNDARY'
-        card(store, 'world_1', 'world', {'summary': '河港'})
+        complete_focus = ''.join(f'{number:04d}：先看门闩，再判断此刻目标是否值得开门。\n' for number in range(240))[:3200]
+        full_rule = '夜潮时不得开启外港。' + '仅以当前登记和潮位为准。' * 220 + '条件：潮位回落且值守者核准。例外：救生船可先通行后补登记。'
+        card(store, 'world_1', 'world', {'summary': '河港', 'rules': [full_rule], 'canon_status': 'canon'})
         card(store, 'person_a', 'character', {'name': '阿青', 'identity': '信使', 'detail_sections': [
             {'id': 'private', 'title': '作者底稿', 'content': private, 'usage': 'author_only'},
-            {'id': 'habit', 'title': '注意对象', 'content': '先看门闩，再判断是否开门', 'usage': 'relevant'}]})
+            {'id': 'habit', 'title': '注意对象', 'content': complete_focus, 'usage': 'relevant'}]})
         card(store, 'style_001', 'style', {'style_guide': {'pov': '有限第三人称'}})
         card(store, 'outline_001', 'outline', {'beats': []})
         store.write_md('p', 'drafts/chapter_001.md', '')
@@ -1563,15 +1571,31 @@ def test_prose_strategy_uses_original_pipeline_calls_and_reviews_only_verifiable
                 return {'text': text, 'usage': {'prompt_tokens': 2, 'completion_tokens': 2, 'total_tokens': 4, 'estimated': False}}
 
         manager = JobManager(store, ContextEngine(store, KBService(store)), Gateway())
+        window = [200000]
         monkeypatch.setattr(manager, '_resolve_profile', lambda p, body, module='writer': ('isolated',
-            {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid'},
+            {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid', 'context_window': window[0]},
             {'provider': 'ollama', 'model': module, 'base_url': 'http://not-called.invalid'}))
-        await manager._pipeline('job_prose', 'p', {'chapter_id': 'chapter_001', 'blueprint_id': 'blueprint_1', 'scene_index': 0,
-            'writing_run': {'label': '本章'}, 'generation_control': {'world_context': scope, 'pov_character_id': 'person_a',
-                'scene_direction': {'prose_strategy': 'spatial_flow'}}, 'auto_apply_patch': False})
+        payload = {'chapter_id': 'chapter_001', 'blueprint_id': 'blueprint_1', 'scene_index': 0,
+            'writing_run': {'chapter_id': 'chapter_001', 'scene_index': 0, 'label': '本章'},
+            'generation_control': {'world_context': scope, 'pov_character_id': 'person_a', 'character_detail_focus': {'person_a': ['habit']},
+                'scene_direction': {'prose_strategy': 'spatial_flow'}}, 'auto_apply_patch': False}
+        materials = GenerationMaterialService(manager)
+        preview = materials.prepare('p', payload)
+        prepared = materials.load('p', payload, preview['fingerprint'])
+        assert preview['ready'] and not calls and prepared['manifest']['generation_materials'] == preview
+        assert preview['request_status'] == 'prepared' and preview['sent'] is False
+        assert next(item for item in preview['items'] if item['id'] == 'person_a:detail:habit')['text'] == complete_focus
+        assert full_rule in json.loads(next(item for item in preview['items'] if item['id'] == 'world_1')['text'])['设定']['rules']
+        payload['generation_control']['material_preview_fingerprint'] = preview['fingerprint']
+        await manager._pipeline('job_prose', 'p', payload)
         job = manager.get_job('p', 'job_prose')
         assert job['status'] == 'completed', job.get('last_error')
         assert [model for model, _ in calls] == ['chapter_writer', 'chapter_reviewer', 'proofreader']
+        assert calls[0][1] == prepared['messages']
+        actual = job['context_manifest']['generation_materials']
+        assert {key: value for key, value in actual.items() if key not in {'request_status', 'sent'}} == {
+            key: value for key, value in preview.items() if key not in {'request_status', 'sent'}}
+        assert actual['request_status'] == 'sent' and actual['sent'] is True
         assert 'spatial_flow' in calls[0][1][-1]['content']
         assert all(private not in json.dumps(messages, ensure_ascii=False) for _, messages in calls)
         review = next(row['data'] for row in job['events'] if row['event'] == 'CRITIC_REVIEW')
@@ -1581,6 +1605,130 @@ def test_prose_strategy_uses_original_pipeline_calls_and_reviews_only_verifiable
         assert review['issues'][1]['support_level'] == 'unsupported' and review['issues'][1]['evidence']['quote'] == ''
         assert not store.read_jsonl('p', 'canon/facts.jsonl')
         assert not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+        saved_draft = store._safe_path('p', 'drafts/chapter_001.md').read_bytes()
+        next_preview = materials.prepare('p', payload)
+        world = store.read_yaml('p', 'cards/world_1.yaml')
+        world['payload']['rules'].append('作者在核对后新增的正式例外。')
+        store.write_yaml('p', 'cards/world_1.yaml', world)
+        payload['generation_control']['material_preview_fingerprint'] = next_preview['fingerprint']
+        with pytest.raises(FileExistsError):
+            materials.load('p', payload)
+        await manager._pipeline('job_stale_preview', 'p', payload)
+        assert len(calls) == 3 and manager.get_job('p', 'job_stale_preview')['status'] != 'completed'
+        window[0] = 3000
+        blocked = materials.prepare('p', payload)
+        assert not blocked['ready'] and blocked['overflow'] and blocked['budget']['estimated'] is True
+        assert blocked['budget']['estimated_input_tokens'] + blocked['budget']['output_reserved_tokens'] > 3000
+        payload['generation_control']['material_preview_fingerprint'] = blocked['fingerprint']
+        with pytest.raises(MaterialBudgetError):
+            materials.load('p', payload)
+        await manager._pipeline('job_budget_blocked', 'p', payload)
+        assert len(calls) == 3 and manager.get_job('p', 'job_budget_blocked')['status'] != 'completed'
+        window[0] = 200000
+        payload['generation_control']['character_detail_focus']['person_a'].append('private')
+        private_focus = materials.prepare('p', payload)
+        assert not private_focus['ready'] and private not in json.dumps(private_focus, ensure_ascii=False)
+        assert any(item['id'] == 'person_a:detail:private' for item in private_focus['overflow'])
+        assert store._safe_path('p', 'drafts/chapter_001.md').read_bytes() == saved_draft
+        assert not store.read_jsonl('p', 'canon/facts.jsonl') and not store.read_jsonl('p', 'drafts/chapter_001.patch.jsonl')
+        original_blueprint = store._safe_path('p', 'cards/blueprint_1.json').read_bytes()
+        canonical = 'story_fallback:important_scenes:current'
+        card(store, 'story_fallback', 'story', {'world_context': scope, 'important_scenes': [
+            {'id': 'current', 'scene': '递信', 'plot': '甲当场递信，等待答复。', 'chapter': 'chapter_001', 'characters': ['person_a']},
+            {'id': 'future', 'scene': '未来递信', 'plot': '不属于当前章。', 'chapter': 'chapter_002', 'characters': ['person_a']}]})
+        card(store, 'outline_fallback', 'outline', {'story_card_id': 'story_fallback', 'planning_worksheet': True, 'important_scenes': [
+            {'id': 'mapped', 'chapter': 'chapter_001', 'canonical_event_ref': {'owner_card_id': 'story_fallback', 'scene_id': 'current'}},
+            {'id': 'unconfirmed', 'scene': '递信', 'plot': '同名但还未确认是同一事件。', 'chapter': 'chapter_001', 'characters': ['person_a']}]})
+        fallback = copy.deepcopy(payload)
+        fallback['blueprint_id'] = 'blueprint_001'
+        fallback['generation_control'].pop('material_preview_fingerprint', None)
+        fallback['generation_control'].update(story_card_id='story_fallback', character_detail_focus={'person_a': ['habit']})
+        _, derived, _ = manager._validate_write_payload('p', fallback)
+        assert derived['derived_from_saved_scenes'] is True
+        assert {scene['scene_id'] for scene in derived['scene_plan']} == {canonical, 'outline_fallback:important_scenes:unconfirmed'}
+        fallback['generation_control']['scene_ref'] = 'outline_fallback:important_scenes:mapped'
+        _, selected_scene, _ = manager._validate_write_payload('p', fallback)
+        assert [scene['scene_id'] for scene in selected_scene['scene_plan']] == [canonical]
+        assert any('cards/story_fallback.yaml' in str(source) for source in selected_scene['sources'])
+        valid = {**fallback, 'blueprint_id': 'blueprint_1'}
+        assert manager._validate_write_payload('p', valid)[1]['scene_plan'] == json.loads(original_blueprint)['scene_plan']
+        assert store._safe_path('p', 'cards/blueprint_1.json').read_bytes() == original_blueprint
+        with pytest.raises(ValueError) as missing:
+            manager._validate_write_payload('p', {**fallback, 'blueprint_id': 'blueprint_explicit_missing'})
+        assert any('\u4e00' <= char <= '\u9fff' for char in str(missing.value))
+        fallback_preview = materials.prepare('p', fallback)
+        fallback_prepared = materials.load('p', fallback, fallback_preview['fingerprint'])
+        assert fallback_preview['ready'] and fallback_prepared['scene']['scene_id'] == canonical
+        assert 'cards/story_fallback.yaml' in fallback_preview['source_versions']
+        fallback['generation_control']['material_preview_fingerprint'] = fallback_preview['fingerprint']
+        await manager._pipeline('job_no_blueprint', 'p', fallback)
+        assert manager.get_job('p', 'job_no_blueprint')['status'] == 'completed'
+        assert len(calls) == 6 and calls[3][1] == fallback_prepared['messages']
+        assert not store._safe_path('p', 'cards/blueprint_001.json').exists()
+        card(store, 'empty_story', 'story', {'world_context': scope, 'important_scenes': []})
+        empty = copy.deepcopy(fallback)
+        empty['generation_control'].update(story_card_id='empty_story', scene_ref=None)
+        with pytest.raises(ValueError) as no_scene:
+            manager._validate_write_payload('p', empty)
+        assert any('\u4e00' <= char <= '\u9fff' for char in str(no_scene.value))
+        assert not store._safe_path('p', 'cards/blueprint_001.json').exists()
+        from services.writing_run_service import WritingRunService
+        story = store.read_yaml('p', 'cards/story_fallback.yaml')
+        story['payload']['chapter_plan'] = [{'chapter_id': 'chapter_001', 'title': '第一章'}, {'chapter_id': 'chapter_002', 'title': '第二章'}]
+        store.write_yaml('p', 'cards/story_fallback.yaml', story)
+        store.write_json('p', 'drafts/chapter_002.meta.json', {'story_card_id': 'story_fallback',
+            'world_context': {'world_id': 'world_1', 'time': {'year': 1940}},
+            'writing_alignment': {'changes': 'SECOND_CHAPTER_ONLY', 'scene_direction': {'prose_strategy': 'focus_closure'}}})
+        multi = copy.deepcopy(fallback)
+        multi.pop('writing_run', None)
+        multi.update(scope='chapters', start_chapter='chapter_001', end_chapter='chapter_002', stop_point='end')
+        multi['generation_control'].pop('material_preview_fingerprint', None)
+        multi['generation_control'].update(include_techniques=False, writing_alignment={
+            'changes': 'FIRST_CHAPTER_ONLY', 'scene_direction': {'prose_strategy': 'spatial_flow'}})
+        initial = materials.prepare('p', multi)
+        assert initial['ready']
+        multi['generation_control']['material_preview_fingerprint'] = initial['fingerprint']
+        runs, before_calls = WritingRunService(manager), len(calls)
+        run = await runs.create('p', multi)
+        await asyncio.wait_for(runs.tasks[('p', run['run_id'])], timeout=10)
+        completed = runs.get('p', run['run_id'])
+        assert completed['status'] == 'completed' and completed['next_index'] == 2, completed.get('message')
+        writers = [messages for model, messages in calls[before_calls:] if model == 'chapter_writer']
+        assert len(writers) == 2 and len(completed['job_ids']) == 2
+        for messages, job_id in zip(writers, completed['job_ids']):
+            actual_job = manager.get_job('p', job_id)
+            actual_materials = actual_job['context_manifest']['generation_materials']
+            snapshot = store.read_json('p', materials._path(actual_materials['fingerprint']))
+            assert messages == snapshot['messages'] and actual_materials['sent'] is True
+            assert actual_job['context_manifest']['generation_control']['include_techniques'] is False
+        first_request, second_request = [json.loads(messages[-1]['content']) for messages in writers]
+        assert first_request['当前要求']['场景']['scene_id'] == canonical
+        assert second_request['当前要求']['场景']['scene_id'] == 'story_fallback:important_scenes:future'
+        assert first_request['当前要求']['作者共识']['changes'] == 'FIRST_CHAPTER_ONLY'
+        assert second_request['当前要求']['作者共识']['changes'] == 'SECOND_CHAPTER_ONLY'
+        assert second_request['当前要求']['场景表达参考（可选，转成小说语言）'] == {'prose_strategy': 'focus_closure'}
+        assert second_request['适用世界与故事时间']['time']['year'] == 1940
+        assert 'FIRST_CHAPTER_ONLY' not in json.dumps(second_request['当前要求'], ensure_ascii=False)
+        assert not store._safe_path('p', 'cards/blueprint_001.json').exists()
+        world = store.read_yaml('p', 'cards/world_1.yaml')
+        world['payload']['rules'].append('完整条款及其条件和例外必须一起保留。' * 1200)
+        store.write_yaml('p', 'cards/world_1.yaml', world)
+        large = copy.deepcopy(fallback)
+        large['generation_control'].pop('material_preview_fingerprint', None)
+        large_preview = materials.prepare('p', large)
+        assert large_preview['ready'] and large_preview['budget']['used_chars'] > 14000
+        assert large_preview['budget']['max_chars'] > 14000
+        explicit = copy.deepcopy(large)
+        explicit.setdefault('constraints', {})['context_max_chars'] = 14000
+        explicit_preview = materials.prepare('p', explicit)
+        assert not explicit_preview['ready'] and explicit_preview['budget']['max_chars'] == 14000
+        window[0] = 10000
+        small_preview = materials.prepare('p', large)
+        assert not small_preview['ready']
+        for overflow_preview in [explicit_preview, small_preview]:
+            keys = [(item['id'], item['source']) for item in overflow_preview['overflow']]
+            assert keys and len(keys) == len(set(keys))
+        assert len(calls) == before_calls + 6
 
     asyncio.run(scenario())
 
@@ -1829,3 +1977,174 @@ def test_card_operations_preview_versions_locks_and_display_order_do_not_rewrite
         service.apply('p', locked['id'], {'revision': locked['revision']})
     assert before == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
     assert not store.read_jsonl('p', 'canon/facts.jsonl') and not store.read_jsonl('p', 'canon/author_stages.jsonl')
+
+
+def test_required_materials_preserve_full_focus_and_rule_exceptions_before_optional_text(store):
+    from services.context_pack_service import MaterialBudgetError
+
+    scope = {'world_id': 'world_1', 'time': {'year': 1930}}
+    focus = ''.join(f'{number:04d}：先说明此刻目标，再判断是否开门。\n' for number in range(240))[:3200]
+    rule = ''.join(f'{number:04d}：港口守则须遵守当前时点与当事人的权限。\n' for number in range(130))
+    rule += '仅在潮位低于警戒线且守门人核准时开放。例外：救生船不受闭港限制，但必须登记。'
+    world = card(store, 'world_1', 'world', {'rules': [rule], 'canon_status': 'canon', 'setting_status': 'set'})
+    person = card(store, 'person_a', 'character', {'name': '甲', 'identity': '守门人', 'detail_sections': [
+        {'id': 'focus', 'title': '完整目标与犹豫', 'content': focus, 'usage': 'relevant'}]})
+    optional = card(store, 'style_extra', 'style', {'tone': '可选文风说明。' * 3000})
+    store.write_md('p', 'drafts/chapter_001.md', '已保存原稿。')
+    store.write_json('p', 'drafts/chapter_001.meta.json', {'world_context': scope})
+    originals = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    manifest = {'included_cards': [optional, world, person], 'generation_control': {
+        'world_context': scope, 'character_detail_focus': {'person_a': ['focus']}}}
+    requirements = {'场景': {'cast': ['person_a'], 'purpose': '按现有条件判断是否开港'}}
+    service = ContextPackService(store)
+    text, report = service.build('p', 'chapter_001', manifest, requirements, max_chars=10000)
+
+    def strings(value):
+        if isinstance(value, dict):
+            return [text for child in value.values() for text in strings(child)]
+        if isinstance(value, list):
+            return [text for child in value for text in strings(child)]
+        return [value] if isinstance(value, str) else []
+
+    assert len(focus) == 3200 and focus in strings(json.loads(text)) and rule in strings(json.loads(text))
+    assert report['ready'] and not report['overflow'] and report['used_chars'] == len(text) <= 10000
+    assert next(item for item in report['items'] if item['id'] == 'person_a:detail:focus')['text'] == focus
+    assert next(item for item in report['items'] if item['id'] == 'person_a:detail:focus')['required']
+    assert next(item for item in report['items'] if item['id'] == 'world_1')['required']
+    assert 'style_extra' not in report['used_ids']
+    with pytest.raises(MaterialBudgetError) as blocked:
+        service.build('p', 'chapter_001', manifest, requirements, max_chars=2000)
+    overflow = blocked.value.report
+    assert not overflow['ready'] and overflow['required_chars'] > overflow['max_chars'] == 2000
+    assert {'world_1', 'person_a:detail:focus'} <= {item['id'] for item in overflow['overflow']}
+    assert next(item for item in overflow['items'] if item['id'] == 'person_a:detail:focus')['text'] == focus
+    assert {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')} == originals
+    assert store.read_md('p', 'drafts/chapter_001.md') == '已保存原稿。' and not store.read_jsonl('p', 'canon/facts.jsonl')
+
+
+def test_reference_expansion_keeps_selected_range_and_blocks_cycles_future_and_private_sources(store):
+    from services.material_reference_service import MaterialReferenceService
+
+    scope = {'world_id': 'world_1', 'time': {'year': 1930}, 'pov_character_id': 'person_a'}
+    old_content, new_content = '1930基准世界正文，条件完整保留。', '1950阶段世界正文，条件变化；例外为救生船先通行。'
+    old_rule, new_rule = '1930基准规则：夜潮闭港。', '1950阶段规则：夜潮可依核准通行；救生船除外。'
+    card(store, 'world_1', 'world', {'content': old_content, 'rules': [old_rule]})
+    world_stage = AuthorDataService(store).add_stage('p', 'world', 'world_1', {'status': 'confirmed',
+        'scope': {'world_id': 'world_1', 'time': {'year': 1950}},
+        'changes': {'content': new_content, 'rules': [new_rule]}, 'source': {'kind': 'author'}})
+    card(store, 'fork_story', 'story', {'world_context': {'world_id': 'world_1'}, 'important_scenes': [
+        {'id': 'fork', 'world_context': {'time': {'year': 1940}}}]})
+    AuthorDataService(store).put_branches('p', 'world_1', {'branches': [{'id': 'alternate', 'label': '另一分支',
+        'parent_branch_id': 'main', 'fork_event_ref': {'owner_card_id': 'fork_story', 'scene_id': 'fork'}}]})
+    card(store, 'person_a', 'character', {'name': '甲', 'identity': '', 'detail_sections': [
+        {'id': 'private', 'title': '作者底稿', 'content': 'PRIVATE_REFERENCE_NEVER_SEND', 'usage': 'author_only'}]})
+    selected = '第二段😀：只核对这封信，再决定是否放行。[[letter]]'
+    memo_text = '首段不在这次选择范围。\n\n' + selected + '\n\n末段也不在这次选择范围。'
+    card(store, 'memo', 'outline', {'summary': '只是一份摘要，原文未带入。', 'content': memo_text, 'world_context': {'world_id': 'world_1'}})
+    letter_text = '原信：船在旧桥等候，勿向旁人说明。[[memo]]'
+    card(store, 'letter', 'outline', {'content': letter_text, 'known_by': ['person_a'],
+        'world_context': {'world_id': 'world_1', 'time': {'year': 1920}}})
+    card(store, 'future', 'outline', {'content': '未来信件不得提前读', 'world_context': {'world_id': 'world_1', 'time': {'year': 1940}}})
+    card(store, 'other_mind', 'outline', {'content': '另一人物私下收到的信', 'known_by': ['person_b'], 'world_context': {'world_id': 'world_1'}})
+    card(store, 'private_node', 'outline', {'secret': {'usage': 'author_only', 'content': 'PRIVATE_NESTED_NEVER_SEND'},
+        'future': {'scope': {'time': {'year': 1940}}, 'content': 'FUTURE_NESTED_NEVER_SEND'},
+        'future_context': {'world_context': {'time': {'year': 1940}}, 'content': 'FUTURE_CONTEXT_NEVER_SEND'},
+        'other_branch': {'scope': {'world_id': 'world_1', 'branch_id': 'alternate'}, 'content': 'OTHER_BRANCH_NEVER_SEND'},
+        'other_mind': {'known_by': ['person_b'], 'content': 'OTHER_MIND_NEVER_SEND'}, 'world_context': {'world_id': 'world_1'}})
+    store.write_md('p', 'drafts/chapter_001.md', '当前正文。')
+    store.write_md('p', 'drafts/chapter_002.md', '后续章节不得提前展开。')
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_001\nchapter_002')
+    store.write_md('p', 'assets/raw.txt', '尚未确认适用范围的原始资料。')
+    originals = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    service = MaterialReferenceService(store)
+    source = 'cards/memo.yaml#payload.content'
+    choice = {'source': source, 'start': memo_text.index(selected), 'end': memo_text.index(selected) + len(selected), 'follow_refs': True}
+    expanded = service.expand('p', [choice, choice], scope, {'cast': ['person_a']}, 'chapter_001')
+    assert not expanded['overflow'] and len(expanded['items']) == 2
+    assert expanded['items'][0]['text'] == selected and expanded['items'][1]['text'] == letter_text
+    assert expanded['items'][0]['source'] == source and expanded['items'][1]['depth'] == 1
+    assert expanded['items'][1]['via'] == [source]
+    assert set(expanded['source_versions']) == {'cards/memo.yaml', 'cards/letter.yaml', 'canon/author_stages.jsonl'}
+    separate = service.expand('p', [{'source': source, 'start': 0, 'end': 6},
+        {'source': source, 'start': len(memo_text) - 6, 'end': len(memo_text)}], scope, {'cast': ['person_a']}, 'chapter_001')
+    assert [item['text'] for item in separate['items']] == [memo_text[:6], memo_text[-6:]]
+    for private_source in ['cards/person_a.yaml#payload.detail_sections.@private.content',
+                           'cards/private_node.yaml#payload.secret', 'cards/private_node.yaml#payload.secret.content',
+                           'cards/private_node.yaml#payload.future.content', 'cards/private_node.yaml#payload.future_context.content',
+                           'cards/private_node.yaml#payload.other_branch.content', 'cards/private_node.yaml#payload.other_mind.content',
+                           'cards/future.yaml', 'cards/other_mind.yaml', 'drafts/chapter_002.md', 'assets/raw.txt']:
+        denied = service.expand('p', [{'source': private_source}], scope, {'cast': ['person_a']}, 'chapter_001')
+        assert denied['overflow'] and denied['items'] == [], private_source
+        assert 'PRIVATE_REFERENCE_NEVER_SEND' not in json.dumps(denied, ensure_ascii=False)
+        assert 'PRIVATE_NESTED_NEVER_SEND' not in json.dumps(denied, ensure_ascii=False)
+    whole = service.expand('p', [{'source': 'cards/private_node.yaml'}], scope, {'cast': ['person_a']}, 'chapter_001')
+    forbidden = ['PRIVATE_NESTED_NEVER_SEND', 'FUTURE_NESTED_NEVER_SEND', 'FUTURE_CONTEXT_NEVER_SEND', 'OTHER_BRANCH_NEVER_SEND', 'OTHER_MIND_NEVER_SEND']
+    assert not [secret for secret in forbidden if secret in json.dumps(whole, ensure_ascii=False)]
+    for field, old, new in [('content', old_content, new_content), ('rules', [old_rule], [new_rule])]:
+        reference = {'source': f'cards/world_1.yaml#payload.{field}'}
+        early = service.expand('p', [reference], {**scope, 'time': {'year': 1920}}, {}, 'chapter_001')
+        later = service.expand('p', [reference], {**scope, 'time': {'year': 1960}}, {}, 'chapter_001')
+        assert not early['overflow'] and not later['overflow']
+        assert (json.loads(early['items'][0]['text']) if field == 'rules' else early['items'][0]['text']) == old
+        assert (json.loads(later['items'][0]['text']) if field == 'rules' else later['items'][0]['text']) == new
+        item = later['items'][0]
+        assert item['stage_id'] == item['source_record_id'] == world_stage['id']
+        assert item['source'] == 'canon/author_stages.jsonl#' + world_stage['id']
+        assert item['logical_source'] == reference['source']
+        assert later['source_versions']['canon/author_stages.jsonl'] == hashlib.sha256(store._safe_path('p', 'canon/author_stages.jsonl').read_bytes()).hexdigest()
+    assert {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')} == originals
+    assert ContextPackService(store).sources_unchanged('p', expanded['source_versions'])
+    letter = store.read_yaml('p', 'cards/letter.yaml')
+    letter['payload']['content'] = '作者已修改的原信。'
+    store.write_yaml('p', 'cards/letter.yaml', letter)
+    assert not ContextPackService(store).sources_unchanged('p', expanded['source_versions'])
+
+
+def test_short_import_resolves_names_without_sending_ten_thousand_object_catalog(store):
+    async def scenario():
+        folder, originals = store._safe_path('p', 'cards'), {}
+        for number in range(10000):
+            identity = f'bulk_{number:05d}'
+            value = {'id': identity, 'type': 'character', 'title': identity, 'tags': [], 'links': [],
+                     'payload': {'name': '阿青' if number == 9999 else f'人物{number:05d}', 'identity': '守门人' * 200}}
+            raw = json.dumps(value, ensure_ascii=False).encode()
+            (folder / f'{identity}.yaml').write_bytes(raw)
+            originals[identity] = hashlib.sha256(raw).hexdigest()
+        sent = []
+
+        class Authoring:
+            async def complete(self, *args, **kwargs):
+                sent.append(copy.deepcopy(args))
+                if '少量同名候选' in json.loads(args[-1]):
+                    raise RuntimeError('模拟辅助身份判断暂时失败')
+                return json.dumps({'cleaned_text': '阿青来', 'candidates': [{'id': 'person', 'kind': 'character', 'label': '阿青',
+                    'values': {'name': '阿青', 'identity': ''}, 'evidence': [{'quote': '阿青'}]}]}, ensure_ascii=False)
+
+        service = MaterialImportService(store, Authoring())
+        batch = service.create('p', {'purpose': 'story', 'text': '阿青来'})
+        ready = await service.extract('p', batch['id'], {'base_revision': batch['revision'], 'use_ai': True})
+        assert len(sent) == 1
+        request = json.loads(sent[0][-1])
+        assert request['原文'] == '阿青来' and not request.get('已有正式对象')
+        assert len(json.dumps(sent, ensure_ascii=False)) < 12000
+        assert ready['candidates'][0]['possible_target_ids'] == ['bulk_09999']
+        second = store.read_yaml('p', 'cards/bulk_09998.yaml')
+        second['payload']['name'] = '阿青'
+        store.write_yaml('p', 'cards/bulk_09998.yaml', second)
+        originals['bulk_09998'] = hashlib.sha256((folder / 'bulk_09998.yaml').read_bytes()).hexdigest()
+        batch = service.create('p', {'purpose': 'story', 'text': '阿青来'})
+        ambiguous = await service.extract('p', batch['id'], {'base_revision': batch['revision'], 'use_ai': True})
+        assert len(sent) == 3
+        decision_request = json.loads(sent[-1][-1])
+        assert len(decision_request['身份判断摘录']) <= 1800
+        assert {row['id'] for row in decision_request['少量同名候选']} == {'bulk_09998', 'bulk_09999'}
+        assert all(len(row['identity']) <= 500 for row in decision_request['少量同名候选'])
+        assert len(json.dumps(sent, ensure_ascii=False)) < 16000
+        candidate = ambiguous['candidates'][0]
+        assert candidate['values']['name'] == '阿青' and candidate['values']['identity'] == ''
+        assert set(candidate['possible_target_ids']) == {'bulk_09998', 'bulk_09999'} and not candidate.get('target_id')
+        assert candidate.get('needs_review') and not candidate.get('identity_suggestion')
+        assert {path.stem: hashlib.sha256(path.read_bytes()).hexdigest() for path in folder.glob('*.yaml')} == originals
+        assert not store.read_jsonl('p', 'canon/facts.jsonl') and not list(store._safe_path('p', 'drafts').glob('*.md'))
+
+    asyncio.run(scenario())

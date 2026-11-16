@@ -516,6 +516,27 @@ class AuthorDataService:
             raise FileNotFoundError('世界资料不存在或不适用于当前时间分支。')
         return {**item, 'scope': snapshot['scope'], 'inherited_from': snapshot['inherited_from'], 'uncertainties': [*snapshot['warnings'], *item['uncertainties']]}
 
+    def world_snapshot(self, project_id, world_id, body):
+        entity_id(world_id, '世界')
+        if not isinstance(body, dict) or not isinstance(body.get('world_context', {}), dict):
+            raise ValueError('请选择要浏览的世界、时期和地区。')
+        if self.store.read_yaml(project_id, f'cards/{world_id}.yaml').get('type') not in {'world', 'worldview', 'world_rule', 'lore'}:
+            raise FileNotFoundError('世界资料不存在。')
+        context = {**body.get('world_context', {}), 'world_id': world_id}
+        args = {key: body[key] for key in ['story_card_id', 'chapter_id', 'pov_character_id'] if body.get(key)}
+        if 'world_context' in body:
+            # Browsing filters replace inherited time; selecting a period must not restore the story's old year.
+            story_id = args.pop('story_card_id', None)
+            if story_id and self.store.read_yaml(project_id, f'cards/{entity_id(story_id)}.yaml').get('payload', {}).get('world_context', {}).get('world_id') == world_id:
+                context['story_card_id'] = story_id
+            if args.get('chapter_id'):
+                context['chapter_id'] = args.pop('chapter_id')
+        snapshot = self.author_state(project_id, world_context=context, **args)
+        visible = {row['id'] for key in ['worlds', 'characters'] for row in snapshot[key]}
+        relations = [{**row, 'sources': [*row.get('sources', []), *[{'path': STAGES_PATH, 'record_id': stage['id'], 'evidence': stage['source']} for stage in row.get('stages', [])]]}
+            for row in snapshot['relations'] if all(person['entity_id'] in visible for person in row['state']['participants'])]
+        return {**snapshot, 'relations': relations, 'relationships': relations, 'uncertainties': snapshot['warnings']}
+
     def author_state(self, project_id, **scope_args):
         resolved = self.world.resolve(project_id, **scope_args)
         scope = resolved['scope']

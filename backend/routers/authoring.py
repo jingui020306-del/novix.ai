@@ -270,6 +270,24 @@ async def create_run(project_id: str, body: RunRequest, svc: WritingRunService =
         raise HTTPException(400, '每段生成长度必须在 128 到 16000 个输出单位之间。')
     try:
         return await svc.create(project_id, data)
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        from services.context_pack_service import MaterialBudgetError
+        if isinstance(exc, MaterialBudgetError):
+            raise HTTPException(400, {'message': str(exc), **exc.report}) from exc
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/generation-materials/preview')
+def preview_generation_materials(project_id: str, body: RunRequest, svc: AuthoringService = Depends(get_authoring)):
+    from services.generation_material_service import GenerationMaterialService
+    try:
+        return GenerationMaterialService(svc.manager).prepare(project_id, body.model_dump(exclude_none=True))
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:

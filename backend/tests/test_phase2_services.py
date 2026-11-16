@@ -1230,7 +1230,7 @@ def test_create_job_invalid_payload_returns_400_and_stream_not_hanging(tmp_path:
         client = TestClient(app_main.app)
         resp = client.post('/api/projects/p1/jobs/write', json={'blueprint_id': 'blueprint_001'})
         assert resp.status_code == 400
-        assert 'chapter_id' in resp.text
+        assert resp.json()['detail'] == '请先选择要写的章节。'
     finally:
         app_main.store = old_store
         app_main.kb_service = old_kb

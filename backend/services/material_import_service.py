@@ -359,6 +359,10 @@ class MaterialImportService:
         if not isinstance(values, list) or len(values) > 1000:
             raise ValueError('提取结果必须是至多1000项的候选列表，请拆分材料。')
         cards = self._cards(project_id)
+        from services.world_scope_service import WorldScopeService
+        world = WorldScopeService(self.store)
+        context = record.get('world_context') or {}
+        lookup_scope = world.resolve(project_id, world_context=context, story_card_id=record.get('story_card_id'))['scope'] if context or record.get('story_card_id') else None
         from services.author_data_service import AuthorDataService
         events = AuthorDataService(self.store).events(project_id, record.get('story_card_id') or None)
         result, seen = [], set()
@@ -413,7 +417,10 @@ class MaterialImportService:
                 item['classification'] = item.get('classification') if item.get('classification') in {'supplement', 'conflict'} else 'supplement'
             else:
                 kind = item['kind']
-                matches = [card for card in cards if card.get('type') == kind and str(card.get('payload', {}).get('name') or card.get('title') or '') == item['label']]
+                matches = [card for card in cards if card.get('type') == kind and str(card.get('payload', {}).get('name') or card.get('title') or '') == item['label'] and (lookup_scope is None or world.card_visible(project_id, card, lookup_scope))]
+                if item.get('identity_matches'):
+                    looked_up = {row.get('id') for row in item['identity_matches'] if isinstance(row, dict)}
+                    matches = [card for card in cards if card.get('type') == kind and (card['id'] in looked_up or card in matches) and (lookup_scope is None or world.card_visible(project_id, card, lookup_scope))]
                 if kind == 'event':
                     prior = next((event for event in events if event['values'].get('import_source_key') == source_key), None)
                     if prior:

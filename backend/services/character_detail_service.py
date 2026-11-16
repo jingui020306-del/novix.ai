@@ -8,13 +8,15 @@ from services.world_scope_service import WorldScopeService, entity_id
 
 def strip_author_only(value, _private_context=False):
     if isinstance(value, dict):
+        if value.get('usage') == 'author_only' or value.get('author_only') is True or value.get('private') is True:
+            return {}
         sections = value.get('detail_sections')
         private = isinstance(sections, list) and any(isinstance(row, dict) and row.get('usage') == 'author_only' for row in sections)
         changes = value.get('changes', {}).get('detail_sections') if isinstance(value.get('changes'), dict) else None
         private = private or isinstance(changes, list) and any(isinstance(row, dict) and row.get('usage') == 'author_only' for row in changes)
         private = private or _private_context
         result = {key: [strip_author_only(row, private) for row in child if isinstance(row, dict) and row.get('usage') != 'author_only' and not row.get('removed')]
-                if key == 'detail_sections' and isinstance(child, list) else strip_author_only(child, private) for key, child in value.items()}
+                if key == 'detail_sections' and isinstance(child, list) else strip_author_only(child, private) for key, child in value.items() if key not in {'author_notes', 'private_notes', 'author_only'}}
         if private:
             # Shared import quotations can repeat a now-private detail; keep source references, not that raw quotation.
             keys = {'id', 'kind', 'path', 'source_id', 'record_id', 'version', 'import_batch_id', 'page', 'pages', 'line_range', 'url'}
@@ -44,7 +46,7 @@ def validate_detail_sections(store, project_id, sections, *, allow_removed=False
             if not allow_removed or row['removed'] is not True:
                 raise ValueError('移除阶段补充须保留原段编号；初始资料直接删除该段。')
             continue
-        for key, limit in [('title', 200), ('content', 12000), ('situation', 2000)]:
+        for key, limit in [('title', 200), ('content', 12000), ('summary', 2000), ('situation', 2000)]:
             text = row.get(key, '')
             if not isinstance(text, str) or len(text) > limit or key in {'title', 'content'} and not text.strip():
                 raise ValueError('请填写人物补充段名称与内容，名称最多200字、正文最多12000字。')
@@ -65,6 +67,18 @@ def validate_detail_sections(store, project_id, sections, *, allow_removed=False
                     AuthorDataService(store).relationship(project_id, ref)
         if not isinstance(row.get('sources', []), list) or any(not isinstance(source, (str, dict)) for source in row.get('sources', [])):
             raise ValueError('补充段来源须为出处列表。')
+
+
+def detail_is_relevant(row, scene):
+    """Only expand a saved detail when the present task names its concrete subject."""
+    query = json.dumps(scene or {}, ensure_ascii=False)
+    hints = [str(row.get(key) or '').strip() for key in ['situation', 'title']]
+    if any(len(hint) >= 4 and hint in query for hint in hints):
+        return True
+    pairs = {hint[i:i + 2] for hint in hints for i in range(len(hint) - 1)}
+    pairs -= {'人物', '场景', '对话', '动作', '描写', '经历', '参考', '关系', '情绪', '时候'}
+    hits = {pair for pair in pairs if pair in query}
+    return len(hits) >= 3
 
 
 def select_character_details(store, project_id, card, scope, scene, *, focus_ids=(), max_chars=2500):
@@ -95,9 +109,18 @@ def select_character_details(store, project_id, card, scope, scene, *, focus_ids
         ranked.append((-score, index, row))
     selected, used = [], 0
     for _, _, row in sorted(ranked, key=lambda item: item[:2]):
-        item = {**strip_author_only(row), 'portrayal': '条件性倾向：服从当前目标与处境，不要求每次重复动作，不新增人物事实。'}
+        relevant = detail_is_relevant(row, scene)
+        item = {**strip_author_only(row), 'portrayal': '条件性倾向：服从当前目标与处境，不要求每次重复动作，不新增人物事实。',
+                'selection_reason': '作者勾选全文' if row.get('id') in focus_ids else '保存为重点参考' if row.get('usage') == 'focus' else '当前任务明确关联' if relevant else '普通场景参考',
+                'expanded_for_task': relevant}
         size = len(json.dumps(item, ensure_ascii=False))
-        if used + size <= max_chars:
+        required = row.get('id') in focus_ids or row.get('usage') == 'focus' or relevant
+        if not required and (row.get('summary') or len(row.get('content', '')) > 1200):
+            item['content'] = row.get('summary') or f"{row.get('title', '')}：原文未展开，可按来源查看。"
+            item['material_mode'] = 'summary'
+            size = len(json.dumps(item, ensure_ascii=False))
+        if required or used + size <= max_chars:
             selected.append(item)
-            used += size
+            if not required:
+                used += size
     return selected

@@ -412,11 +412,10 @@ class WorldScopeService:
         for key in ['world_id', 'story_card_id']:
             if source.get(key) and source[key] != target.get(key):
                 return False, f'{key}不在当前范围'
-        if not dynamic:
-            if source.get('period_id') and source['period_id'] != target.get('period_id'):
-                return False, '不属于当前采用时期'
-            if source.get('region_ids') and not set(source['region_ids']) & set(target.get('region_ids') or []):
-                return False, '不属于当前采用地区'
+        if source.get('period_id') and source['period_id'] != target.get('period_id'):
+            return False, '不属于当前采用时期' if target.get('period_id') else '缺少时期，尚不能核实适用范围'
+        if source.get('region_ids') and not set(source['region_ids']) & set(target.get('region_ids') or []):
+            return False, '不属于当前采用地区' if target.get('region_ids') else '缺少地区，尚不能核实适用范围'
         source_branch = source.get('branch_id', 'main')
         target_branch = target.get('branch_id', 'main')
         if source_branch != target_branch and (source.get('branch_id') or dynamic or self.has_time(source)):

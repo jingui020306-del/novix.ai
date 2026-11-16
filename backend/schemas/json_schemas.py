@@ -355,6 +355,7 @@ CHARACTER_DETAIL_SCHEMA = {'type': 'object', 'required': ['id', 'title', 'conten
     'situation': {'type': 'string'}, 'sources': {'type': 'array'},
 }}
 CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties']['detail_sections'] = {'type': 'array', 'items': CHARACTER_DETAIL_SCHEMA}
+CHARACTER_DETAIL_SCHEMA['properties']['summary'] = {'type': 'string', 'maxLength': 2000}
 CARD_TYPE_SCHEMAS['world']['properties']['payload']['properties']['maps'] = {'type': 'array', 'items': {'type': 'object', 'required': ['id', 'title', 'kind', 'source', 'coordinate_system'], 'properties': {
     'id': {'type': 'string'}, 'title': {'type': 'string'}, 'kind': {'type': 'string', 'enum': ['map', 'town', 'diagram', 'illustration']},
     'source': {'type': 'object'}, 'scope': WORLD_CONTEXT_SCHEMA, 'coordinate_system': {'type': 'string', 'enum': ['pixel', 'normalized', 'grid', 'geographic']},

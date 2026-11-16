@@ -17,8 +17,8 @@ class ContextEngine:
         self.store = store
         self.kb = kb
 
-    def build_manifest(self, project_id: str, chapter_id: str, scene: dict[str, Any], constraints: dict[str, Any] | None = None, technique_data: dict[str, Any] | None = None) -> dict[str, Any]:
-        memory_update = IncrementalMemoryService(self.store, self.kb).prepare(project_id)
+    def build_manifest(self, project_id: str, chapter_id: str, scene: dict[str, Any], constraints: dict[str, Any] | None = None, technique_data: dict[str, Any] | None = None, *, prepare_memory=True) -> dict[str, Any]:
+        memory_update = IncrementalMemoryService(self.store, self.kb).prepare(project_id) if prepare_memory else {'mode': 'read_only'}
         constraints = constraints or {}
         proj = self.store.read_yaml(project_id, "project.yaml")
         bm = BudgetManager.from_project(proj, constraints.get("max_tokens"))

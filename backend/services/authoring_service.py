@@ -26,7 +26,7 @@ class AuthoringService:
         self.manager = manager
         self.store = manager.store
 
-    async def complete(self, project_id: str, body: dict, module: str, system: str, prompt: str, *, max_tokens: int = 3000, usage_callback=None, prepare_memory=True) -> str:
+    async def complete(self, project_id: str, body: dict, module: str, system: str, prompt: str, *, max_tokens: int = 3000, usage_callback=None, prepare_memory=True, prepared_messages=None) -> str:
         _, profile, _ = self.manager._resolve_profile(project_id, body, module)
         if profile.get('provider') == 'mock':
             raise ValueError('请先在设置中为这项任务选择真实模型，或关闭分工模型并选择已配置的模型。')
@@ -44,6 +44,8 @@ class AuthoringService:
         else:
             prompt = strip_author_only(prompt)
         messages = [{'role': 'system', 'content': system + CHARACTER_PORTRAYAL_GUIDANCE}, {'role': 'user', 'content': prompt}]
+        if prepared_messages is not None:
+            messages = copy.deepcopy(prepared_messages)
         reported, result = {}, {}
         try:
             result = await self.manager.llm_gateway.chat_complete(

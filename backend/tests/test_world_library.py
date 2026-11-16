@@ -118,6 +118,22 @@ def test_index_chinese_short_names_ambiguity_and_versioned_ignore_do_not_edit_pr
     changed = result(client.post('/api/projects/p/material-index/mentions', json={**body, 'text': '后来，' + text,
         'source_revision': revision(store, 'p', 'drafts/chapter_001.md')}))
     assert next(item for item in changed['matches'] if item['text'] == '小青')['status'] == 'ambiguous'
+    person_before = store._safe_path('p', 'cards/person_a.yaml').read_bytes()
+    AuthorDataService(store).add_stage('p', 'character', 'person_a', {'status': 'confirmed',
+        'scope': {'world_id': 'world_1', 'time': {'year': 2010}}, 'source': {'kind': 'author'},
+        'changes': {'name_change': {'kind': 'rename', 'name': '林舟'}}})
+    from services.material_index_service import MaterialIndexService
+    index = MaterialIndexService(store)
+    assert index.search('p', q='林舟', world_id='world_1', year=2000)['items'] == []
+    current = index.search('p', q='林舟', world_id='world_1', year=2020)['items']
+    assert [(item['id'], item['label']) for item in current] == [('person_a', '林舟')]
+    assert index.resolve_names('p', ['林舟'], world_id='world_1', year=2000)['林舟'] == []
+    assert index.resolve_names('p', ['林舟'], world_id='world_1', year=2020)['林舟'][0]['name'] == '林舟'
+    early = index.mentions('p', {'text': '林舟经过小青身边。', 'world_context': {'world_id': 'world_1', 'time': {'year': 2000}}})
+    late = index.mentions('p', {'text': '林舟经过小青身边。', 'world_context': {'world_id': 'world_1', 'time': {'year': 2020}}})
+    assert all(item['text'] != '林舟' for item in early['matches'])
+    assert next(item for item in late['matches'] if item['text'] == '林舟')['candidates'][0]['id'] == 'person_a'
+    assert store._safe_path('p', 'cards/person_a.yaml').read_bytes() == person_before
 
 
 def test_index_type_projection_preserves_author_tags_after_type_change(index_env):
@@ -194,6 +210,67 @@ def test_index_world_and_branch_filters_share_only_pre_fork_material(index_env):
             'q': '秘密', 'world_id': 'world_1', 'branch_id': branch, 'year': 1960}))['items']}
     assert ids('alternate') == {'shared_old', 'alt_future'}
     assert ids('main') == {'shared_old', 'main_future'}
+    for region in ['north', 'south']:
+        card(store, 'region_' + region, 'world', {'entry_type': 'region', 'parent_id': 'world_1'})
+        card(store, 'person_' + region, 'character', {'name': region, 'identity': '',
+            'world_context': {'world_id': 'world_1', 'region_ids': ['region_' + region]}})
+    author = AuthorDataService(store)
+    for branch, year, region, rule in [
+        ('main', 1930, None, '分歧之前的完整通行规则'),
+        ('main', 1950, 'north', '主分支北岸规则'),
+        ('alternate', 1950, 'north', '另一分支北岸规则'),
+        ('main', 1950, 'south', '主分支南岸规则'),
+    ]:
+        scope = {'world_id': 'world_1', 'branch_id': branch, 'time': {'year': year}}
+        if region:
+            scope['region_ids'] = ['region_' + region]
+        author.add_stage('p', 'world', 'world_1', {'status': 'confirmed', 'scope': scope,
+            'changes': {'rules': [rule]}, 'source': {'kind': 'author'}})
+    author.add_stage('p', 'character', 'shared_old', {'status': 'confirmed',
+        'scope': {'world_id': 'world_1', 'branch_id': 'main', 'time': {'year': 1945}},
+        'changes': {'name_change': {'kind': 'rename', 'name': '后来的林舟'}}, 'source': {'kind': 'author'}})
+    author.create_relationship('p', {'id': 'north_link', 'label': '北岸同行', 'direction': 'directed',
+        'scope': {'world_id': 'world_1', 'region_ids': ['region_north']},
+        'participants': [{'entity_id': 'shared_old'}, {'entity_id': 'person_north'}]})
+    relationship_stage = author.add_stage('p', 'relationship', 'north_link', {'status': 'confirmed',
+        'scope': {'world_id': 'world_1', 'region_ids': ['region_north'], 'time': {'year': 1950}},
+        'changes': {'notes': '此阶段开始同行'}, 'source': {'kind': 'author', 'note': '作者确认'}})
+    card(store, 'period_1950', 'world', {'parent_id': 'world_1', 'entry_type': 'period', 'time': {'year': 1950}})
+    story = store.read_yaml('p', 'cards/story_1.yaml')
+    story['payload']['world_context'].update(time={'year': 1930}, local_adjustments='只属于原故事的局部安排')
+    store.write_yaml('p', 'cards/story_1.yaml', story)
+    from routers import author_data
+    client.app.include_router(author_data.router)
+    before = formal_bytes(store)
+
+    def snapshot(branch='main', region='north', year=1960):
+        return result(client.post('/api/projects/p/worlds/world_1/snapshot', json={'world_context': {
+            'branch_id': branch, 'time': {'year': year}, 'region_ids': ['region_' + region]}}))
+
+    main, alternate, south, early = snapshot(), snapshot('alternate'), snapshot(region='south'), snapshot(year=1935)
+    for value, rule in [(main, '主分支北岸规则'), (alternate, '另一分支北岸规则'),
+                        (south, '主分支南岸规则'), (early, '分歧之前的完整通行规则')]:
+        selected_world = next(row for row in value['worlds'] if row['id'] == 'world_1')
+        assert selected_world['state'].get('rules') == [rule], {'scope': value['scope'], 'world': selected_world}
+        assert value['relationships'] == value['relations']
+    assert {row['id'] for row in main['characters']} == {'shared_old', 'main_future', 'person_north'}
+    assert {row['id'] for row in alternate['characters']} == {'shared_old', 'alt_future', 'person_north'}
+    assert 'person_north' not in {row['id'] for row in south['characters']}
+    assert 'main_future' not in {row['id'] for row in early['characters']}
+    assert next(row['state']['name'] for row in main['characters'] if row['id'] == 'shared_old') == '后来的林舟'
+    assert next(row['state']['name'] for row in alternate['characters'] if row['id'] == 'shared_old') == 'shared_old'
+    assert next(row['state']['name'] for row in early['characters'] if row['id'] == 'shared_old') == 'shared_old'
+    assert [row['id'] for row in main['relationships']] == ['north_link'] and south['relationships'] == []
+    assert any(source.get('record_id') == relationship_stage['id'] and source.get('evidence') == relationship_stage['source']
+               for source in main['relationships'][0]['sources'])
+    period = result(client.post('/api/projects/p/worlds/world_1/snapshot', json={
+        'story_card_id': 'story_1', 'world_context': {'world_id': 'world_1', 'period_id': 'period_1950'}}))
+    assert period['scope']['time']['year'] == 1950
+    foreign = result(client.post('/api/projects/p/worlds/world_2/snapshot', json={
+        'story_card_id': 'story_1', 'world_context': {'world_id': 'world_2'}}))
+    assert foreign['scope']['world_id'] == 'world_2' and not foreign['scope'].get('time')
+    assert not foreign['scope'].get('local_adjustments') and not foreign['scope'].get('overrides')
+    assert formal_bytes(store) == before
 
 
 def test_private_library_adoption_is_idempotent_pinned_and_independent_of_source_updates(library_env):
