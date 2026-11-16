@@ -7,3 +7,4 @@ httpx==0.28.1
 websockets==14.1
 python-multipart==0.0.18
 beautifulsoup4==4.12.3
+psychsim @ https://codeload.github.com/usc-psychsim/psychsim/zip/56ef6e95a9f22dab3a4c216f34494363c78b621f

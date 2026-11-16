@@ -1,9 +1,18 @@
+export type LocalChoices = Record<'act' | 'hold' | 'effect' | 'respond' | 'check', string>
+export type LocalSimulation = {
+  version: 1; actor_id: string; partner_id: string; topic: string; available: boolean;
+  actor_confidence: number; partner_confidence: number; actor_loss: number; partner_loss: number;
+  choices: LocalChoices; engines: ('praxish' | 'sabre' | 'fatima')[]; desirability: number; plan_goal: 'respond' | 'check';
+}
+
 export type RehearsalDraft = {
+  local_simulation?: LocalSimulation;
   text: string; outcome: string; next_question: string; technique_ids: string[];
   technique_applications: { technique_id: string; placement: string; reason: string; effect: string }[];
 }
 
 export const rehearsalDraft = (value: any = {}): RehearsalDraft => ({
+  ...(value?.local_simulation ? { local_simulation: value.local_simulation } : {}),
   text: typeof value?.text === 'string' ? value.text : '',
   outcome: typeof value?.outcome === 'string' ? value.outcome : '',
   next_question: typeof value?.next_question === 'string' ? value.next_question : '',

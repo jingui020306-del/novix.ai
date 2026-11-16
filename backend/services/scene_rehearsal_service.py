@@ -7,6 +7,8 @@ import re
 from difflib import unified_diff
 
 from services.change_suggestion_service import ChangeSuggestionService
+from services.local_rehearsal import LocalRehearsal, PRESETS, rehearse, scene_cast
+from rehearsal_engines.runtime import availability
 from services.token_usage import summarize_usage
 from services.shared_material_service import SharedMaterialService
 from services.knowledge_graph_service import KnowledgeGraphService
@@ -114,7 +116,11 @@ class SceneRehearsalService:
     @staticmethod
     def _draft(saved=None):
         saved = saved or {}
-        return {key: copy.deepcopy(saved.get(key, [] if key in {'technique_ids', 'technique_applications'} else '')) for key in ['text', 'outcome', 'next_question', 'technique_ids', 'technique_applications']}
+        draft = {key: copy.deepcopy(saved.get(key, [] if key in {'technique_ids', 'technique_applications'} else '')) for key in ['text', 'outcome', 'next_question', 'technique_ids', 'technique_applications']}
+
+        if saved.get('local_simulation') is not None:
+            draft['local_simulation'] = copy.deepcopy(saved['local_simulation'])
+        return draft
 
     def _base(self, versions, saved):
         return _hash({'source_versions': versions, 'saved': self._draft(saved) if saved else None})
@@ -161,7 +167,7 @@ class SceneRehearsalService:
         context['author_scope'] = resolved
         context['notices'].extend(resolved['warnings'])
         versions[STAGES_PATH] = self._source_hash(project_id, STAGES_PATH, owner_id, scene_id)
-        cast = set(scene.get('characters') or [])
+        cast = set(scene.get('characters') or []) | set(scene.get('cast') or [])
         for table, bucket in [('character_intersections', 'intersections'), ('character_storylines', 'storylines'), ('beat_sheet', 'beats')]:
             if table == 'beat_sheet' and not payload.get('beat_sheet_enabled'):
                 continue
@@ -290,12 +296,18 @@ class SceneRehearsalService:
         owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
         with ChangeSuggestionService(self.store).lock(project_id):
             _, rows, index = self._owner(project_id, owner_id, scene_id)
-            return self._snapshot(project_id, owner_id, scene_id, (rows[index].get('rehearsal') or {}).get('technique_ids', []))
+            result = self._snapshot(project_id, owner_id, scene_id, (rows[index].get('rehearsal') or {}).get('technique_ids', []))
+            result['local_options'] = {
+                'presets': {name: choices.model_dump() for name, choices in PRESETS.items()},
+                'engines': availability(), 'cast': list(scene_cast(result['context']))}
+            return result
 
     def _validate_draft(self, project_id, value, *, require_text=False):
         if not isinstance(value, dict):
             raise ValueError('场景安排格式不正确。')
         draft = self._draft(value)
+        if 'local_simulation' in draft:
+            draft['local_simulation'] = LocalRehearsal.model_validate(draft['local_simulation']).model_dump(mode='json')
         for key, maximum in [('text', 16000), ('outcome', 3000), ('next_question', 3000)]:
             if not isinstance(draft[key], str) or len(draft[key]) > maximum:
                 raise ValueError('请缩短本场安排或后果说明后重试。')
@@ -356,6 +368,21 @@ class SceneRehearsalService:
             draft = self._validate_draft(project_id, body.get('draft'))
             return self._preview(project_id, owner_id, scene_id, draft)
 
+    def simulate(self, project_id, owner_id, scene_id, body, spec):
+        owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
+        lock = ChangeSuggestionService(self.store).lock(project_id)
+        with lock:
+            self._check(project_id, owner_id, scene_id, body)
+            draft = self._validate_draft(project_id, body['draft'])
+            snapshot = self._snapshot(project_id, owner_id, scene_id, draft['technique_ids'])
+        result = rehearse(snapshot['context'], spec)
+        draft.update(text=result['text'], outcome=result['outcome'], local_simulation=spec.model_dump(mode='json'))
+        # The author may have edited a source while the external engines ran.
+        with lock:
+            self._check(project_id, owner_id, scene_id, snapshot)
+            preview = self._preview(project_id, owner_id, scene_id, draft)
+        return {**preview, 'basis': 'local_simulation', 'steps': result['steps'], 'engines': result['engines']}
+
     async def propose(self, project_id, owner_id, scene_id, body):
         owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
         with ChangeSuggestionService(self.store).lock(project_id):
@@ -387,6 +414,7 @@ class SceneRehearsalService:
         if not isinstance(result, dict):
             raise ValueError('模型没有返回可用场景安排，请重试。')
         draft = self._validate_draft(project_id, result.get('draft'), require_text=True)
+        draft.pop('local_simulation', None)
         if any(tid not in {item['id'] for item in snapshot['context']['techniques']} for tid in draft['technique_ids']):
             raise ValueError('模型推荐了本次资料中没有的技法，请重试。')
         literary = result.get('literary_impacts') or []
@@ -412,7 +440,8 @@ class SceneRehearsalService:
             updated = copy.deepcopy(owner)
             updated['payload']['important_scenes'][index]['rehearsal'] = saved
             from routers.cards import _save_card
-            response = _save_card(project_id, owner_id, updated, self.store, background_tasks, service, suggestion_scope=self._suggestion_scope(owner_id, rows, index, saved))
+            response = _save_card(project_id, owner_id, updated, self.store, background_tasks, service, suggestion_scope=self._suggestion_scope(owner_id, rows, index, saved),
+                                  queue_suggestions='local_simulation' not in draft)
             current = self._snapshot(project_id, owner_id, scene_id, draft['technique_ids'])
             return {**current, 'saved': saved, 'updated_at': response.get('updated_at'), 'change_suggestions': response.get('change_suggestions', {})}
 

@@ -52,7 +52,7 @@ def list_cards(project_id: str, type: str | None = None, s: FSStore = Depends(ge
     return out
 
 
-def _save_card(project_id, card_id, card, s, background_tasks, change_service, *, suggestion_scope=None):
+def _save_card(project_id, card_id, card, s, background_tasks, change_service, *, suggestion_scope=None, queue_suggestions=True):
     if not isinstance(change_service, ChangeSuggestionService):
         change_service = ChangeSuggestionService(s)
     _validate_references(card)
@@ -103,6 +103,8 @@ def _save_card(project_id, card_id, card, s, background_tasks, change_service, *
         card['updated_at'] = now_iso()
         s.write_yaml(project_id, _card_path(card_id), card)
         IncrementalMemoryService(s).mark(project_id, _card_path(card_id))
+        if not queue_suggestions:
+            return {**decorate(s, project_id, _card_path(card_id), card), 'change_suggestions': {'queued_count': 0, 'task_ids': []}}
         try:
             queued = change_service.enqueue(project_id, card_id, before, card, suggestion_scope=suggestion_scope)
         except Exception:
