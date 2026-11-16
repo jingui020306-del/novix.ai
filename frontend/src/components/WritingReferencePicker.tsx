@@ -20,7 +20,7 @@ export function WritingReferencePanel({ open, onClose, title, children }: { open
     document.addEventListener('keydown', escape, true)
     return () => { document.removeEventListener('keydown', escape, true); if (origin?.isConnected) origin.focus() }
   }, [open])
-  return open ? createPortal(<aside className='writing-reference-panel' aria-label={title}><header><h2>{title}</h2><button ref={closeButton} className='icon-control' aria-label='关闭写法参考' onClick={onClose}><X size={18} /></button></header><div className='writing-reference-panel-body'>{children}</div></aside>, document.body) : null
+  return open ? createPortal(<aside className='writing-reference-panel' aria-label={title}><header><h2>{title}</h2><button ref={closeButton} className='icon-control' aria-label={`关闭${title}`} onClick={onClose}><X size={18} /></button></header><div className='writing-reference-panel-body'>{children}</div></aside>, document.body) : null
 }
 
 function ReferenceDetails({ card, includeDescription = true }: { card: any; includeDescription?: boolean }) {

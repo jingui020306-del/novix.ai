@@ -20,7 +20,7 @@ def user_errors():
     try:
         yield
     except FileExistsError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise HTTPException(409, {'message': str(exc), 'impact': exc.impact} if hasattr(exc, 'impact') else str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:

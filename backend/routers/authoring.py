@@ -31,12 +31,15 @@ class RevisionRequest(BaseModel):
     scene_direction: dict | None = None
     allow_plot_change: bool = False
     instructions: str = Field(default='', max_length=4000)
+    expression_style: str = Field(default='', max_length=1000)
+    emotional_atmosphere: str = Field(default='', max_length=1000)
+    writing_references: list[str] = Field(default_factory=list, max_length=100)
     llm_profile_id: str | None = None
     story_card_id: str | None = Field(default=None, pattern=r'^[\w-]+$', max_length=120)
 
 
 class RevisionApply(RevisionRequest):
-    text: str = Field(min_length=1, max_length=100000)
+    text: str = Field(max_length=100000)
     base_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 

@@ -79,6 +79,79 @@ class SharedMaterialService:
             for edge in graph['edges'] if edge['target'] == target_id
         ]}
 
+    def deletion_impact(self, project_id, target_id, *, owned_ids=()):
+        graph = KnowledgeGraphService(self.store)._base_graph(project_id, None)
+        nodes = {node['id']: node for node in graph['nodes']}
+        target_path = f'cards/{target_id}.yaml'
+        owned = {target_id, *owned_ids, *(node['id'] for node in graph['nodes'] if node.get('source', '').split('#', 1)[0] == target_path)}
+        items, seen = [], set()
+        def add(label, source, relation):
+            key = (source, relation)
+            if key not in seen:
+                seen.add(key)
+                items.append({'label': label, 'source': source, 'relation': relation})
+        for edge in graph['edges']:
+            node = nodes.get(edge['source'])
+            if edge['target'] in owned and node and node.get('source', '').split('#', 1)[0] != target_path:
+                add(node['label'], node['source'], edge['label'])
+        single = {'world_id', 'parent_id', 'story_card_id', 'pov_character_id', 'target', 'target_id', 'entity_id', 'owner_card_id', 'speaker_id', 'character_id', 'card_id', 'technique_id', 'information_id', 'relationship_id'}
+        plural = {'material_ids', 'writing_references', 'tool_skill_ids', 'cast', 'characters', 'character_ids', 'audience_ids', 'heard_by', 'base_setting_ids', 'region_ids', 'information_ids'}
+        def scan(value, source, label, pointer=''):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key in single and isinstance(child, str) and child in owned or key in plural and isinstance(child, list) and any(isinstance(ref, str) and ref in owned for ref in child) or key == 'path' and isinstance(child, str) and child.split('#', 1)[0] == target_path:
+                        add(label, source + '#' + pointer + '/' + key, '保存的资料关联')
+                    scan(child, source, label, pointer + '/' + key)
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    scan(child, source, label, pointer + '/' + str(index))
+        for path in self.store._safe_path(project_id, 'cards').glob('*.yaml'):
+            source = f'cards/{path.name}'
+            if source != target_path:
+                card = self.store.read_yaml(project_id, source)
+                scan(card, source, card.get('title') or '已有资料')
+        for path in self.store._safe_path(project_id, 'drafts').glob('*.meta.json'):
+            source = f'drafts/{path.name}'
+            value = self.store.read_json(project_id, source)
+            scan(value, source, value.get('title') or '章节关联')
+        for source in ['canon/author_stages.jsonl', 'canon/facts.jsonl', 'canon/revisions.jsonl']:
+            rows = self.store.read_jsonl(project_id, source)
+            voids = {identity for row in rows for identity in row.get('voids', [])}
+            scan([row for row in rows if row.get('kind') != 'void' and row.get('id') not in voids], source, '阶段与事实历史')
+        return {'target_id': target_id, 'items': items}
+
+    def assert_card_deletions(self, project_id, operations):
+        removed = [row['path'] for row in operations if row.get('kind') == 'replace' and row['path'].startswith('cards/') and row.get('after') is None]
+        if not removed:
+            return
+        import json
+        from services.material_import_service import _PlannedStore
+        from storage.fs_store import _read_simple_yaml
+        files, appends = {}, {}
+        for operation in operations:
+            path = operation['path']
+            if operation['kind'] == 'append':
+                appends.setdefault(path, []).extend(operation['rows'])
+            elif operation.get('after') is None:
+                files[path] = None
+            elif 'after_value' in operation:
+                files[path] = operation['after_value']
+            else:
+                try:
+                    files[path] = json.loads(operation['after'])
+                except ValueError:
+                    files[path] = _read_simple_yaml(operation['after'])
+        original = KnowledgeGraphService(self.store)._base_graph(project_id, None)
+        projected = SharedMaterialService(_PlannedStore(self.store, files, appends))
+        impacts = []
+        for path in removed:
+            owned = [node['id'] for node in original['nodes'] if node.get('source', '').split('#', 1)[0] == path]
+            impacts.extend(projected.deletion_impact(project_id, path.removeprefix('cards/').removesuffix('.yaml'), owned_ids=owned)['items'])
+        if impacts:
+            error = FileExistsError('后来保存的资料仍引用本次新增内容，撤销已暂停，请先核对这些关联。')
+            error.impact = impacts
+            raise error
+
     def validate_ids(self, project_id, values, *, previous=(), extra_ids=()):
         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
             raise ValueError('关联资料必须从资料列表中选择。')

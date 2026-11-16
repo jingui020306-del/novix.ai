@@ -1,3 +1,4 @@
+import { WORLD_ENTRY_TYPES as ENTRY_TYPES, WORLD_ENTRY_LABELS as ENTRY_LABELS } from '../lib/materialScope'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import useSWR, { mutate as mutateCache } from 'swr'
 import { api } from '../api/client'
@@ -23,16 +24,14 @@ const DIRECTIONS = [['geography', '地理'], ['biology', '生物'], ['physics_ma
 const SETTING: Record<string, string> = { unset: '未设置', not_applicable: '不适用', set: '已采用' }
 const CANON: Record<string, string> = { canon: '已确定', hypothesis: '推定', inspiration: '灵感' }
 const CREATION: Record<string, string> = { new: '待起笔', draft: '草案', complete: '已完善' }
-const ENTRY_TYPES = ['地点', '生物与族群', '人物与组织', '规则与能力', '历史事件', '科技', '文化', '原创设定']
 const worldType = (card: any) => ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)
-const ENTRY_LABELS: Record<string, string> = { place: '地点', region: '地点', location: '地点', organization: '人物与组织', faction: '人物与组织', rule: '规则与能力', ability: '规则与能力', period: '历史事件', history: '历史事件', reference: '参考资料' }
 const entryType = (card: any) => ENTRY_LABELS[card.payload?.entry_type] || card.payload?.entry_type || (card.type === 'world_rule' ? '规则与能力' : '__legacy__')
 const bodyKey = (card: any) => ['content', 'description', 'rule', 'text', 'setting'].find((key) => typeof card.payload?.[key] === 'string') || 'content'
 const timestamp = (card: any) => Date.parse(card.updated_at || card.payload?.updated_at || '') || 0
 
-export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenMaterial, focusRequest, referenceRequest, legacyEditor, profileId, onOpenSettings, navigationRequest, storyCard, eventContext, onOpenEvent }: {
+export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenMaterial, focusRequest, referenceRequest, legacyEditor, profileId, onOpenSettings, navigationRequest, storyCard, onActiveCardChange, eventContext, onOpenEvent }: {
   project: string; projectTitle: string; draftCache: { current: Record<string, any> }; onOpenMaterial: OpenMaterial;
-  chapters: any[]; storyCard?: any; eventContext?: any; onOpenEvent?: (owner: string, scene: string) => void;
+  chapters: any[]; storyCard?: any; onActiveCardChange?: (id: string) => void; eventContext?: any; onOpenEvent?: (owner: string, scene: string) => void;
   focusRequest?: { id: string; requestId: number; editPath?: string[]; stage_id?: string } | null;
   referenceRequest?: { type: string; cardId: string; referenceId: string; requestId: number } | null;
   legacyEditor: ReactNode;
@@ -71,6 +70,7 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
   const aiRequest = useRef(0)
   const [extrasRequest, setExtrasRequest] = useState(0)
   const form = formState?.project === project ? formState.card : null
+  useEffect(() => { onActiveCardChange?.(form?.id || root?.id || '') }, [project, form?.id, root?.id])
   const draftKey = `${project}:world:${form?.id || 'new'}`
   const localDraft = useDraftRecovery(draftKey, form, JSON.stringify(cards.find((card) => card.id === form?.id) || {}), (card) => setFormState({ project, card }))
   const latest = useRef(form)

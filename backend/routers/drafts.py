@@ -292,7 +292,7 @@ def rollback(project_id: str, chapter_id: str, body: dict, s: FSStore = Depends(
         if not version_id:
             raise HTTPException(status_code=400, detail='version_id required')
         from routers.author_data import _call
-        _call(check_revision, s, project_id, f'drafts/{chapter_id}.md', body.get('base_revision'))
+        _call(check_revision, s, project_id, f'drafts/{chapter_id}.md', body.get('base_revision') or '')
         _, content = _call(chapter_source, s, project_id, chapter_id, version_id)
         current = s.read_md(project_id, f'drafts/{chapter_id}.md')
         from services.author_control_service import AuthorControlService

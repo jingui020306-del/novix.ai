@@ -15,7 +15,7 @@ def _call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except FileExistsError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise HTTPException(409, {'message': str(exc), 'impact': exc.impact} if hasattr(exc, 'impact') else str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
@@ -109,6 +109,11 @@ def character_state(project_id: str, character_id: str, story_card_id: str | Non
 @router.get('/characters/{character_id}/stages')
 def character_stages(project_id: str, character_id: str, svc=Depends(get_author_data)):
     return _call(svc.stages, project_id, 'character', character_id)
+
+
+@router.post('/characters/{character_id}/snapshot')
+def character_snapshot(project_id: str, character_id: str, body: dict = Body(...), svc=Depends(get_author_data)):
+    return _call(svc.character_snapshot, project_id, character_id, body)
 
 
 @router.post('/characters/{character_id}/stages')

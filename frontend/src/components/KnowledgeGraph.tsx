@@ -6,7 +6,7 @@ import { Select } from './ui/Fields'
 
 const TYPES: Record<string, string> = { information: '关键信息', relationship: '共享关系', scene: '场景', beat: '节拍', character_intersection: '角色交集', character_storyline: '人物故事线', character_arc: '成长安排', character: '人物', world: '世界', style: '文风', chapter: '章节', fact: '事实', foreshadowing: '伏笔', story: '故事', technique: '技法', tool_skill: '写作工具', world_rule: '世界规则', lore: '背景设定', chapter_plan: '章节计划', open_line: '明线', hidden_line: '暗线', foreshadowings: '伏笔', outline: '大纲' }
 
-export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '人物与情节关系', showStages = false, defaultLayer = 'relationships' }: { project: string; chapterId?: string; onOpen: (node: any) => void; focusId?: string; title?: string; showStages?: boolean; defaultLayer?: 'relationships' | 'events' | 'all' }) {
+export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '人物与情节关系', showStages = false, defaultLayer = 'relationships', onCreateEvent, onConnectEvents }: { project: string; chapterId?: string; onOpen: (node: any) => void; focusId?: string; title?: string; showStages?: boolean; defaultLayer?: 'relationships' | 'events' | 'all'; onCreateEvent?: () => void; onConnectEvents?: (causeId: string, effectId: string) => Promise<void> }) {
   const [layer, setLayer] = useState(defaultLayer)
   const [layout, setLayout] = useState<Record<string, { x: number; y: number }>>({})
   const drag = useRef<{ id: string; x: number; y: number; moved: boolean } | null>(null)
@@ -15,6 +15,9 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
   useEffect(() => { const timer = window.setTimeout(() => { try { localStorage.setItem(`novix:graph-layout:${project}`, JSON.stringify(layout)) } catch {} }, 250); return () => window.clearTimeout(timer) }, [project, layout])
   const [eventRef, setEventRef] = useState('')
   const [stage, setStage] = useState('after')
+  const [causeId, setCauseId] = useState('')
+  const [connecting, setConnecting] = useState(false)
+  const [connectionMessage, setConnectionMessage] = useState('')
   const [kind, setKind] = useState('all')
   const [selectedEdge, setSelectedEdge] = useState('')
   const query = new URLSearchParams()
@@ -24,7 +27,7 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
   const { data, error, mutate } = useSWR(`/api/projects/${project}/knowledge-graph${query.size ? `?${query}` : ''}`, api.get)
   const [selected, setSelected] = useState('')
   const graphId = useId().replace(/:/g, '')
-  useEffect(() => { setSelected(focusId || ''); setSelectedEdge(''); setEventRef(''); setKind('all'); setStage('after') }, [focusId, project])
+  useEffect(() => { setSelected(focusId || ''); setSelectedEdge(''); setCauseId(''); setConnectionMessage(''); setEventRef(''); setKind('all'); setStage('after') }, [focusId, project])
   const rawNodes: any[] = Array.isArray(data?.nodes) ? data.nodes : []
   const rawEdges: any[] = Array.isArray(data?.edges) ? data.edges : []
   const relationEdge = (edge: any) => edge.layer === 'relationships' || edge.owner_path?.includes('relationships') || edge.owner_path?.includes('relationship_changes') || rawNodes.some((node) => node.type === 'relationship' && [edge.source, edge.target].includes(node.id))
@@ -42,7 +45,7 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
   const positions = new Map(visible.map((node: any, index: number) => [node.id, !currentEdge && layout[node.id] ? layout[node.id] : currentEdge ? { x: index ? 440 : 160, y: 210 } : index === 0 ? { x: 300, y: 210 } : { x: 300 + 220 * Math.cos(2 * Math.PI * (index - 1) / Math.max(1, visible.length - 1)), y: 210 + 150 * Math.sin(2 * Math.PI * (index - 1) / Math.max(1, visible.length - 1)) }]))
   const name = (id: string) => allNodes.find((node: any) => node.id === id)?.label || '关联资料'
   const eventSource = (node: any) => {
-    const owner = allNodes.find((item: any) => item.id === (node.owner_card_id || node.id.split(':')[0]))
+    const owner = [...rawNodes, ...(Array.isArray(fullGraph?.nodes) ? fullGraph.nodes : [])].find((item: any) => item.id === (node.owner_card_id || node.id.split(':')[0]))
     const kind = owner?.type === 'story' ? '故事策划' : owner?.type === 'outline' ? '情节工作表' : '原事件来源'
     return `${kind}${owner?.label ? `：${owner.label}` : ''}`
   }
@@ -72,6 +75,8 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
     </div>}
     {data?.event_stage && <p className='text-xs leading-6 text-muted'>正在查看“{data.event_stage.label}”发生{stage === 'before' ? '前' : '后'}的作者安排。尚未按事件锚定的资料仍保留未知，不替人物推断知情。</p>}
     <p className='text-xs text-muted'>点击节点打开原资料；拖动只整理本机布局。</p>
+    {layer === 'events' && (onCreateEvent || onConnectEvents) && <div className='flex flex-wrap items-center gap-3'>{onCreateEvent && <Button className='text-xs' onClick={onCreateEvent}>添加事件</Button>}{onConnectEvents && focus?.type === 'scene' && <details className='min-w-0'><summary className='cursor-pointer text-xs text-brand-600'>为“{focus.label}”连接前因</summary><div className='mt-3 space-y-2'><Select aria-label='选择导致当前事件的前因' value={causeId} onChange={(e) => setCauseId(e.target.value)}><option value=''>选择明确的前因事件</option>{nodes.filter((node) => node.type === 'scene' && node.id !== focus.id).map((node) => <option key={node.id} value={node.id}>{node.label}（{eventSource(node)}）</option>)}</Select><Button className='text-xs' disabled={!causeId || !nodes.some((node) => node.id === causeId) || connecting} onClick={async () => { setConnecting(true); setConnectionMessage(''); try { await onConnectEvents(causeId, focus.id); setConnectionMessage('前因已连接到原事件；未调整发生时间、章节或图面位置。'); setCauseId(''); void mutate() } catch (cause) { setConnectionMessage(cause instanceof Error ? cause.message : '连接未保存，原事件保留。') } finally { setConnecting(false) } }}>{connecting ? '保存中…' : '确认连接前因'}</Button></div></details>}{connectionMessage && <p role='status' className='w-full text-xs leading-6 text-muted'>{connectionMessage}</p>}</div>}
+
 {duplicateRows.length > 0 && <details><summary className='cursor-pointer text-xs text-muted'>同名或重复来源需核对（{duplicateRows.length} 项）</summary><p className='mt-2 text-xs leading-6 text-muted'>原记录均保留。只有确认是同一事件时，才在工作表选择原来源。</p><ul className='mt-3 space-y-3'>{duplicateRows.map(({ node, conflict }: any, index: number) => { const other = rawNodes.find((item: any) => item.id === conflict.event_id); return <li key={index} className='text-xs leading-6'><button className='text-left text-brand-600 underline focus-ring' onClick={() => onOpen(node)}>{node.label || '原事件'}（{eventSource(node)}）</button>{other && <><span className='mx-2'>与</span><button className='text-left text-brand-600 underline focus-ring' onClick={() => onOpen(other)}>{other.label || '另一事件'}（{eventSource(other)}）</button></>}<p className='mt-1 text-muted'>{conflict.message || '来源身份尚未确认，请打开原记录核对。'}</p></li> })}</ul></details>}
     {error ? <p role='alert' className='text-sm text-muted'>关系暂时无法读取，可点击更新关系重试；不影响继续写作。</p> : data?.detail ? <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{typeof data.detail === 'string' ? data.detail : '关系暂时无法读取，请重试。'}</p> : !data ? <p className='text-sm text-muted'>正在整理关系…</p> : !nodes.length ? <p className='text-sm text-muted'>保存人物、故事和章节后，这里会显示它们的联系。</p> : <>
       {nodes.length > 13 && <p className='text-xs text-muted'>图中展示当前局部，其他资料可通过上方名称选择查看；没有删除或合并同名资料。</p>}
@@ -107,7 +112,7 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
         {(focus.evidence?.quote || focus.quote || focus.summary) && <p className='whitespace-pre-wrap text-sm text-muted'>{focus.evidence?.quote || focus.quote || focus.summary}</p>}
         {focus.source && <details className='text-xs text-muted'><summary className='cursor-pointer'>查看来源</summary><p className='mt-1 break-all'>{typeof focus.source === 'string' ? focus.source : focus.source.path || focus.source.chapter_id || '作品设定'}</p>{focus.source.start_line && <p>第 {focus.source.start_line} 行</p>}</details>}
         <ul className='space-y-2 text-sm'>{adjacent.map((edge: any, index: number) => <li key={index}><button className='text-left text-brand-600 hover:underline focus-ring' onClick={() => setSelectedEdge(edgeId(edge))}>{name(edge.source)} 对 {name(edge.target)}：{edge.label || '相关'}</button>{edge.scope === 'author_plan' && <span className='ml-2 text-xs text-muted'>作者计划</span>}<button className='ml-3 text-xs text-muted hover:underline focus-ring' onClick={() => { setSelected(edge.source === focus.id ? edge.target : edge.source); setSelectedEdge('') }}>以对方为中心</button>{edge.evidence?.quote && <blockquote className='mt-1 text-xs text-muted'>{edge.evidence.quote}</blockquote>}{edge.confirmed === false && <span className='ml-2 text-xs text-amber-700 dark:text-amber-300'>待核验</span>}</li>)}</ul>
-        {!adjacent.length && <p className='text-sm text-muted'>暂未记录关系。人物仍可因同场目标与阻碍参与情节，不必先编造一段社会关系。</p>}
+        {!adjacent.length && <p className='text-sm text-muted'>{layer === 'events' ? '尚未连接前因事件。可以先安排事件，再补明确的因果关系。' : '暂未记录关系。人物仍可因同场目标与阻碍参与情节，不必先编造一段社会关系。'}</p>}
       </div>}
     </>}
   </section>

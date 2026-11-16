@@ -259,15 +259,23 @@ class AuthoringService:
             guidance['rules'] = guidance['rules'].replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。')
             system += '作者明确允许提出情节变化，但这只是待确认候选，不得改变既有世界规则和人物认知边界。'
         path = f'drafts/{chapter_id}.md'
-        saved = self.store.read_md(project_id, path)
-        check_revision(self.store, project_id, path, body.get('base_revision'))
-        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'))
+        from services.change_suggestion_service import ChangeSuggestionService
+        with ChangeSuggestionService(self.store).lock(project_id):
+            saved = self.store.read_md(project_id, path)
+            check_revision(self.store, project_id, path, body.get('base_revision'))
+        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'), reference_ids=body.get('writing_references') or [])
+        missing_references = set(body.get('writing_references') or []) - {item['id'] for item in references['references']}
+        if missing_references:
+            labels = [self.store.read_yaml(project_id, f'cards/{identity}.yaml').get('title') or '一项所选参考' for identity in sorted(missing_references)]
+            raise ValueError('本次选用的写作参考未能完整带入（超出范围、已不存在或类型不适用）：' + '、'.join(labels[:5]) + '。请减少参考或核对原条目后重试。')
         materials = KnowledgeGraphService(self.store).materials(project_id, chapter_id, {}, max_chars=6000, include_references=False, story_card_id=body.get('story_card_id'))
         addresses = [{'id': card['id'], **{key: value for key, value in card.get('payload', {}).items() if key in {'name', 'gender', 'pronouns', 'address_notes', 'relationships'}}} for card in materials['cards'] if card.get('type') == 'character']
         text = await self.complete(project_id, body, 'proofreader', system, json.dumps({
             '前文（只作参考）': source[max(0, start - 1500):start],
             '待修改段落': source[start:end], '后文（只作参考）': source[end:end + 1500],
             '作者要求': body.get('instructions', ''),
+            '文字风格': body.get('expression_style', '') if mode != 'polish' else '',
+            '情绪氛围': body.get('emotional_atmosphere', '') if mode != 'polish' else '',
             '小说观察顺序参考': guidance if mode == 'cinematic' else {},
             '人物表现参考（倾向不是每次必演动作）': [card for card in materials['cards'] if card.get('type') == 'character'] if mode == 'cinematic' else [],
             '作者选用的写作参考': references,
@@ -276,7 +284,10 @@ class AuthoringService:
             '本章关联人物称谓（address_as表示此人称呼target，不反用）': addresses,
             '关联情节规划（只作作者规划参考，不改原文事实）': StoryPlanningService(self.store).chapter_materials(project_id, chapter_id, story_card_id=body.get('story_card_id'), max_chars=4500),
         }, ensure_ascii=False), max_tokens=6000)
+        ops = ChangeSuggestionService._ops(source[start:end], text)
+        diff = '\n'.join(unified_diff(source[start:end].splitlines(), text.splitlines(), fromfile='原段落', tofile='修改候选', lineterm=''))
         return {'text': text, 'source_text': source, 'base_hash': self.content_hash(saved), 'start': start, 'end': end, 'mode': mode, 'writing_reference_usage': references,
+                'ops': ops, 'diff': diff,
                 'candidate_kind': 'plot_change' if body.get('allow_plot_change') else 'expression_only'}
 
     def apply_revision(self, project_id: str, chapter_id: str, body: dict) -> dict:
@@ -284,7 +295,7 @@ class AuthoringService:
         with ChangeSuggestionService(self.store).lock(project_id):
             source, text = body['source_text'], body['text']
             start, end = body['start'], body['end']
-            if not 0 <= start <= end <= len(source) or not text.strip():
+            if not 0 <= start <= end <= len(source) or not text.strip() and not (text == '' and start < end):
                 raise ValueError('修改内容或范围无效。')
             original = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
             if self.content_hash(original) != body['base_hash']:
@@ -302,4 +313,5 @@ class AuthoringService:
             IncrementalMemoryService(self.store).mark(project_id, f'drafts/{chapter_id}.md')
             self.store.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', {'patch_id': patch_id, 'patch_ops': ops, 'accepted_op_ids': ['paragraph_revision'], 'diff': diff})
             self.store.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'AUTHOR_REVISION', 'data': {'chapter_id': chapter_id, 'patch_id': patch_id}})
-            return {'content': updated, 'diff': diff, 'revision': revision(self.store, project_id, f'drafts/{chapter_id}.md')}
+            return {'content': updated, 'diff': diff, 'applied_revision': self.content_hash(updated),
+                    'revision': revision(self.store, project_id, f'drafts/{chapter_id}.md')}

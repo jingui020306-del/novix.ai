@@ -265,6 +265,8 @@ html[data-editor-size='large'] .editor-text { font-size: 16px; }
 .world-map-marker.is-current { background: rgb(var(--c-accent)); color: rgb(var(--c-on-accent)); }
 .world-map-marker:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 3px; }
 
+/* Local assistance stays discoverable on keyboard focus and touch. */
+@media (hover: hover) { .field-ai { opacity: 0; } .field-ai-group:hover > div > .field-ai, .field-ai-group:focus-within > div > .field-ai, .field-ai:focus-visible { opacity: 1; } }
 .book-overview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2rem; }
 .book-overview h2 { font-size:1rem; font-weight:600; }
 .book-portrait { max-width:9rem; height:8rem; object-fit:cover; border-radius:4px; }
