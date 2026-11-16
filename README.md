@@ -138,7 +138,27 @@ The demo project is `demo_project_001`. It includes:
 
 ## Local Scene Rehearsal
 
-Use **本地人物排演** in a scene to compare two characters’ choices without a language-model account. The backend integrates PsychSim, Praxish, Sabre and FAtiMA. See the [local engine setup and scene rules](docs/LOCAL_REHEARSAL.md).
+Save a scene that links at least two character cards. Novix prepares a candidate in the backend, even if the author never opens the rehearsal editor. The chapter shows the outcome. Open the scene to read each character’s choices, or expand **调整本场排演假设** to change the participants, actions, beliefs, or costs. Edits recalculate the candidate. Preview and confirm to use it in chapter planning.
+
+The first version covers one action and one response. Novix reuses a saved scenario or the two actions from an authored interaction. For the latter, it assumes the partner can observe the first action. With only a cast, it starts from a generic conversation. Initial confidence is 70% and the default failure cost is 5. These are editable assumptions. Free-text goals provide context to the author. Action availability and payoffs use structured inputs.
+
+Local rehearsal runs without a cloud model or API key. Install the Python dependencies on the FastAPI host. The three additional engines run on the same machine.
+
+| Engine | What it contributes | Runtime |
+| --- | --- | --- |
+| [PsychSim](https://github.com/usc-psychsim/psychsim) | Chooses between acting and holding back given each character’s beliefs and costs | Installed with the backend Python requirements |
+| [Praxish](https://github.com/mkremins/praxish) | Evaluates social conditions and which responses an action makes possible | Bundled MIT source, Node.js 20+ |
+| [Sabre](https://github.com/sgware/sabre) | Searches for a path to the chosen outcome | Java 21+ |
+| [FAtiMA Toolkit](https://github.com/GAIPS/FAtiMA-Toolkit) | Appraises an observed event and adjusts the partner’s risk estimate | .NET 8 SDK and Git |
+
+From the repository root, run:
+
+```bash
+python -m pip install -r backend/requirements.txt
+python backend/rehearsal_engines/install.py
+```
+
+The installer downloads the pinned Sabre JAR and builds the pinned FAtiMA bridge. Pass `sabre` or `fatima` to install one. The default location is `~/.novix/engines`; set `NOVIX_ENGINE_DIR` to use another directory readable by the backend. Ready engines are selected automatically for a new scene.
 
 ## First Run Checklist
 

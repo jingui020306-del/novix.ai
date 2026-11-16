@@ -27,8 +27,19 @@ def _error(exc):
 
 
 @router.get('')
-def list_rehearsals(project_id: str, chapter_id: str | None = None, story_card_id: str | None = None, store=Depends(get_store)):
-    return SceneRehearsalService(store).list(project_id, chapter_id, story_card_id)
+def list_rehearsals(project_id: str, background_tasks: BackgroundTasks, chapter_id: str | None = None, story_card_id: str | None = None, store=Depends(get_store)):
+    service = SceneRehearsalService(store)
+    rows = service.list(project_id, chapter_id, story_card_id)
+    if chapter_id:
+        for row in rows:
+            if row['confirmed'] and not row['stale']:
+                continue
+            owner, scene = row['owner_card_id'], row['scene_id']
+            auto = service.get(project_id, owner, scene, compute=False)['automatic']
+            row['automatic'] = {'status': auto['status'], 'outcome': auto.get('outcome', ''), 'notice': auto.get('notice', '')}
+            if auto['status'] == 'pending':
+                background_tasks.add_task(service.warm, project_id, owner, scene)
+    return rows
 
 
 @router.get('/{owner_card_id}/{scene_id}')

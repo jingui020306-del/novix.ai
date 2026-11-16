@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Input, Select } from './ui/Fields'
-import { Button } from './ui/Button'
 import { LocalChoices, LocalSimulation } from '../lib/sceneRehearsal'
 
 type Engine = LocalSimulation['engines'][number]
@@ -12,23 +11,29 @@ const choiceLabels: Record<keyof LocalChoices, string> = {
 const engineLabels: Record<Engine, string> = {
   praxish: 'Praxish · 情境允许的行动', sabre: 'Sabre · 通往指定结果的路径', fatima: 'FAtiMA · 对方对事件的情绪评价',
 }
-export function LocalRehearsalForm({ options, people, saved, busy, topic, run, onChange }: {
-  options: Options; people: Person[]; saved?: LocalSimulation; busy: boolean; topic: string;
-  run: (spec: LocalSimulation) => void; onChange: () => void;
+export function LocalRehearsalForm({ options, people, initial, busy, onChange }: {
+  options: Options; people: Person[]; initial: LocalSimulation; busy: boolean;
+  onChange: (spec: LocalSimulation | null) => void;
 }) {
   const cast = people.filter(p => options.cast.includes(p.id))
   const presets = Object.keys(options.presets)
-  const [form, setForm] = useState<LocalSimulation>(() => saved || {
-    version: 1, actor_id: cast[0]?.id || '', partner_id: cast[1]?.id || '', topic: topic.slice(0, 120),
-    available: true, actor_confidence: 0.7, partner_confidence: 0.7, actor_loss: 5, partner_loss: 5,
-    choices: options.presets[presets[0]], plan_goal: 'respond', desirability: 0,
-    engines: (Object.keys(engineLabels) as Engine[]).filter(key => options.engines[key]),
-  })
-  function change(patch: Partial<LocalSimulation>) { setForm(old => ({ ...old, ...patch })); onChange() }
+  const [form, setForm] = useState(initial)
+  const dirty = useRef(false)
+  useEffect(() => { if (!dirty.current) setForm(initial) }, [initial])
+  function change(patch: Partial<LocalSimulation>) {
+    dirty.current = true
+    const next = { ...form, ...patch }
+    setForm(next)
+    const valid = next.actor_id !== next.partner_id && [next.actor_id, next.partner_id].every(id => cast.some(p => p.id === id))
+      && next.topic.trim() && Object.values(next.choices).every(v => v.trim())
+      && next.choices.act !== next.choices.hold && next.choices.respond !== next.choices.check
+      && next.engines.every(k => options.engines[k])
+    onChange(valid ? next : null)
+  }
   const selected = (key: Engine) => form.engines.includes(key)
   const idsValid = [form.actor_id, form.partner_id].every(id => cast.some(p => p.id === id)) && form.actor_id !== form.partner_id
-  return <details className='border-y border-border py-4' open>
-    <summary className='cursor-pointer font-medium'>本地人物排演</summary>
+  return <details className='border-y border-border py-4'>
+    <summary className='cursor-pointer font-medium'>调整本场排演假设</summary>
     {cast.length < 2 ? <p className='mt-3 text-sm text-muted'>请先在本场情节关联两位人物，再打开排演。</p> :
     <fieldset disabled={busy} className='mt-4 space-y-4 text-sm'>
       <label className='block'>场景中的事项<Input className='w-full' value={form.topic} maxLength={120} onChange={e => change({ topic: e.target.value })} /></label>
@@ -52,7 +57,6 @@ export function LocalRehearsalForm({ options, people, saved, busy, topic, run, o
         <option value='respond'>{form.choices.respond}</option><option value='check'>{form.choices.check}</option></Select></label>}
       {Object.values(options.engines).some(v => !v) && <details><summary className='cursor-pointer'>安装本地引擎</summary><p>后端主机使用 Node 20、Java 21 或更高版本、.NET 8 SDK 和 Git。在项目根目录运行 <code>python backend/rehearsal_engines/install.py</code>，完成后刷新页面。</p></details>}
       {!idsValid && <p role='status'>请选择两位不同的本场人物。</p>}
-      <Button type='button' disabled={!idsValid || !form.topic.trim() || Object.values(form.choices).some(v => !v.trim()) || form.engines.some(k => !options.engines[k])} onClick={() => run(form)}>按人物选择排演</Button>
     </fieldset>}
   </details>
 }

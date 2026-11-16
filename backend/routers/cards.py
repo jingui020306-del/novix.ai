@@ -103,6 +103,9 @@ def _save_card(project_id, card_id, card, s, background_tasks, change_service, *
         card['updated_at'] = now_iso()
         s.write_yaml(project_id, _card_path(card_id), card)
         IncrementalMemoryService(s).mark(project_id, _card_path(card_id))
+        if suggestion_scope is None and background_tasks is not None:
+            from services.scene_rehearsal_service import SceneRehearsalService
+            SceneRehearsalService(s).schedule_changes(background_tasks, project_id, before, card)
         if not queue_suggestions:
             return {**decorate(s, project_id, _card_path(card_id), card), 'change_suggestions': {'queued_count': 0, 'task_ids': []}}
         try:
