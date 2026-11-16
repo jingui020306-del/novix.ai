@@ -39,6 +39,9 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
   const requestNumber = useRef(0)
+  const seenAutomatic = useRef('')
+  const assumptionsEdited = useRef(false)
+  const settingsTimer = useRef<ReturnType<typeof setTimeout>>()
   const latest = useRef(working)
   latest.current = working
   if (working) draftCache.current[cacheKey] = { ...working, instructions }
@@ -48,7 +51,7 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
     setWorking(cached ? { ...cached, remoteVersions: cached.remoteVersions || cached.versions || {}, draft: rehearsalDraft(cached.draft), baseline: rehearsalDraft(cached.baseline) } : { draft: rehearsalDraft(data.draft), baseline: rehearsalDraft(data.baseline), baseHash: data.base_hash, remoteHash: data.base_hash, versions: data.source_versions || {}, remoteVersions: data.source_versions || {}, origin: data.origin })
     if (cached?.instructions) setInstructions(cached.instructions)
   }, [data, cacheKey, working])
-  useEffect(() => () => { requestNumber.current++ }, [cacheKey])
+  useEffect(() => () => { requestNumber.current++; clearTimeout(settingsTimer.current) }, [cacheKey])
   useEffect(() => { document.getElementById('scene-rehearsal-workspace')?.scrollIntoView({ block: 'start' }) }, [cacheKey])
   const localDraft = useDraftRecovery(cacheKey, working ? { ...working, instructions } : null, working ? JSON.stringify({ ...working, draft: working.baseline, instructions }) : '', (value) => { const { instructions: restoredInstructions, ...copy } = value; setWorking(copy); setInstructions(restoredInstructions || ''); setEditing(true) })
   const context = data?.context || {}
@@ -56,16 +59,35 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
   const changedSources = Boolean(working && data?.base_hash && (data.base_hash !== working.remoteHash || rehearsalSourcesChanged(working.remoteVersions, data.source_versions)))
   const needsReview = conflict || changedSources
   const draft = working?.draft || rehearsalDraft()
+  useEffect(() => {
+    if (!working || busy || !data?.base_hash || data.base_hash === working.remoteHash ||
+        assumptionsEdited.current || !['saved', 'source_summary'].includes(working.origin || '')) return
+    setWorking({ draft: rehearsalDraft(data.draft), baseline: rehearsalDraft(data.baseline),
+      baseHash: data.base_hash, remoteHash: data.base_hash, versions: data.source_versions,
+      remoteVersions: data.source_versions, origin: data.origin })
+    setProposal(null); setPreview(null); setConflict(false)
+  }, [data, working, busy])
+  useEffect(() => {
+    const auto = data?.automatic
+    if (!working || assumptionsEdited.current || auto?.status !== 'ready' || seenAutomatic.current === auto.key || needsReview ||
+        rehearsalKey(working.draft) !== rehearsalKey(data.draft)) return
+    seenAutomatic.current = auto.key
+    const version = { ...data.draft, text: auto.text, outcome: auto.outcome, local_simulation: auto.settings }
+    setProposal({ input: rehearsalKey(working.draft), draft: rehearsalDraft(version),
+      response: { basis: 'local_simulation', base_hash: data.base_hash, source_versions: data.source_versions, steps: auto.steps, engines: auto.engines } })
+  }, [data, working, needsReview])
   const edit = (patch: Partial<RehearsalDraft>) => setWorking((current) => current ? { ...current, draft: { ...current.draft, ...patch }, origin: 'manual' } : current)
   const techniqueName = (id: string) => referenceLabel((Array.isArray(techniqueCards) ? techniqueCards : []).find((card: any) => card.id === id), id)
   const request = async (action: 'preview' | 'propose' | 'confirm' | 'simulate', simulation?: LocalSimulation) => {
     if (!working) return
+    clearTimeout(settingsTimer.current)
     const number = ++requestNumber.current
     const before = rehearsalKey(working.draft)
     setBusy(action); setError(''); setMessage('')
     try {
       const response = await fetch(`${endpoint}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: working.draft, base_hash: working.baseHash, source_versions: working.versions, ...(simulation ? { simulation } : {}), ...(action === 'propose' ? { instructions, llm_profile_id: profileId } : {}) }) })
       const result = await response.json()
+      if (number !== requestNumber.current) return
       if (!response.ok || result.detail) {
         if (response.status === 409) { setConflict(true); void mutate().catch(() => undefined); throw new Error('来源资料或已采用安排发生了变化。你的手稿已保留，请先核对最新资料，再预览确认。') }
         throw new Error(typeof result.detail === 'string' ? result.detail : action === 'simulate' ? '请检查人物、动作与本场参数。' : '本次操作未完成，请重试。')
@@ -83,6 +105,7 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
       } else {
         const refreshed = await mutate().catch(() => null)
         if (number !== requestNumber.current) return
+        assumptionsEdited.current = false
         const saved = rehearsalDraft(result.saved || result.draft)
         const editedWhileSaving = rehearsalKey(latest.current?.draft) !== before
         setWorking((current) => ({ draft: editedWhileSaving && current ? current.draft : saved, baseline: saved, baseHash: result.base_hash, remoteHash: refreshed?.base_hash || result.base_hash, versions: result.source_versions || {}, remoteVersions: refreshed?.source_versions || result.source_versions || {}, origin: editedWhileSaving ? 'manual' : 'saved' }))
@@ -94,6 +117,16 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
       }
     } catch (cause) { if (number === requestNumber.current) setError(cause instanceof Error ? cause.message : '操作失败，原手稿已保留。') }
     finally { if (number === requestNumber.current) setBusy('') }
+  }
+  const changeSettings = (settings: LocalSimulation | null) => {
+    assumptionsEdited.current = true
+    clearTimeout(settingsTimer.current)
+    requestNumber.current++
+    if (busy === 'simulate') setBusy('')
+    setProposal(null)
+    if (data?.automatic?.key) seenAutomatic.current = data.automatic.key
+    if (settings) settingsTimer.current = setTimeout(() => { void request('simulate', settings) }, 450)
+    else setMessage('请补全排演条件，系统会自动更新候选。')
   }
   const useLatestSources = async () => {
     setError(''); setMessage('')
@@ -125,12 +158,14 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
       <div className='rehearsal-layout'>
         <section className='rehearsal-manuscript space-y-5'>
           <p className='text-xs text-muted'>{working.origin === 'saved' ? '已采用的本场安排' : working.origin === 'local' ? '本地排演候选，尚未确认采用' : working.origin === 'ai' ? 'AI 候选已放入手稿，尚未确认采用' : working.origin === 'manual' ? '作者手动修订，尚未确认采用' : '根据已有资料整理的起点，尚未新增文学推演'}</p>
-          <section className='space-y-3'><div className='flex flex-wrap items-center justify-between gap-3'><h2 className='text-base font-semibold'>这一场怎样发生</h2><Button className='text-xs' onClick={() => setEditing(!editing)}>{editing ? '阅读手稿' : '修改关键选择'}</Button></div><p className='text-xs leading-6 text-muted'>{data?.saved ? '修改先留在手稿中；预览时可对照已采用安排。' : data?.notice || '先整理已有明确材料；新的文学走法可手写或主动请 AI 推演。'}</p>{editing ? <Textarea aria-label='本场可读推演手稿' className='rehearsal-editor' value={draft.text} onChange={(event) => edit({ text: event.target.value })} placeholder='从一个人的选择写起：他怎样行动，别人因此失去了什么选择，局势如何继续变化？' /> : draft.text.trim() ? <div className='rehearsal-reading whitespace-pre-wrap'>{draft.text}</div> : <p className='py-7 text-sm leading-7 text-muted'>还没有完整过程。可以手动写一段，或请 AI 根据已有材料提出一份候选；没有模型也能手写、预览和确认。</p>}</section>
+          <section className='space-y-3'><div className='flex flex-wrap items-center justify-between gap-3'><h2 className='text-base font-semibold'>这一场怎样发生</h2><Button className='text-xs' onClick={() => setEditing(!editing)}>{editing ? '阅读手稿' : '修改关键选择'}</Button></div><p className='text-xs leading-6 text-muted'>{data?.saved ? '修改先留在手稿中；预览时可对照已采用安排。' : data?.notice || '先整理已有明确材料；新的文学走法可手写或主动请 AI 推演。'}</p>{editing ? <Textarea aria-label='本场可读推演手稿' className='rehearsal-editor' value={draft.text} onChange={(event) => edit({ text: event.target.value })} placeholder='从一个人的选择写起：他怎样行动，别人因此失去了什么选择，局势如何继续变化？' /> : draft.text.trim() ? <div className='rehearsal-reading whitespace-pre-wrap'>{draft.text}</div> : <p className='py-7 text-sm leading-7 text-muted'>还没有完整过程。可以先手写；本场资料足够时，下方会出现可编辑的本地候选。</p>}</section>
           <section className='space-y-4 border-y border-border py-4'><div><label className='mb-2 block text-sm font-medium' htmlFor='rehearsal-outcome'>这一场结束后，什么改变了？</label><Textarea id='rehearsal-outcome' value={draft.outcome} onChange={(event) => edit({ outcome: event.target.value })} placeholder='可以先留空；写具体结果，而非再重复故事主题。' /></div><div><label className='mb-2 block text-sm font-medium' htmlFor='rehearsal-next'>这个后果给下一场留下什么问题？</label><Textarea id='rehearsal-next' value={draft.next_question} onChange={(event) => edit({ next_question: event.target.value })} placeholder='例如：谁必须追过去、隐瞒什么、兑现什么？没有确定时先留空。' /></div></section>
           <WritingReferencePanel open={referencesOpen} onClose={() => setReferencesOpen(false)} title='本场写法参考'><p className='mb-4 text-xs leading-6 text-muted'>为这一场选择写法，说明它怎样参与铺势或转折。回到场景预览并确认后保存。</p><div className='space-y-4'><WritingReferencePicker project={project} techniquesOnly value={draft.technique_ids} onOpen={onOpenMaterial} onChange={(ids) => { if (ids.length > 12) { setMessage('本场最多选 12 项技法，少选并说清落点更有帮助。'); return }; edit({ technique_ids: ids, technique_applications: ids.map((id) => applications.find((row) => row.technique_id === id) || { technique_id: id, placement: '', reason: '', effect: '' }) }) }} saveHint='选技法不调用模型，也不自动编剧情。需要文学推荐时再点“请 AI 推演”。' />{draft.technique_ids.map((id) => { const application = applications.find((row) => row.technique_id === id) || { technique_id: id, placement: '', reason: '', effect: '' }; return <section key={id} className='space-y-3 border-t border-border pt-4'><h3 className='text-sm font-medium'>{techniqueName(id)}</h3>{[['placement', '落在过程的哪一处'], ['reason', '为什么适合这里，需要什么条件'], ['effect', '预期让读者感到或理解什么']].map(([key, label]) => <div key={key}><label className='mb-1 block text-xs text-muted' htmlFor={`rehearsal-${id}-${key}`}>{label}</label><Input id={`rehearsal-${id}-${key}`} value={(application as any)[key]} onChange={(event) => edit({ technique_applications: draft.technique_ids.map((tid) => tid === id ? { ...application, [key]: event.target.value } : applications.find((row) => row.technique_id === tid) || { technique_id: tid, placement: '', reason: '', effect: '' }) })} placeholder='还未决定时可留空；AI 候选会说明具体用法，仍由作者选择。' /></div>)}</section> })}</div><Button className='mt-5 text-xs' onClick={() => setReferencesOpen(false)}>回到场景，预览确认</Button></WritingReferencePanel>
-          {data?.local_options && <LocalRehearsalForm key={cacheKey} options={data.local_options} people={context.characters || []} saved={draft.local_simulation} topic={context.scene?.label || ''} busy={Boolean(busy) || needsReview} run={spec => request('simulate', spec)} onChange={() => setProposal(null)} />}
+          {data?.automatic?.notice && <p className='text-sm text-muted'>{data.automatic.notice}</p>}
+          {data?.local_options && data?.automatic?.settings && <LocalRehearsalForm key={cacheKey} options={data.local_options} people={context.characters || []} initial={data.automatic.settings} busy={Boolean(busy && busy !== 'simulate') || needsReview} onChange={changeSettings} />}
+          {busy === 'simulate' && <p role='status' className='text-sm text-muted'>正在按最新假设更新本地候选…</p>}
           <details className='border-b border-border pb-4'><summary className='cursor-pointer text-sm font-medium'>请 AI 提出一份推演候选（可选）</summary><div className='mt-4 space-y-3'><label className='block text-sm text-muted' htmlFor='rehearsal-instructions'>这次想试的关键选择</label><Textarea id='rehearsal-instructions' value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder='例如：如果他不走，而是把位置让给伤者，其他人会怎样回应？也可留空，先看一份走法。' /><Button disabled={Boolean(busy) || needsReview} onClick={() => request('propose')}>{busy === 'propose' ? '正在推演…' : '请 AI 推演这一场'}</Button><p className='text-xs leading-6 text-muted'>只有这个按钮调用推演模型。新行动、反应与技法落点都是候选，不会自动改写原安排。</p></div></details>
-          {proposal && <section className='space-y-3 border-y border-border py-5' aria-label='场景推演候选'><h2 className='text-base font-semibold'>待判断的文学走法</h2><p className='text-xs leading-6 text-muted'>{proposal.response.basis === 'local_simulation' ? 'PsychSim 按两位人物各自的把握与代价选择动作。' : '包含 AI 新创作的连接与反应。可先改候选，原手稿仍保留。'}</p><Textarea aria-label='AI场景过程候选' className='rehearsal-editor' value={proposal.draft.text} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, text: event.target.value } })} /><label className='block text-xs text-muted' htmlFor='proposal-outcome'>候选的本场结果</label><Textarea id='proposal-outcome' value={proposal.draft.outcome} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, outcome: event.target.value } })} /><label className='block text-xs text-muted' htmlFor='proposal-next'>候选引出的下场问题</label><Textarea id='proposal-next' value={proposal.draft.next_question} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, next_question: event.target.value } })} />{proposal.draft.technique_applications?.length > 0 && <ul className='space-y-3 text-sm'>{proposal.draft.technique_applications.map((row: any) => <li key={row.technique_id}><strong>{techniqueName(row.technique_id)}</strong><p className='mt-1 leading-7 text-muted'>落点：{row.placement || '尚未写明'}<br />理由：{row.reason || '尚未写明'}<br />预期效果：{row.effect || '尚未写明'}</p></li>)}</ul>}{proposal.response.basis === 'local_simulation' ? <div className='space-y-2 text-sm'>
+          {proposal && <section className='space-y-3 border-y border-border py-5' aria-label='场景推演候选'><h2 className='text-base font-semibold'>{proposal.response.basis === 'local_simulation' ? '本场自动排演候选' : '待判断的文学走法'}</h2><p className='text-xs leading-6 text-muted'>{proposal.response.basis === 'local_simulation' ? '候选按两位人物各自的把握与代价生成。可展开调整本场假设。' : '包含 AI 新创作的连接与反应。可先改候选，原手稿仍保留。'}</p><Textarea aria-label='场景过程候选' className='rehearsal-editor' value={proposal.draft.text} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, text: event.target.value } })} /><label className='block text-xs text-muted' htmlFor='proposal-outcome'>候选的本场结果</label><Textarea id='proposal-outcome' value={proposal.draft.outcome} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, outcome: event.target.value } })} /><label className='block text-xs text-muted' htmlFor='proposal-next'>候选引出的下场问题</label><Textarea id='proposal-next' value={proposal.draft.next_question} onChange={(event) => setProposal({ ...proposal, draft: { ...proposal.draft, next_question: event.target.value } })} />{proposal.draft.technique_applications?.length > 0 && <ul className='space-y-3 text-sm'>{proposal.draft.technique_applications.map((row: any) => <li key={row.technique_id}><strong>{techniqueName(row.technique_id)}</strong><p className='mt-1 leading-7 text-muted'>落点：{row.placement || '尚未写明'}<br />理由：{row.reason || '尚未写明'}<br />预期效果：{row.effect || '尚未写明'}</p></li>)}</ul>}{proposal.response.basis === 'local_simulation' ? <div className='space-y-2 text-sm'>
               {proposal.response.steps.map((step: any) => <p key={step.actor_id}><strong>{step.name}</strong> · {step.chosen}。可选：{step.alternatives.join(' / ')}。主动行动 {step.expected_active ?? '条件未满足'}，保留选择 {step.expected_cautious}。{step.goal && `已有目标：${step.goal}`}</p>)}
               {proposal.response.engines?.praxish && <p>Praxish · {proposal.response.engines.praxish.first.includes('act') ? '前提允许主动行动' : '前提排除了主动行动'}。</p>}
               {proposal.response.engines?.sabre && <p>Sabre · {proposal.response.engines.sabre.join(' → ') || '在这组前提和人物目标下没有可达路径'}。</p>}

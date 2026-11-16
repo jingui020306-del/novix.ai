@@ -9,6 +9,7 @@ from difflib import unified_diff
 from services.change_suggestion_service import ChangeSuggestionService
 from services.local_rehearsal import LocalRehearsal, PRESETS, rehearse, scene_cast
 from rehearsal_engines.runtime import availability
+from services.automatic_rehearsal import candidate, logger
 from services.token_usage import summarize_usage
 from services.shared_material_service import SharedMaterialService
 from services.knowledge_graph_service import KnowledgeGraphService
@@ -292,7 +293,7 @@ class SceneRehearsalService:
                 '_revision': revision(self.store, project_id, source), 'owner_card_id': owner_id, 'scene_id': scene_id,
                 'baseline': baseline, 'draft': draft, 'origin': 'saved' if saved else 'source_summary', 'notice': '' if saved else '这里只整理已有明确资料；尚未替作者推断新的文学走法。'}
 
-    def get(self, project_id, owner_id, scene_id):
+    def get(self, project_id, owner_id, scene_id, *, compute=True):
         owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
         with ChangeSuggestionService(self.store).lock(project_id):
             _, rows, index = self._owner(project_id, owner_id, scene_id)
@@ -300,7 +301,49 @@ class SceneRehearsalService:
             result['local_options'] = {
                 'presets': {name: choices.model_dump() for name, choices in PRESETS.items()},
                 'engines': availability(), 'cast': list(scene_cast(result['context']))}
-            return result
+        result['automatic'] = candidate(str(self.store._project_dir(project_id)), result, result['local_options']['engines'], compute=compute)
+        return result
+
+    def warm(self, project_id, owner_id, scene_id):
+        try:
+            self.get(project_id, owner_id, scene_id)
+        except (ValueError, KeyError, FileNotFoundError) as exc:
+            # The scene may have been deleted or reordered since the save.
+            logger.debug('Skipped obsolete scene rehearsal: %s', exc)
+
+    def warm_actor_scenes(self, project_id, actor_id):
+        for path in self.store._safe_path(project_id, 'cards').glob('*.yaml'):
+            card = self.store.read_yaml(project_id, f'cards/{path.name}')
+            if card.get('type') not in ('story', 'outline'):
+                continue
+            payload = card.get('payload') or {}
+            related = [r for table in ('character_storylines', 'character_intersections')
+                       for r in payload.get(table) or [] if isinstance(r, dict) and
+                       (r.get('character_id') == actor_id or actor_id in (r.get('characters') or []))]
+            for i, row in enumerate(payload.get('important_scenes') or []):
+                if not isinstance(row, dict):
+                    continue
+                scene_id = str(row.get('id') or f'index_{i}')
+                if (actor_id in (row.get('characters') or []) or actor_id in (row.get('cast') or []) or
+                        any(self._related(r, row, scene_id) for r in related)):
+                    self.warm(project_id, card['id'], scene_id)
+
+    def schedule_changes(self, tasks, project_id, before, after):
+        if tasks is None:
+            return
+        if after.get('type') == 'character':
+            tasks.add_task(self.warm_actor_scenes, project_id, after['id'])
+            return
+        if after.get('type') not in ('story', 'outline'):
+            return
+        old, new = before.get('payload') or {}, after.get('payload') or {}
+        def scenes(payload):
+            return {str(row.get('id') or f'index_{i}'): row for i, row in enumerate(payload.get('important_scenes') or []) if isinstance(row, dict)}
+        old_rows = scenes(old)
+        related_changed = any(old.get(key) != new.get(key) for key in ('character_intersections', 'character_storylines', 'world_context'))
+        for scene_id, row in scenes(new).items():
+            if related_changed or old_rows.get(scene_id) != row:
+                tasks.add_task(self.warm, project_id, after['id'], scene_id)
 
     def _validate_draft(self, project_id, value, *, require_text=False):
         if not isinstance(value, dict):
