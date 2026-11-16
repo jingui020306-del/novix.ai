@@ -117,7 +117,6 @@ type ProviderMeta = {
   defaults?: Record<string, any>
 }
 
-const MRU_KEY = 'novix.palette.mru.v1'
 
 const STORY_PAYLOAD_TEMPLATE = {
   logline: '',
@@ -202,22 +201,6 @@ const normalizeStoryCard = (card: any) => {
   return { ...base, ...(card || {}), type: 'story', payload }
 }
 
-function loadMRU(): { id: string; title: string; group: string; subtitle?: string }[] {
-  try {
-    const raw = localStorage.getItem(MRU_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.slice(0, 20)
-  } catch {
-    return []
-  }
-}
-
-function saveMRU(rows: { id: string; title: string; group: string; subtitle?: string }[]) {
-  localStorage.setItem(MRU_KEY, JSON.stringify(rows.slice(0, 20)))
-}
-
 export default function App() {
   const { push } = useToast()
 
@@ -278,7 +261,6 @@ export default function App() {
   const [showIncompleteTechniques, setShowIncompleteTechniques] = useState(false)
   const [techniqueLibraryTab, setTechniqueLibraryTab] = useState('叙事技法')
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
-  const [mru, setMru] = useState<{ id: string; title: string; group: string; subtitle?: string }[]>([])
   const [buildDraft, setBuildDraft] = useState<{ draft_id?: string; kind: string; title: string; body: string; revision: number; source?: string; status?: string; created_at?: string; accepted_scope?: string[]; accepted_target?: string; rejection_reason?: string; writing_reference_usage?: any } | null>(null)
   const [buildDraftBusy, setBuildDraftBusy] = useState(false)
   const [buildWizardStep, setBuildWizardStep] = useState('basics')
@@ -309,20 +291,12 @@ export default function App() {
     setAutoApplyPatch(loaded.defaultAutoApplyPatch)
     setLlmProfileId(loaded.defaultLlmProfileId)
     applySettingsToDom(loaded)
-    setMru(loadMRU())
   }, [])
 
   const applySettings = (next: AppSettings) => {
     setSettings(next)
     saveSettings(next)
     applySettingsToDom(next)
-  }
-
-  const trackMRU = (item: CommandItem) => {
-    if (item.group !== 'Navigate') return
-    const next = [{ id: item.id, title: item.title, subtitle: item.subtitle, group: item.group }, ...mru.filter((x) => x.id !== item.id)].slice(0, 20)
-    setMru(next)
-    saveMRU(next)
   }
 
   const { data: projects, mutate: mutateProjects } = useSWR('/api/projects', api.get)
@@ -2248,16 +2222,8 @@ export default function App() {
       },
     ]
 
-    const mruItems: CommandItem[] = mru.map((x) => ({ id: `mru-${x.id}`, title: `[Recent] ${x.title}`, subtitle: x.subtitle, group: 'Navigate', icon: BookOpen, run: () => {} }))
-
-    const all = [...staticNav, ...navData, ...actionItems, ...baseHelpCommands(() => {})]
-    const resolvedMRU = mruItems.map((m) => {
-      const target = all.find((x) => x.id === m.id.replace('mru-', ''))
-      return target ? { ...target, title: `[Recent] ${target.title}` } : null
-    }).filter(Boolean) as CommandItem[]
-
-    return [...resolvedMRU, ...all]
-  }, [mru, project, settings, autoApplyPatch, selectedChapter, chapterEditorText, chapterTitleDraft, currentChapterMeta, currentVolume, volumeRows, chapterRows, analyzeBusy, chapterReferenceSelection, chapterMaterialSelection, toolSkillCards])
+    return [...staticNav, ...navData, ...actionItems, ...baseHelpCommands(() => {})]
+  }, [project, settings, autoApplyPatch, selectedChapter, chapterEditorText, chapterTitleDraft, currentChapterMeta, currentVolume, volumeRows, chapterRows, analyzeBusy, chapterReferenceSelection, chapterMaterialSelection, toolSkillCards])
 
   const filteredChapterRows = chapterRows.filter((ch: any) => {
     const q = sideSearch.trim().toLowerCase()
@@ -2344,7 +2310,7 @@ export default function App() {
   const header = (
     <div className='workspace-breadcrumb'>
       <span className='breadcrumb-title'>{projectInfo?.title || (Array.isArray(projects) ? projects : []).find((row: any) => row.id === project)?.title || '当前作品'}</span><span className='breadcrumb-separator'>/</span><span className='breadcrumb-section'>{view === 'story' ? '故事策划' : view === 'chapter' ? chapterTitleDraft || currentChapterMeta?.chapter_title || '当前章节' : NAV_ITEMS.find((row) => row.id === view)?.label || '工作区'}</span>
-      <CommandPalette items={commandItems.map((item) => ({ ...item, run: () => { item.run(); trackMRU(item) } }))} onOpen={() => lazyLoadPaletteData(false)} resolveCreateCommand={resolveCreateCommand} />
+      <CommandPalette items={commandItems} onOpen={() => lazyLoadPaletteData(false)} resolveCreateCommand={resolveCreateCommand} />
     </div>
   )
 

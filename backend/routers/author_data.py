@@ -24,6 +24,9 @@ def _call(fn, *args, **kwargs):
 
 def _add_stage(project_id, kind, target_id, body, svc, changes, background_tasks):
     stage = _call(svc.add_stage, project_id, kind, target_id, body)
+    if kind == 'character':
+        from services.scene_rehearsal_service import SceneRehearsalService
+        background_tasks.add_task(SceneRehearsalService(svc.store).warm_actor_scenes, project_id, target_id)
     try:
         queued = changes.enqueue_stage(project_id, kind, target_id, stage)
     except Exception:
@@ -91,6 +94,9 @@ def update_event(project_id: str, owner_id: str, scene_id: str, background_tasks
         before = svc.store.read_yaml(project_id, source)
         value = _call(svc.update_event, project_id, owner_id, scene_id, body)
         after = svc.store.read_yaml(project_id, source)
+        if before != after:
+            from services.scene_rehearsal_service import SceneRehearsalService
+            background_tasks.add_task(SceneRehearsalService(svc.store).warm, project_id, canonical['owner_card_id'], canonical['scene_id'])
         return _enqueue_saved(value, changes, background_tasks, changes.enqueue_event, project_id, canonical['owner_card_id'], canonical['scene_id'], before, after)
 
 

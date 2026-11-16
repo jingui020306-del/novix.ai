@@ -53,3 +53,7 @@ coverage/
 
 # Prepared model requests contain local author material.
 /data/**/meta/generation_materials/
+
+# Local FAtiMA bridge build products
+/backend/rehearsal_engines/fatima/bin/
+/backend/rehearsal_engines/fatima/obj/

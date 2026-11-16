@@ -41,7 +41,7 @@ Segmented imports extract the current passage before looking up matching names a
 
 在世界资料中填写姓氏、名字和亲属规则。在人物卡随机取名，或在关系页选中心人物生成家族。预览可改名、锁定成员和保留空位，确认后写入作品。在章节页比较历史正文，或从分歧事件建立分支稿。
 
-场景安排的「本地推演」读取本场人物、人物目标和前场已确认的选择。调整人物优先考虑的事和压力，可以得到不同的行动候选，选中后可继续手改。此功能使用随项目分发的 [Praxish](https://github.com/mkremins/praxish) 和本机 Node.js。姓名和家族使用 Python 标准库。安装步骤见下方 Quickstart。
+场景安排会根据本场有效人物自动准备候选：单人可推演取舍，两人可推演互动，多人可推演各自的回应。作者可修改、确认后采用。姓名和家族生成均可离线使用。
 
 在 Debian 或 Ubuntu 上，读取文字 PDF 可安装 `poppler-utils`，读取旧版 Word（.doc）可安装 `libreoffice-writer`。扫描页和手绘图需在模型设置里配置视觉模型，再对选中的页面执行识别。
 
@@ -143,6 +143,30 @@ The demo project is `demo_project_001`. It includes:
 - sample techniques,
 - tool skills,
 - canon and evidence examples.
+
+## Local Scene Rehearsal
+
+Save a scene that links at least two character cards. Novix prepares a candidate in the backend, even if the author never opens the rehearsal editor. The chapter shows the outcome. Open the scene to read each character’s choices, or expand **调整本场排演假设** to change the participants, actions, beliefs, or costs. Edits recalculate the candidate. Preview and confirm to use it in chapter planning.
+
+The first version covers one action and one response. Novix reuses a saved scenario or the two actions from an authored interaction. For the latter, it assumes the partner can observe the first action. With only a cast, it starts from a generic conversation. Initial confidence is 70% and the default failure cost is 5. These are editable assumptions. Free-text goals provide context to the author. Action availability and payoffs use structured inputs.
+
+Local rehearsal runs without a cloud model or API key. Install the Python dependencies on the FastAPI host. The three additional engines run on the same machine.
+
+| Engine | What it contributes | Runtime |
+| --- | --- | --- |
+| [PsychSim](https://github.com/usc-psychsim/psychsim) | Chooses between acting and holding back given each character’s beliefs and costs | Installed with the backend Python requirements |
+| [Praxish](https://github.com/mkremins/praxish) | Evaluates social conditions and which responses an action makes possible | Bundled MIT source, Node.js 20+ |
+| [Sabre](https://github.com/sgware/sabre) | Searches for a path to the chosen outcome | Java 21+ |
+| [FAtiMA Toolkit](https://github.com/GAIPS/FAtiMA-Toolkit) | Appraises an observed event and adjusts the partner’s risk estimate | .NET 8 SDK and Git |
+
+From the repository root, run:
+
+```bash
+python -m pip install -r backend/requirements.txt
+python backend/rehearsal_engines/install.py
+```
+
+The installer downloads the pinned Sabre JAR and builds the pinned FAtiMA bridge. Pass `sabre` or `fatima` to install one. The default location is `~/.novix/engines`; set `NOVIX_ENGINE_DIR` to use another directory readable by the backend. Ready engines are selected automatically for a new scene.
 
 ## First Run Checklist
 
@@ -381,33 +405,6 @@ Read trust report:
 curl "http://127.0.0.1:8000/api/projects/demo_project_001/trust-report?chapter_id=chapter_001"
 ```
 
-## Verification
-
-Backend tests:
-
-```bash
-./.venv/bin/python -m pytest -q backend/tests/test_phase2_services.py
-```
-
-Frontend production build:
-
-```bash
-cd frontend
-npm run build
-```
-
-Frontend smoke:
-
-```bash
-./scripts/smoke_frontend.sh
-```
-
-Diff whitespace check:
-
-```bash
-git diff --check
-```
-
 ## Troubleshooting
 
 ### The UI says `mock mode`
@@ -441,21 +438,17 @@ Set the public registry if needed:
 npm config set registry https://registry.npmjs.org/
 ```
 
-### Browser automation is unstable
-
-Use backend tests and frontend build as the baseline verification. Browser checks can be affected by local permissions or restricted environments.
-
 ## Docs Index
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
-- [Frontend Debug Guide](docs/FRONTEND_DEBUG.md)
 - [Technique Guide](docs/TECHNIQUES.md)
 - [Command Palette Guide](docs/COMMAND_PALETTE.md)
 - [Release / Packaging Guide](docs/RELEASE.md)
-- [Repository agent constraints](AGENTS.md)
 
 ## Contributing And License
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Contributing and development checks](docs/CONTRIBUTING.md)
+- [Code of conduct](docs/CODE_OF_CONDUCT.md)
+- [Security policy](docs/SECURITY.md)
 - [LICENSE](LICENSE)

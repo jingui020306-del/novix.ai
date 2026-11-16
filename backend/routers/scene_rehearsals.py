@@ -1,10 +1,9 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 from routers.authoring import get_authoring
 from routers.cards import get_change_service, get_store
+from services.local_rehearsal import Simulation
 from services.scene_rehearsal_service import SceneRehearsalService
 
 
@@ -16,6 +15,10 @@ class RehearsalRequest(BaseModel):
     llm_profile_id: str | None = None
 
 
+class SimulationRequest(RehearsalRequest):
+    simulation: Simulation
+
+
 router = APIRouter(prefix='/api/projects/{project_id}/scene-rehearsals', tags=['scene-rehearsals'])
 
 
@@ -24,8 +27,19 @@ def _error(exc):
 
 
 @router.get('')
-def list_rehearsals(project_id: str, chapter_id: str | None = None, story_card_id: str | None = None, store=Depends(get_store)):
-    return SceneRehearsalService(store).list(project_id, chapter_id, story_card_id)
+def list_rehearsals(project_id: str, background_tasks: BackgroundTasks, chapter_id: str | None = None, story_card_id: str | None = None, store=Depends(get_store)):
+    service = SceneRehearsalService(store)
+    rows = service.list(project_id, chapter_id, story_card_id)
+    if chapter_id:
+        for row in rows:
+            if row['confirmed'] and not row['stale']:
+                continue
+            owner, scene = row['owner_card_id'], row['scene_id']
+            auto = service.get(project_id, owner, scene, compute=False)['automatic']
+            row['automatic'] = {'status': auto['status'], 'outcome': auto.get('outcome', ''), 'notice': auto.get('notice', '')}
+            if auto['status'] == 'pending':
+                background_tasks.add_task(service.warm, project_id, owner, scene)
+    return rows
 
 
 @router.get('/{owner_card_id}/{scene_id}')
@@ -51,6 +65,14 @@ def service_lock(service, project_id):
     return ChangeSuggestionService(service.store).lock(project_id)
 
 
+@router.post('/{owner_card_id}/{scene_id}/simulate')
+def simulate_rehearsal(project_id: str, owner_card_id: str, scene_id: str, body: SimulationRequest, store=Depends(get_store)):
+    try:
+        return SceneRehearsalService(store).simulate(project_id, owner_card_id, scene_id, body.model_dump(), body.simulation)
+    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+        raise _error(exc) from exc
+
+
 @router.post('/{owner_card_id}/{scene_id}/propose')
 async def propose_rehearsal(project_id: str, owner_card_id: str, scene_id: str, body: RehearsalRequest, authoring=Depends(get_authoring)):
     try:
@@ -59,22 +81,6 @@ async def propose_rehearsal(project_id: str, owner_card_id: str, scene_id: str, 
         raise _error(exc) from exc
     except Exception as exc:
         raise HTTPException(502, '模型调用失败，请检查故事构思模型配置后重试；原安排没有改变。') from exc
-
-
-class LocalChoiceRequest(RehearsalRequest):
-    actor_id: str = Field(max_length=120)
-    witness_id: str = Field(default='', max_length=120)
-    priority: Literal['goal', 'protect', 'understand'] = 'goal'
-    pressure: Literal[0, 1, 2] = 0
-
-
-@router.post('/{owner_card_id}/{scene_id}/local-choice')
-def local_choice(project_id: str, owner_card_id: str, scene_id: str, body: LocalChoiceRequest, store=Depends(get_store)):
-    service = SceneRehearsalService(store)
-    try:
-        return service.local_choice(project_id, owner_card_id, scene_id, body.model_dump())
-    except (ValueError, FileNotFoundError, FileExistsError) as exc:
-        raise _error(exc) from exc
 
 
 @router.post('/{owner_card_id}/{scene_id}/confirm')
