@@ -22,6 +22,14 @@ MAX_BYTES = 12 * 1024 * 1024
 MAX_TEXT = 300000
 
 
+def file_hash(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def pdf_tool(name):
     system = Path('/usr/bin') / name
     return str(system) if system.is_file() and os.access(system, os.X_OK) else shutil.which(name)

@@ -7,20 +7,12 @@ import unicodedata
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from services.material_reader_service import MAX_BYTES, read_file
+from services.material_reader_service import MAX_BYTES, file_hash, read_file
 from storage.fs_store import now_iso
 
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 MAX_PACKAGE_EXPANDED = 2 * 1024 * 1024 * 1024
 MAX_PACKAGE_FILES = 10000
-
-
-def file_hash(path):
-    digest = hashlib.sha256()
-    with Path(path).open('rb') as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def read_package(store, project_id, batch_id, path, filename, *, reference_scope=None):

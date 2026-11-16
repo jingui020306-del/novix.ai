@@ -13,6 +13,7 @@ from pathlib import Path
 from services.author_control_service import AuthorControlService
 from services.change_suggestion_service import ChangeSuggestionService
 from services.edit_version_service import check_revision
+from services.material_reader_service import file_hash as material_file_hash
 from services.world_scope_service import WorldScopeService, entity_id
 from storage.fs_store import now_iso
 
@@ -36,14 +37,11 @@ def fingerprint(value):
 
 @lru_cache(maxsize=1024)
 def _file_hash(path, size, modified, inode):
-    result = hashlib.sha256()
-    with Path(path).open('rb') as source:
-        for block in iter(lambda: source.read(1024 * 1024), b''):
-            result.update(block)
+    digest = material_file_hash(path)
     after = Path(path).stat()
     if (after.st_size, after.st_mtime_ns, after.st_ino) != (size, modified, inode):
         raise FileExistsError('原材料在读取期间发生变化，请重试。')
-    return result.hexdigest()
+    return digest
 
 
 def file_hash(path):

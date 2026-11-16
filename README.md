@@ -397,33 +397,6 @@ Read trust report:
 curl "http://127.0.0.1:8000/api/projects/demo_project_001/trust-report?chapter_id=chapter_001"
 ```
 
-## Verification
-
-Backend tests:
-
-```bash
-./.venv/bin/python -m pytest -q backend/tests/test_phase2_services.py
-```
-
-Frontend production build:
-
-```bash
-cd frontend
-npm run build
-```
-
-Frontend smoke:
-
-```bash
-./scripts/smoke_frontend.sh
-```
-
-Diff whitespace check:
-
-```bash
-git diff --check
-```
-
 ## Troubleshooting
 
 ### The UI says `mock mode`
@@ -457,21 +430,17 @@ Set the public registry if needed:
 npm config set registry https://registry.npmjs.org/
 ```
 
-### Browser automation is unstable
-
-Use backend tests and frontend build as the baseline verification. Browser checks can be affected by local permissions or restricted environments.
-
 ## Docs Index
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [WenShape Parity Matrix](docs/WENSHAPE_PARITY.md)
-- [Frontend Debug Guide](docs/FRONTEND_DEBUG.md)
 - [Technique Guide](docs/TECHNIQUES.md)
 - [Command Palette Guide](docs/COMMAND_PALETTE.md)
 - [Release / Packaging Guide](docs/RELEASE.md)
-- [Repository agent constraints](AGENTS.md)
 
 ## Contributing And License
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Contributing and development checks](docs/CONTRIBUTING.md)
+- [Code of conduct](docs/CODE_OF_CONDUCT.md)
+- [Security policy](docs/SECURITY.md)
 - [LICENSE](LICENSE)
