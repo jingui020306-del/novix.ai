@@ -7,9 +7,10 @@ import { MaterialText, materialSourceTarget } from './ContextMaterialSummary'
 import { Button } from './ui/Button'
 import { Input, Select } from './ui/Fields'
 
-export function WorldStageBrowser({ project, storyCard, worldId, onOpen }: { project: string; storyCard?: any; worldId?: string; onOpen: OpenMaterial }) {
-  const initial = { ...(storyCard?.payload?.world_context || {}), world_id: storyCard?.payload?.world_context?.world_id || worldId }
-  const ownerKey = `${project}:${storyCard?.id || ''}:${worldId || ''}`
+export function WorldStageBrowser({ project, storyCard, worldId, initialContext, onOpen }: { project: string; storyCard?: any; worldId?: string; initialContext?: any; onOpen: OpenMaterial }) {
+  const context = initialContext || storyCard?.payload?.world_context || {}
+  const initial = { ...context, world_id: context.world_id || worldId }
+  const ownerKey = `${project}:${storyCard?.id || ''}:${worldId || ''}:${JSON.stringify(initialContext || {})}`
   const [scope, setScope] = useState<any>(initial)
   const [snapshot, setSnapshot] = useState<any>(null)
   const [busy, setBusy] = useState(false)

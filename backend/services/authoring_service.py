@@ -8,6 +8,7 @@ from difflib import unified_diff
 from typing import Any
 
 from services.build_draft_service import BuildDraftService
+from services.edit_version_service import check_revision, revision
 from services.editing_service import save_snapshot
 from services.incremental_memory_service import IncrementalMemoryService
 from services.writing_reference_service import WritingReferenceService
@@ -226,7 +227,8 @@ class AuthoringService:
     async def revise(self, project_id: str, chapter_id: str, body: dict) -> dict:
         source = body['source_text']
         start, end = body.get('start', 0), body.get('end', len(source))
-        if not 0 <= start < end <= len(source) or not source[start:end].strip():
+        insertion = start == end and body.get('mode') in {'expand', 'construct'}
+        if not 0 <= start <= end <= len(source) or (not insertion and not source[start:end].strip()):
             raise ValueError('请选择需要修改的正文段落。')
         mode = body.get('mode', 'polish')
         system = (
@@ -237,7 +239,11 @@ class AuthoringService:
         if body.get('allow_plot_change'):
             system = system.replace('保留原有语义、事实、人物关系、叙述视角和原有语气；不新增情节或设定。',
                 '保留已确认事实、世界规则、人物关系和视角；仅在作者明确请求的范围提出情节变化候选，不擅自新增设定。')
-        if mode == 'polish':
+        if mode == 'expand':
+            system += '在选段内补足细节，返回可替换整个选段的文字。若选段为空，只输出在光标处插入的新增文字。'
+        elif mode == 'construct':
+            system += '按作者提供的构想和已确认材料展开为完整段落。选段为空时只输出光标处的新增文字。'
+        elif mode == 'polish':
             system += '仅修正不通顺的语句、搭配、错别字和标点，检查主语是否缺失、上下文指代是否清楚。尽量少改。'
         else:
             system += '改写得清晰、自然，遵循作者指定的使用场景与修辞要求；只在合适处使用比喻等修辞，避免堆砌和改变原意。'
@@ -252,14 +258,16 @@ class AuthoringService:
             system = system.replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。').replace('避免堆砌和改变原意。', '避免堆砌。')
             guidance['rules'] = guidance['rules'].replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。')
             system += '作者明确允许提出情节变化，但这只是待确认候选，不得改变既有世界规则和人物认知边界。'
-        saved = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
+        path = f'drafts/{chapter_id}.md'
+        saved = self.store.read_md(project_id, path)
+        check_revision(self.store, project_id, path, body.get('base_revision'))
         references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'))
         materials = KnowledgeGraphService(self.store).materials(project_id, chapter_id, {}, max_chars=6000, include_references=False, story_card_id=body.get('story_card_id'))
         addresses = [{'id': card['id'], **{key: value for key, value in card.get('payload', {}).items() if key in {'name', 'gender', 'pronouns', 'address_notes', 'relationships'}}} for card in materials['cards'] if card.get('type') == 'character']
         text = await self.complete(project_id, body, 'proofreader', system, json.dumps({
             '前文（只作参考）': source[max(0, start - 1500):start],
             '待修改段落': source[start:end], '后文（只作参考）': source[end:end + 1500],
-            '作者要求': body.get('instructions', '') if mode != 'polish' else '',
+            '作者要求': body.get('instructions', ''),
             '小说观察顺序参考': guidance if mode == 'cinematic' else {},
             '人物表现参考（倾向不是每次必演动作）': [card for card in materials['cards'] if card.get('type') == 'character'] if mode == 'cinematic' else [],
             '作者选用的写作参考': references,
@@ -294,4 +302,4 @@ class AuthoringService:
             IncrementalMemoryService(self.store).mark(project_id, f'drafts/{chapter_id}.md')
             self.store.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', {'patch_id': patch_id, 'patch_ops': ops, 'accepted_op_ids': ['paragraph_revision'], 'diff': diff})
             self.store.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'AUTHOR_REVISION', 'data': {'chapter_id': chapter_id, 'patch_id': patch_id}})
-            return {'content': updated, 'diff': diff}
+            return {'content': updated, 'diff': diff, 'revision': revision(self.store, project_id, f'drafts/{chapter_id}.md')}
