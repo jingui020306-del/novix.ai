@@ -4,13 +4,14 @@ import { Card } from './ui/Card'
 import { Button } from './ui/Button'
 import { Input, Select, Textarea } from './ui/Fields'
 import { WritingReferenceNotice, WritingReferencePicker } from './WritingReferencePicker'
+import { CharacterProfilePicker } from './CharacterProfilePicker'
 import { MaterialReferences, OpenMaterial } from './MaterialReferences'
 
 const LABELS: Record<string, string> = {
   detail_level: '人物资料深度', initial_age: '初始年龄', initial_age_time: '初始年龄对应时间', birth_date: '出生日期', initial_pov: '默认人物视角', world_context: '世界与发生时间', time: '发生时间', year: '年份',
   notes: '备注', plot: '发生的事', outcome: '本场结果', next_question: '留给下一场的问题', placement: '使用位置', reason: '原因', effect: '希望达到的效果', information_ids: '关联的关键信息', truth_status: '作者是否确定真相', truth_value: '作者确定的真相',
   maps: '地图与插图', hotspots: '图中标记', detail_sections: '补充人物细节', usage: '写作使用方式', situation: '适用处境', prose_strategy: '描写顺序', payload: '设定内容', title: '名称', tags: '标签', name: '姓名', identity: '身份', appearance: '基础外貌',
-  core_motivation: '最想得到什么', personality_traits: '性格', family_background: '成长经历',
+  vulnerability: '软肋', core_motivation: '最想得到什么', personality_traits: '性格', family_background: '成长经历',
   voice: '表达习惯', boundaries: '不能突破的底线', relationships: '人物关系', arc: '成长变化',
   target: '关联人物', type: '关系', beat: '发生在何处', goal: '目标', role: '人物角色',
   importance: '重要程度', age: '年龄', description: '说明', aliases: '别称',
@@ -171,6 +172,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
   return <Card title={schema?.properties?.type?.const === 'character' ? '人物资料' : '设定内容'}>
 
     {value?.type === 'character' && <p className='mb-4 text-xs leading-6 text-muted'>性别与称呼可自由填写，也可留空。通用规则在世界资料的“通用称谓规则”中维护，这里只写本人物与特殊关系。</p>}
+    {value?.type === 'character' && projectId && <CharacterProfilePicker key={projectId+':'+value.id} project={projectId} card={value} onChange={onChange} worldContext={nameWorldContext} storyId={storyId} lockedPaths={lockedPaths} />}
     {error && <p role='alert' className='mb-3 text-sm text-red-700 dark:text-red-300'>{error}</p>}
     <WritingReferenceNotice usage={referenceUsage} />
     {renderFields(schema?.properties, value, (next: any) => { const changed = Object.keys(next.payload || {}).filter((key) => key !== 'field_provenance' && JSON.stringify(next.payload[key]) !== JSON.stringify(value?.payload?.[key])); onChange(changed.length ? { ...next, payload: { ...next.payload, field_provenance: { ...next.payload.field_provenance, ...Object.fromEntries(changed.map((key) => [key, 'author_edit'])) } } } : next) }, 'card')}

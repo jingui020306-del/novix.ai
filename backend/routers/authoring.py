@@ -22,11 +22,18 @@ def get_runs() -> WritingRunService:
     return writing_runs
 
 
+class DialogueScene(BaseModel):
+    owner_card_id: str = Field(pattern=r'^[\w-]+$', max_length=120)
+    scene_id: str = Field(pattern=r'^[\w-]+$', max_length=120)
+
+
 class RevisionRequest(BaseModel):
-    source_text: str = Field(min_length=1, max_length=100000)
+    source_text: str = Field(max_length=100000)
     start: int = Field(default=0, ge=0)
-    end: int | None = Field(default=None, ge=1)
-    mode: Literal['polish', 'rewrite', 'cinematic'] = 'polish'
+    end: int | None = Field(default=None, ge=0)
+    scene_ref: DialogueScene | None = None
+    editor_revision: str | None = Field(default=None, max_length=128)
+    mode: Literal['polish', 'rewrite', 'cinematic', 'dialogue'] = 'polish'
     scene_direction: dict | None = None
     allow_plot_change: bool = False
     instructions: str = Field(default='', max_length=4000)
@@ -35,6 +42,7 @@ class RevisionRequest(BaseModel):
 
 
 class RevisionApply(RevisionRequest):
+    dialogue_hash: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
     text: str = Field(min_length=1, max_length=100000)
     base_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
 
@@ -240,6 +248,8 @@ async def revise(project_id: str, chapter_id: str, body: RevisionRequest, svc: A
     data = body.model_dump(exclude_none=True)
     try:
         return await svc.revise(project_id, chapter_id, data)
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:

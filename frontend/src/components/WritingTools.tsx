@@ -21,9 +21,9 @@ export function ProseStrategy({ value = '', onChange }: { value?: string; onChan
   return <div className='space-y-2'><label className='block text-sm font-medium'>读者怎样逐步看到这一场</label><Select aria-label='描写顺序与观察方式' value={value} onChange={(event) => onChange(event.target.value)}><option value=''>由情节与视角决定，也可在下方自由说明</option>{PROSE_STRATEGIES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select>{current && <><p className='text-xs leading-6 text-muted'>{current[2]} 最终生成小说文字，保持人物意图与已确认事实。</p><details><summary className='cursor-pointer text-xs text-muted'>看一个短例</summary><p className='mt-2 text-sm leading-7'>{current[3]}</p><p className='mt-2 text-xs leading-6 text-muted'>只是写法示例，不加入作品设定。避免把每个动作都写成特写，或用人物此时不可能感知的内容制造效果。</p></details></>}</div>
 }
 
-export function RevisionTools({ project, chapterId, text, profileId, storyCardId, sceneDirection, onChange, onApplied }: {
+export function RevisionTools({ project, chapterId, text, profileId, storyCardId, sceneDirection, sceneRef, editorRevision, onChange, onApplied }: {
   project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
-  sceneDirection?: any; onChange: (text: string) => void; onApplied: () => void;
+  sceneDirection?: any; editorRevision?: string; sceneRef?: {owner_card_id: string; scene_id: string}; onChange: (text: string) => void; onApplied: () => void;
 }) {
   const [mode, setMode] = useState('polish')
   const [strategy, setStrategy] = useState('')
@@ -53,7 +53,7 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise`, {
         source_text: text, mode, instructions, llm_profile_id: profileId,
         allow_plot_change: false, scene_direction: { ...sceneDirection, ...(strategy ? { prose_strategy: strategy } : {}) },
-        story_card_id: storyCardId,
+        story_card_id: storyCardId, ...(mode === 'dialogue' ? {editor_revision: editorRevision, scene_ref: sceneRef && {owner_card_id: sceneRef.owner_card_id, scene_id: sceneRef.scene_id}} : {}),
         start: Array.from(text.slice(0, start)).length,
         end: Array.from(text.slice(0, end)).length,
       })
@@ -91,19 +91,20 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
           <label htmlFor='revision-mode' className='mb-1 block text-sm font-medium'>润色与改写</label>
           <Select id='revision-mode' value={mode} onChange={(e) => setMode(e.target.value)} disabled={busy}>
             <option value='polish'>日常润色：修顺病句，保留语气</option>
-            <option value='rewrite'>清晰自然地改写</option><option value='cinematic'>调整描写顺序与画面承接</option>
+            <option value='dialogue'>按人物写对话</option><option value='rewrite'>清晰自然地改写</option><option value='cinematic'>调整描写顺序与画面承接</option>
           </Select>
         </div>
-        <Button onClick={revise} disabled={busy || !text.trim()}>{busy ? '正在处理…' : mode === 'polish' ? '润色正文' : mode === 'cinematic' ? '调整这一段的写法' : '改写正文'}</Button>
+        <Button onClick={revise} disabled={busy || (!text.trim() && mode !== 'dialogue')}>{busy ? '正在处理…' : mode === 'dialogue' ? '生成对话候选' : mode === 'polish' ? '润色正文' : mode === 'cinematic' ? '调整这一段的写法' : '改写正文'}</Button>
       </div>
       <p className='text-xs text-muted'>选中文字可只处理选段；未选择时处理正文。先预览，确认后才应用。</p>
       {mode === 'cinematic' && <ProseStrategy value={strategy || sceneDirection?.prose_strategy || ''} onChange={setStrategy} />}
       {mode !== 'polish' && <div>
-        <label htmlFor='rewrite-instructions' className='text-sm text-muted'>希望怎样改写</label>
-        <Textarea id='rewrite-instructions' value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={4000} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
+        <label htmlFor='rewrite-instructions' className='text-sm text-muted'>{mode === 'dialogue' ? '说话目的与隐瞒（可选）' : '希望怎样改写'}</label>
+        <Textarea id='rewrite-instructions' value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={4000} placeholder={mode === 'dialogue' ? '每人一行，例如：林秋：想试出对方的来意，暂不提那封信。' : '例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。'} />
       </div>}
       {error && <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{error}</p>}
       {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
+        {revision.mode === 'dialogue' && <details><summary className='cursor-pointer text-sm text-muted'>对照原选段</summary><p className='mt-2 whitespace-pre-wrap text-sm'>{Array.from(revision.source_text as string).slice(revision.start, revision.end).join('') || '从空白处起草'}</p></details>}
         <label htmlFor='revision-result' className='text-sm font-medium'>修改后的段落</label>
         <Textarea id='revision-result' className='min-h-40 font-serif leading-7' value={revision.text} onChange={(e) => setRevision({ ...revision, text: e.target.value })} />
         <TokenUsage usage={revision.usage} />
