@@ -264,3 +264,19 @@ html[data-editor-size='large'] .editor-text { font-size: 16px; }
 .world-map-marker { position: absolute; transform: translate(-50%, -50%); min-width: 26px; height: 26px; padding-inline: 6px; border-radius: 50%; background: rgb(var(--c-panel)); color: rgb(var(--c-accent)); border: 1px solid rgb(var(--c-accent)); font-size: 12px; line-height: 24px; cursor: grab; }
 .world-map-marker.is-current { background: rgb(var(--c-accent)); color: rgb(var(--c-on-accent)); }
 .world-map-marker:focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 3px; }
+
+.book-overview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2rem; }
+.book-overview h2 { font-size:1rem; font-weight:600; }
+.book-portrait { max-width:9rem; height:8rem; object-fit:cover; border-radius:4px; }
+.overview-picture { display:block; max-width:100%; max-height:15rem; object-fit:contain; }
+.selection-action { background:rgb(var(--c-panel)); }
+.overview-event { display:flex; align-items:baseline; gap:1rem; padding:.55rem 0; text-align:left; }
+.overview-event small,.manuscript-actions { color:rgb(var(--c-muted)); }
+.novix-outline { display:block; margin-top:1rem; min-height:48vh; line-height:1.9; }
+.manuscript-actions { display:flex; justify-content:flex-end; align-items:center; gap:1rem; margin:.6rem 0; font-size:.8rem; }
+.manuscript-actions strong { margin-right:auto; }
+.revision-controls { padding:1rem 0; border-top:1px solid rgb(var(--c-border)); }
+#chapter-manuscript-editor { display:block; width:100%; min-height:60vh; max-width:40em; resize:vertical; font-size:1.25rem; line-height:1.95; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; border:0; }
+html[data-editor-size='small'] #chapter-manuscript-editor { font-size:1.1rem; }
+html[data-editor-size='large'] #chapter-manuscript-editor { font-size:1.45rem; }
+@media (max-width:599px) { .book-overview { grid-template-columns:1fr; gap:1rem; } }

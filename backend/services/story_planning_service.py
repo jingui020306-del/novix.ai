@@ -289,7 +289,7 @@ class StoryPlanningService:
 
     async def propose_skeleton(self, project_id, body):
         state = self._skeleton_state(project_id, body)
-        context = {'自由描述': state['text'], '故事摘要': {key: state['story'].get('payload', {}).get(key) for key in ['logline', 'main_conflict', 'theme', 'worldview']},
+        context = {'自由描述': state['text'], '故事摘要': {key: state['story'].get('payload', {}).get(key) for key in ['logline', 'full_outline', 'main_conflict', 'theme', 'worldview']},
                    '已有事件': [{key: value for key, value in row.items() if key != 'rehearsal'} for row in self._rows(state['planning']['payload'], 'important_scenes')], '已有人物编号与姓名': state['characters'], '已有章节编号': list(state['chapters']),
                    '输出格式': {'events': [{'title': '', 'summary': '', 'chapter': '', 'characters': [], 'goal': '', 'action': '', 'choice': '', 'outcome': '', 'character_steps': [{'character_id': '', 'goal': '', 'action': '', 'choice': '', 'outcome': ''}], 'source_quotes': [], 'basis': 'extracted'}], 'suggestions': []}}
         context['已有交集'] = self._rows(state['planning']['payload'], 'character_intersections')

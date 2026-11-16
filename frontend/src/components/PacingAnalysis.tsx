@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import { api } from '../api/client'
 import { Select } from './ui/Fields'
 
-type Mark = { source: string; offset: number; kind: string; quote: string }
+type Mark = { source: string; offset: number; kind: string; quote: string; prior_quote?: string }
 type Analysis = { blocks: number; marks: Mark[] }
 
 export function PacingAnalysis({ project, story, outline, chapters }: {
@@ -42,6 +42,6 @@ export function PacingAnalysis({ project, story, outline, chapters }: {
       : !result.marks.length ? <p>已读取原文，暂无有明确依据的节奏标注。</p>
       : <ol className="divide-y divide-border">{result.marks.map(m => <li className="py-2" key={JSON.stringify([m.source,m.offset,m.kind,m.quote])}>
         <strong>{m.kind}</strong><span className="ml-2 text-xs text-muted">{chapters.find(c => c.chapter_id === m.source)?.title || m.source} · 第 {m.offset + 1} 字</span>
-        <p>{m.quote}</p></li>)}</ol>}
+        <p>{m.quote}</p>{m.prior_quote && <p className="text-xs text-muted">前文依据 · {m.prior_quote}</p>}</li>)}</ol>}
   </section>
 }

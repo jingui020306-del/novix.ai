@@ -170,7 +170,7 @@ The native launchers run the installer automatically. Start Ollama on the backen
 
 For an installation with all runtimes included, run `docker compose up --build` from the repository root, then open `http://127.0.0.1:8000`. The first run needs internet access to download dependencies and model weights. Compose persists the model and uses the repository's data directory for projects.
 
-In the story worksheet, open **节奏编排**. Full text includes the outline and chapters belonging to the current story. Select a chapter to inspect just that draft. Text analysis automatically uses the local model; it reports candidate marks with exact source quotes and positions. If this service is unavailable, analysis reports the error and can be retried. No cloud profile is used.
+In the story worksheet, open **章节编排 → 节奏编排**. Full text includes the outline and chapters belonging to the current story. Select a chapter to inspect just that draft. Text analysis automatically uses the local model; it reports candidate marks with exact source quotes and positions. If this service is unavailable, analysis reports the error and can be retried. No cloud profile is used.
 
 ## First Run Checklist
 

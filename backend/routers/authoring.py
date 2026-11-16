@@ -23,10 +23,11 @@ def get_runs() -> WritingRunService:
 
 
 class RevisionRequest(BaseModel):
-    source_text: str = Field(min_length=1, max_length=100000)
+    base_revision: str | None = None
+    source_text: str = Field(max_length=100000)
     start: int = Field(default=0, ge=0)
-    end: int | None = Field(default=None, ge=1)
-    mode: Literal['polish', 'rewrite', 'cinematic'] = 'polish'
+    end: int | None = Field(default=None, ge=0)
+    mode: Literal['polish', 'rewrite', 'cinematic', 'expand', 'construct'] = 'polish'
     scene_direction: dict | None = None
     allow_plot_change: bool = False
     instructions: str = Field(default='', max_length=4000)
@@ -271,6 +272,8 @@ async def revise(project_id: str, chapter_id: str, body: RevisionRequest, svc: A
     data = body.model_dump(exclude_none=True)
     try:
         return await svc.revise(project_id, chapter_id, data)
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:

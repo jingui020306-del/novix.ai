@@ -21,10 +21,18 @@ export function ProseStrategy({ value = '', onChange }: { value?: string; onChan
   return <div className='space-y-2'><label className='block text-sm font-medium'>读者怎样逐步看到这一场</label><Select aria-label='描写顺序与观察方式' value={value} onChange={(event) => onChange(event.target.value)}><option value=''>由情节与视角决定，也可在下方自由说明</option>{PROSE_STRATEGIES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select>{current && <><p className='text-xs leading-6 text-muted'>{current[2]} 最终生成小说文字，保持人物意图与已确认事实。</p><details><summary className='cursor-pointer text-xs text-muted'>看一个短例</summary><p className='mt-2 text-sm leading-7'>{current[3]}</p><p className='mt-2 text-xs leading-6 text-muted'>只是写法示例，不加入作品设定。避免把每个动作都写成特写，或用人物此时不可能感知的内容制造效果。</p></details></>}</div>
 }
 
-export function RevisionTools({ project, chapterId, text, profileId, storyCardId, sceneDirection, onChange, onApplied }: {
+export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
   project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
-  sceneDirection?: any; onChange: (text: string) => void; onApplied: () => void;
+  saved: boolean; saving: boolean; locked: boolean; onSave: () => void;
+  baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
 }) {
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const [range, setRange] = useState({start: 0, end: 0})
+  const controlsRef = useRef<HTMLDivElement>(null)
+  const [anchor, setAnchor] = useState<{left: number; top: number} | null>(null)
+  const [focused, setFocused] = useState(false)
+  const [technique, setTechnique] = useState('')
+  const [scope, setScope] = useState<'chapter' | 'selection' | null>(null)
   const [mode, setMode] = useState('polish')
   const [strategy, setStrategy] = useState('')
   const [instructions, setInstructions] = useState('')
@@ -37,21 +45,21 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
   const requestNumber = useRef(0)
   useEffect(() => { setRevision(null); setError(''); setBusy(false); return () => { requestNumber.current++ } }, [project, chapterId])
 
+  useEffect(() => {
+    if (scope) controlsRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [scope])
+
   const revise = async () => {
-    const editor = document.getElementById('chapter-manuscript-editor') as HTMLTextAreaElement | null
-    let start = editor?.selectionStart || 0
-    let end = editor?.selectionEnd || 0
-    if (start === end) {
-      start = text.match(/^# [^\n]*\n+/)?.[0].length || 0
-      end = text.length
-    }
+    if (!scope || locked) return
+    const start = scope === 'chapter' ? (text.match(/^# [^\n]*\n+/)?.[0].length || 0) : range.start
+    const end = scope === 'chapter' ? text.length : range.end
     const number = ++requestNumber.current
     setBusy(true)
     setError('')
     setRevision(null)
     try {
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise`, {
-        source_text: text, mode, instructions, llm_profile_id: profileId,
+        source_text: text, base_revision: baseRevision, mode, instructions: [technique && `本次技法：${technique}`, instructions].filter(Boolean).join('\n'), llm_profile_id: profileId,
         allow_plot_change: false, scene_direction: { ...sceneDirection, ...(strategy ? { prose_strategy: strategy } : {}) },
         story_card_id: storyCardId,
         start: Array.from(text.slice(0, start)).length,
@@ -75,33 +83,59 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
     try {
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, revision)
       if (activeScope.current !== held) return
-      if (latestText.current !== revision.source_text) { onApplied(); throw new Error('提交时的修改已保存，等待期间的新编辑保留，请核对后再保存。') }
       if (result.detail) throw new Error(String(result.detail))
+      onApplied(result.content, result.revision)
+      if (latestText.current !== revision.source_text) { throw new Error('提交时的修改已保存，等待期间的新编辑保留，请核对后再保存。') }
+      setScope(null)
       onChange(result.content)
       setRevision(null)
-      onApplied()
     } catch (err) { if (activeScope.current === held) setError(err instanceof Error ? err.message : '应用失败，请重试。') }
     finally { if (activeScope.current === held) setBusy(false) }
   }
 
   return (
-    <section className='my-4 space-y-3 border-y border-border py-4' aria-label='润色与改写'>
-      <div className='flex flex-wrap items-end gap-3'>
-        <div>
-          <label htmlFor='revision-mode' className='mb-1 block text-sm font-medium'>润色与改写</label>
-          <Select id='revision-mode' value={mode} onChange={(e) => setMode(e.target.value)} disabled={busy}>
-            <option value='polish'>日常润色：修顺病句，保留语气</option>
-            <option value='rewrite'>清晰自然地改写</option><option value='cinematic'>调整描写顺序与画面承接</option>
-          </Select>
-        </div>
-        <Button onClick={revise} disabled={busy || !text.trim()}>{busy ? '正在处理…' : mode === 'polish' ? '润色正文' : mode === 'cinematic' ? '调整这一段的写法' : '改写正文'}</Button>
+    <section aria-label='章节稿纸'>
+      <div className='manuscript-actions'>
+        <button disabled={saving || saved || locked} onClick={onSave}>{saving ? '保存中…' : saved ? '已保存' : '保存正文'}</button>
+        <button disabled={locked || busy || !text.trim() || Boolean(scope)} onClick={() => {setScope('chapter'); setRevision(null); setError('')}}>处理本章</button>
       </div>
-      <p className='text-xs text-muted'>选中文字可只处理选段；未选择时处理正文。先预览，确认后才应用。</p>
+      <div className='relative'>
+      <textarea id='chapter-manuscript-editor' aria-label='章节正文' className='editor-text' ref={editorRef} readOnly={locked} value={text} placeholder='开始写这一章…'
+        onChange={e => {onChange(e.target.value); setScope(null); setRevision(null); requestNumber.current++; setBusy(false)}}
+        onFocus={() => setFocused(true)}
+        onKeyDown={() => setAnchor(null)}
+        onScroll={() => setAnchor(null)}
+        onMouseUp={e => {
+          const el = e.currentTarget
+          const rect = el.getBoundingClientRect()
+          setAnchor(el.selectionStart === el.selectionEnd ? null : {
+            left: Math.max(0, Math.min(e.clientX - rect.left, rect.width - 120)),
+            top: Math.min(e.clientY - rect.top + 16, rect.height - 36),
+          })
+        }}
+        onSelect={e => {
+          if (!scope) setRange({ start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd })
+        }} />
+      {focused && !scope && !locked && <button className='toolbar-control selection-action' style={anchor && range.start !== range.end ? {position: 'absolute', ...anchor} : undefined} onMouseDown={e => e.preventDefault()} onClick={() => {setMode(range.start === range.end ? 'expand' : 'polish'); setScope('selection'); setError('')}}>{range.start === range.end ? '在光标处补写' : 'AI · 处理选文'}</button>}
+      </div>
+      {scope && <div ref={controlsRef} className='revision-controls'>
+      <div className='manuscript-actions'><strong>{scope === 'chapter' ? '本章全文' : range.start === range.end ? '光标位置' : `已选 ${Array.from(text.slice(range.start,range.end)).length} 字`}</strong>
+      <button disabled={busy} onClick={() => {setScope(null);setRevision(null);editorRef.current?.focus()}}>关闭</button></div>
+      <div className='flex flex-wrap gap-2'>
+        <Select aria-label='修改方式' value={mode} onChange={e => {setMode(e.target.value);setRevision(null)}} disabled={busy}>
+          <option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
+        </Select>
+        <Button onClick={revise} disabled={busy || locked}>{busy ? '处理中…' : '预览候选'}</Button>
+      </div>
+      {techniques.length > 0 && <Select aria-label='本次技法' value={technique} disabled={busy} onChange={e => { setTechnique(e.target.value); setRevision(null) }}>
+        <option value=''>沿用本章技法</option>
+        {techniques.filter(card => card.title).map(card => <option key={card.id} value={card.title}>{card.title}</option>)}
+      </Select>}
       {mode === 'cinematic' && <ProseStrategy value={strategy || sceneDirection?.prose_strategy || ''} onChange={setStrategy} />}
-      {mode !== 'polish' && <div>
-        <label htmlFor='rewrite-instructions' className='text-sm text-muted'>希望怎样改写</label>
-        <Textarea id='rewrite-instructions' value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={4000} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
-      </div>}
+      <div>
+        <label htmlFor='rewrite-instructions' className='text-sm text-muted'>本次要求（可选）</label>
+        <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
+      </div>
       {error && <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{error}</p>}
       {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
         <label htmlFor='revision-result' className='text-sm font-medium'>修改后的段落</label>
@@ -109,9 +143,10 @@ export function RevisionTools({ project, chapterId, text, profileId, storyCardId
         <TokenUsage usage={revision.usage} />
         <WritingReferenceNotice usage={revision.writing_reference_usage} />
         <div className='flex gap-2'>
-          <Button variant='primary' disabled={busy || !revision.text.trim()} onClick={apply}>应用并保存</Button>
+          <Button variant='primary' disabled={busy || locked || !revision.text.trim()} onClick={apply}>应用并保存</Button>
           <Button disabled={busy} onClick={() => setRevision(null)}>保留原文</Button>
         </div>
+      </div>}
       </div>}
     </section>
   )
