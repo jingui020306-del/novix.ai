@@ -1,4 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from routers.authoring import get_authoring
@@ -57,6 +59,22 @@ async def propose_rehearsal(project_id: str, owner_card_id: str, scene_id: str, 
         raise _error(exc) from exc
     except Exception as exc:
         raise HTTPException(502, '模型调用失败，请检查故事构思模型配置后重试；原安排没有改变。') from exc
+
+
+class LocalChoiceRequest(RehearsalRequest):
+    actor_id: str = Field(max_length=120)
+    witness_id: str = Field(default='', max_length=120)
+    priority: Literal['goal', 'protect', 'understand'] = 'goal'
+    pressure: Literal[0, 1, 2] = 0
+
+
+@router.post('/{owner_card_id}/{scene_id}/local-choice')
+def local_choice(project_id: str, owner_card_id: str, scene_id: str, body: LocalChoiceRequest, store=Depends(get_store)):
+    service = SceneRehearsalService(store)
+    try:
+        return service.local_choice(project_id, owner_card_id, scene_id, body.model_dump())
+    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+        raise _error(exc) from exc
 
 
 @router.post('/{owner_card_id}/{scene_id}/confirm')

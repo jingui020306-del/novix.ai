@@ -25,6 +25,7 @@ from services.writing_run_service import WritingRunService
 from storage.fs_store import FSStore
 from routers import author_controls, information, trials
 from routers import material_index, world_library, card_operations
+from routers import family
 
 DATA_DIR = BACKEND_DIR.parents[0] / 'data'
 store = FSStore(DATA_DIR)
@@ -81,6 +82,8 @@ async def recover_author_imports(request, call_next):
             WorldLibraryService(store).recover_pending(match[1])
             from services.card_operation_service import CardOperationService
             CardOperationService(store).recover_pending(match[1])
+            from services.family_service import FamilyService
+            FamilyService(store).recover_pending(match[1])
         except (ValueError, OSError):
             return JSONResponse({'detail': '有一份导入尚待恢复，请打开材料工作稿核对并重试；现有编辑不会被覆盖。'}, status_code=409)
     return await call_next(request)
@@ -101,6 +104,7 @@ app.include_router(trials.router)
 app.include_router(material_index.router)
 app.include_router(world_library.router)
 app.include_router(card_operations.router)
+app.include_router(family.router)
 app.include_router(material_imports.router)
 app.include_router(scene_rehearsals.router)
 app.include_router(character_images.router)

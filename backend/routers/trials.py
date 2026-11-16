@@ -22,6 +22,16 @@ def create(project_id: str, chapter_id: str, body: dict = Body(...), svc=Depends
     return _call(svc.create, project_id, chapter_id, body)
 
 
+@router.get('/chapters/{chapter_id}/branch-drafts')
+def branch_drafts(project_id: str, chapter_id: str, svc=Depends(get_trials)):
+    return [{'id': row['id'], 'origin': row['origin']} for row in _call(svc.list, project_id, chapter_id) if row.get('origin')]
+
+
+@router.post('/chapters/{chapter_id}/branch-drafts')
+def fork(project_id: str, chapter_id: str, body: dict = Body(...), svc=Depends(get_trials)):
+    return _call(svc.fork, project_id, chapter_id, body)
+
+
 @router.get('/trials/{trial_id}')
 def get(project_id: str, trial_id: str, svc=Depends(get_trials)):
     return _call(svc.get, project_id, trial_id)

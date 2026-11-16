@@ -320,7 +320,7 @@ STORY_TIME_SCHEMA = {'type': 'object', 'properties': {
     'event_ref': EVENT_REF_SCHEMA, 'position': {'type': 'string', 'enum': ['before', 'immediate_after', 'phase']}, 'phase': {'type': 'string'},
 }}
 WORLD_CONTEXT_SCHEMA = {'type': 'object', 'properties': {
-    'world_id': {'type': 'string'}, 'branch_id': {'type': 'string'}, 'time': STORY_TIME_SCHEMA,
+    'world_id': {'type': 'string'}, 'branch_id': {'type': 'string'}, 'time': STORY_TIME_SCHEMA, 'until': STORY_TIME_SCHEMA,
     'base_setting_ids': {'type': 'array', 'items': {'type': 'string'}}, 'local_adjustments': {'type': 'string'},
     'period_id': {'type': 'string'}, 'region_ids': {'type': 'array', 'items': {'type': 'string'}},
     'overrides': {'type': 'array', 'items': {'type': 'object', 'properties': {
@@ -334,7 +334,7 @@ for _kind in ['story', 'outline']:
         'world_context': WORLD_CONTEXT_SCHEMA, 'canonical_event_ref': EVENT_REF_SCHEMA, 'pov': {'type': 'string'}, 'pov_character_id': {'type': 'string'},
         'causal_event_refs': {'type': 'array', 'items': EVENT_REF_SCHEMA},
     })
-CARD_TYPE_SCHEMAS['character']['properties']['payload']['required'] = ['name', 'identity']
+CARD_TYPE_SCHEMAS['character']['properties']['payload']['required'] = ['identity']
 CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties'].update({
     'detail_level': {'type': 'string', 'enum': ['brief', 'detailed']}, 'initial_pov': {'type': 'string'},
     'initial_age': {'type': 'number', 'minimum': 0}, 'initial_age_time': STORY_TIME_SCHEMA, 'birth_date': {'type': 'string'},

@@ -37,6 +37,14 @@ Before generating, review why each item is included and whether it uses a summar
 
 Segmented imports extract the current passage before looking up matching names and aliases. Only a small set of ambiguous identity candidates is sent for further comparison; a model suggestion never merges records without author confirmation.
 
+## 人物、家谱与场景推演
+
+在世界资料中填写姓氏、名字和亲属规则。在人物卡随机取名，或在关系页选中心人物生成家族。预览可改名、锁定成员和保留空位，确认后写入作品。在章节页比较历史正文，或从分歧事件建立分支稿。
+
+场景安排的「本地推演」读取本场人物、人物目标和前场已确认的选择。调整人物优先考虑的事和压力，可以得到不同的行动候选，选中后可继续手改。此功能使用随项目分发的 [Praxish](https://github.com/mkremins/praxish) 和本机 Node.js。姓名和家族使用 Python 标准库。安装步骤见下方 Quickstart。
+
+在 Debian 或 Ubuntu 上，读取文字 PDF 可安装 `poppler-utils`，读取旧版 Word（.doc）可安装 `libreoffice-writer`。扫描页和手绘图需在模型设置里配置视觉模型，再对选中的页面执行识别。
+
 ## Current Trust Model
 
 The product is designed to avoid hiding AI uncertainty.

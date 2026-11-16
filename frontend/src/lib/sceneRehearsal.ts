@@ -1,9 +1,11 @@
 export type RehearsalDraft = {
+  choice_trace?: {actor_id: string; witness_id: string; action: string; tension: number};
   text: string; outcome: string; next_question: string; technique_ids: string[];
   technique_applications: { technique_id: string; placement: string; reason: string; effect: string }[];
 }
 
 export const rehearsalDraft = (value: any = {}): RehearsalDraft => ({
+  ...(value?.choice_trace ? {choice_trace: {...value.choice_trace}} : {}),
   text: typeof value?.text === 'string' ? value.text : '',
   outcome: typeof value?.outcome === 'string' ? value.outcome : '',
   next_question: typeof value?.next_question === 'string' ? value.next_question : '',

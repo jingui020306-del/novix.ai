@@ -55,9 +55,9 @@ const VALUES: Record<string, string> = {
 export const fieldLabel = (key: string) => LABELS[key] || ({ provider: '服务类型', model: '模型名称', base_url: '服务地址', api_key: '密钥', timeout_s: '等待时间', stream: '逐步显示' } as Record<string, string>)[key] || '补充内容'
 export const profileLabel = (id: string, profile: any) => profile?.provider === 'mock' || id === 'mock_default' ? '模拟预览（不调用 AI）' : profile?.display_name || profile?.model || id
 
-export function SchemaForm({ schema, value, onChange, projectId, profileId, references = [], onOpenMaterial, focusRequest, hiddenFields = [], lockedPaths = [] }: {
+export function SchemaForm({ schema, value, onChange, projectId, profileId, references = [], onOpenMaterial, focusRequest, hiddenFields = [], lockedPaths = [], nameWorldContext, storyId }: {
   schema: any; value: any; onChange: (v: any) => void;
-  projectId?: string; profileId?: string; references?: any[];
+  projectId?: string; profileId?: string; references?: any[]; nameWorldContext?: any; storyId?: string;
   onOpenMaterial?: OpenMaterial; focusRequest?: { requestId: number; editPath?: string[] } | null; hiddenFields?: string[]; lockedPaths?: string[];
 }) {
   useEffect(() => {
@@ -81,7 +81,8 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
     setReferenceUsage(null)
     try {
       const parts = path.split('.').slice(1)
-      const result = await api.post(`/api/projects/${projectId}/cards/generate-field`, { card: latest.current, path: parts, llm_profile_id: profileId })
+      const offlineName = path === 'card.payload.name' && value.type === 'character'
+      const result = offlineName ? await api.post(`/api/projects/${projectId}/family/name`, { center_id: value.id, story_card_id: storyId, world_context: nameWorldContext || {} }).then(row => ({ value: row.name })) : await api.post(`/api/projects/${projectId}/cards/generate-field`, { card: latest.current, path: parts, llm_profile_id: profileId })
       if (number !== generationRequest.current) return
       if (result.detail) throw new Error(typeof result.detail === 'string' ? result.detail : '生成失败，请检查模型设置。')
       setReferenceUsage(result.writing_reference_usage)
@@ -93,7 +94,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
         target = target[key]
       }
       target[parts[parts.length - 1]] = result.value
-      if (parts[0] === 'payload' && parts[1]) next.payload.field_provenance = { ...next.payload.field_provenance, [parts[1]]: 'ai_addition' }
+      if (parts[0] === 'payload' && parts[1]) next.payload.field_provenance = { ...next.payload.field_provenance, [parts[1]]: offlineName ? 'author_edit' : 'ai_addition' }
       if (next.type === 'character' && next.payload?.name) next.title = next.payload.name
       onChange(next)
     } catch (err) { if (number === generationRequest.current) setError(err instanceof Error ? err.message : '生成失败，请重试。') }
@@ -101,7 +102,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
   }
   const locked = (path: string, children = false) => { let at = value; const keys = path.split('.').slice(1); const stable = keys.map((key) => { const next = Array.isArray(at) && at[Number(key)]?.id ? `@${at[Number(key)].id}` : key; at = at?.[key]; return next }); const pointers = [`/${stable.join('/')}`, `/${keys.join('/')}`]; return lockedPaths.some((item) => pointers.some((pointer) => item === '/' || pointer === item || pointer.startsWith(`${item}/`) || children && item.startsWith(`${pointer}/`))) }
   const fieldHints: Record<string, string> = { appearance: '只写相对稳定的长相与初印象。衣着、神态和情绪会随剧情变化，不必在这里填写当前状态。', voice: '可写常用措辞、语速、停顿或表达方式；面对不同人、不同处境时也会改变。', family_background: '可写影响此人的几段经历，以及由此形成的信念与顾虑；不必写满生平。' }
-  const generateButton = (path: string, label: string) => projectId && !['active_style_sample_asset_ids', 'injection_policy', 'max_examples', 'max_chars_per_example', 'initial_age', 'birth_date', 'initial_age_time'].some((field) => path.split('.').includes(field)) && !IDENTITY_FIELDS[path.split('.').slice(-1)[0] || ''] ? <Button className='text-xs' disabled={Boolean(generating) || locked(path, true)} aria-label={`AI 生成${label}`} onClick={() => generate(path)}>{generating === path ? '生成中…' : 'AI 生成'}</Button> : null
+  const generateButton = (path: string, label: string) => projectId && path === 'card.payload.name' && value?.type === 'character' ? <Button className='text-xs' disabled={Boolean(generating) || locked(path) || value.payload?.family_locked?.includes('name') || value.payload?.family_blank?.includes('name')} onClick={() => generate(path)}>{generating === path ? '取名中…' : '随机姓名'}</Button> : projectId && !['active_style_sample_asset_ids', 'injection_policy', 'max_examples', 'max_chars_per_example', 'initial_age', 'birth_date', 'initial_age_time'].some((field) => path.split('.').includes(field)) && !IDENTITY_FIELDS[path.split('.').slice(-1)[0] || ''] ? <Button className='text-xs' disabled={Boolean(generating) || locked(path, true)} aria-label={`AI 生成${label}`} onClick={() => generate(path)}>{generating === path ? '生成中…' : 'AI 生成'}</Button> : null
   const renderFields = (properties: any, data: any, change: (next: any) => void, path: string) => (
     <div className={path === 'card.payload' ? 'schema-fields-grid' : 'space-y-5'}>
       {Object.entries(properties || {}).map(([key, spec]: any) => {
@@ -162,7 +163,6 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
             ) : (
               <Textarea readOnly={locked(id)} id={id} className='min-h-20' placeholder={IDENTITY_FIELDS[key] || fieldHints[key]} value={current || ''} onChange={(e) => update(e.target.value)} />
             )}
-            {value?.type === 'character' && fieldHints[key] && <p className='text-xs leading-6 text-muted'>{fieldHints[key]}</p>}
           </div>
         )
       })}

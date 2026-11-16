@@ -229,6 +229,16 @@ class InformationService:
         rows = [row for row in history if row.get('entity_type') == 'information' and row.get('entity_id') == information_id and row.get('id') not in voids]
         return rows
 
+    def disclosure_applies(self, project_id, record_scope, target_scope):
+        source = dict(record_scope or {})
+        source.setdefault('branch_id', 'main')
+        if source['branch_id'] == target_scope.get('branch_id', 'main'):
+            source.pop('time', None)
+            return self.world.applies(project_id, source, target_scope)[0]
+        # Only shared pre-fork disclosures cross branches. On the selected branch their
+        # reading position, not the narrative clock (which may run backwards), decides visibility.
+        return self.world.applies(project_id, source, {**target_scope, 'time': source.get('time', {})})[0]
+
     def _visible_rows(self, project_id, information_id, scope, reader_chapter_id=None, reader_offset=None, *, verify_disclosures=True):
         rows = self._active(project_id, information_id)
         order = self.store.read_md(project_id, 'drafts/.chapter_order').splitlines()
@@ -240,7 +250,7 @@ class InformationService:
             if row.get('status') != 'confirmed' or kind == 'review_decision':
                 continue
             if kind == 'reader_disclosure':
-                if not self.world.applies(project_id, {key: value for key, value in row.get('scope', {}).items() if key != 'time'}, scope)[0]:
+                if not self.disclosure_applies(project_id, row.get('scope'), scope):
                     continue
                 data = row['data']
                 chapter = data.get('chapter_id')
@@ -253,7 +263,7 @@ class InformationService:
             applicable.append(row)
         superseded = {row.get('supersedes') for row in rows if row.get('status') in {'confirmed', 'retracted'} and
                       (row in applicable or row.get('record_type') == 'reader_disclosure' and row.get('status') == 'retracted' and
-                       self.world.applies(project_id, {key: value for key, value in row.get('scope', {}).items() if key != 'time'}, scope)[0] or
+                       self.disclosure_applies(project_id, row.get('scope'), scope) or
                        self.world.applies(project_id, row.get('scope'), scope, dynamic=True)[0])}
         return [row for row in applicable if row['id'] not in superseded]
 

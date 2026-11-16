@@ -4,6 +4,8 @@ import copy
 import hashlib
 import json
 import re
+import subprocess
+from pathlib import Path
 from difflib import unified_diff
 
 from services.change_suggestion_service import ChangeSuggestionService
@@ -74,6 +76,8 @@ class SceneRehearsalService:
                 if key == 'previous':
                     saved = rows[neighbor].get('rehearsal') or {}
                     item['confirmed_outcome'] = {field: saved.get(field) for field in ['status', 'outcome', 'next_question']}
+                    if saved.get('choice_trace'):
+                        item['confirmed_outcome']['choice_trace'] = saved['choice_trace']
                 basis[key] = item
         return _without_metadata(basis)
 
@@ -114,7 +118,11 @@ class SceneRehearsalService:
     @staticmethod
     def _draft(saved=None):
         saved = saved or {}
-        return {key: copy.deepcopy(saved.get(key, [] if key in {'technique_ids', 'technique_applications'} else '')) for key in ['text', 'outcome', 'next_question', 'technique_ids', 'technique_applications']}
+        fields = ('text', 'outcome', 'next_question', 'technique_ids', 'technique_applications')
+        draft = {key: copy.deepcopy(saved.get(key, [] if key.startswith('technique_') else '')) for key in fields}
+        if saved.get('choice_trace'):
+            draft['choice_trace'] = copy.deepcopy(saved['choice_trace'])
+        return draft
 
     def _base(self, versions, saved):
         return _hash({'source_versions': versions, 'saved': self._draft(saved) if saved else None})
@@ -161,7 +169,7 @@ class SceneRehearsalService:
         context['author_scope'] = resolved
         context['notices'].extend(resolved['warnings'])
         versions[STAGES_PATH] = self._source_hash(project_id, STAGES_PATH, owner_id, scene_id)
-        cast = set(scene.get('characters') or [])
+        cast = set(scene.get('characters') or []) | set(scene.get('cast') or [])
         for table, bucket in [('character_intersections', 'intersections'), ('character_storylines', 'storylines'), ('beat_sheet', 'beats')]:
             if table == 'beat_sheet' and not payload.get('beat_sheet_enabled'):
                 continue
@@ -195,6 +203,7 @@ class SceneRehearsalService:
                 material_ids.update(row.get('target') for row in card.get('payload', {}).get('relationships', []) or [] if isinstance(row, dict) and row.get('target'))
         selected = cast | material_ids
         selected.update(cid for cid, (card, _) in cards.items() if card.get('payload', {}).get('core') and card.get('type') in {'world', 'world_rule', 'lore', 'worldview'})
+        context['cast_ids'] = sorted(cast)
         context['address_rules'] = SharedMaterialService(self.store).address_rules(project_id, chapter or '', world_ids=selected, world_context=scope)
         context['world_baselines'] = SharedMaterialService(self.store).world_baselines(project_id, chapter or '', world_ids=selected, world_context=scope)
         rule_cards = {rule['card_id'] for rule in context['address_rules']}
@@ -257,6 +266,8 @@ class SceneRehearsalService:
                     if fresh:
                         # Check new dependencies without recursively rebuilding every earlier scene.
                         fresh = not self._snapshot(project_id, owner_id, previous_id, previous.get('technique_ids', []), include_previous=False)['stale']
+                    if fresh and previous.get('choice_trace'):
+                        item['choice_trace'] = previous['choice_trace']
                     item.update(outcome=previous.get('outcome', '') if fresh else '', next_question=previous.get('next_question', '') if fresh else '', stale=bool(previous and not fresh))
                     if fresh:
                         versions.update({path: self._source_hash(project_id, path, owner_id, scene_id) for path in previous.get('source_versions', {}) if path != source})
@@ -299,6 +310,13 @@ class SceneRehearsalService:
         for key, maximum in [('text', 16000), ('outcome', 3000), ('next_question', 3000)]:
             if not isinstance(draft[key], str) or len(draft[key]) > maximum:
                 raise ValueError('请缩短本场安排或后果说明后重试。')
+        trace = draft.get('choice_trace')
+        if trace is not None:
+            if (not isinstance(trace, dict) or set(trace) != {'actor_id', 'witness_id', 'action', 'tension'}
+                    or trace['action'] not in ('act', 'pause', 'ask')
+                    or any(not isinstance(trace[key], str) or len(trace[key]) > 120 for key in ('actor_id', 'witness_id'))
+                    or type(trace['tension']) not in (int, float) or not 0 <= trace['tension'] <= 2):
+                raise ValueError('人物选择记录无效。')
         if require_text and not draft['text'].strip():
             raise ValueError('请先写下本场怎样推进，再确认采用。')
         if not isinstance(draft['technique_ids'], list) or len(draft['technique_ids']) > 12 or any(not isinstance(tid, str) or not re.fullmatch(r'[\w-]+', tid) for tid in draft['technique_ids']):
@@ -356,6 +374,51 @@ class SceneRehearsalService:
             draft = self._validate_draft(project_id, body.get('draft'))
             return self._preview(project_id, owner_id, scene_id, draft)
 
+    def local_choice(self, project_id, owner_id, scene_id, body):
+        owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
+        with ChangeSuggestionService(self.store).lock(project_id):
+            self._check(project_id, owner_id, scene_id, body)
+            current = self._validate_draft(project_id, body.get('draft'))
+            snapshot = self._snapshot(project_id, owner_id, scene_id, current['technique_ids'])
+        context = snapshot['context']
+        cast = {row['id']: row for row in context['characters'] if row['id'] in context['cast_ids']}
+        actor_id, witness_id = body['actor_id'], body['witness_id']
+        if actor_id not in cast or witness_id and (witness_id not in cast or witness_id == actor_id):
+            raise ValueError('请选择本场人物；观察者可留空。')
+        actor = cast[actor_id]
+        rows = [row['values'] for row in context['storylines'] if row['values'].get('character_id') == actor_id]
+        goal = body['instructions'].strip() or next((r['goal'] for r in rows if r.get('goal')), '') or actor['payload'].get('core_motivation')
+        if not isinstance(goal, str) or not goal.strip():
+            raise ValueError('请写下此人当下想争取的事，或先补人物目标。')
+        prior = (context.get('previous_scene') or {}).get('choice_trace') or {}
+        stimulus = {'priority': body['priority'], 'pressure': body['pressure'], 'witness': bool(witness_id),
+                    'previous': prior.get('tension', 0) if prior.get('actor_id') == actor_id else 0}
+        try:
+            proc = subprocess.run(['node', str(Path(__file__).resolve().parents[1] / 'resources/scene-choice.cjs')],
+                                  input=json.dumps(stimulus), text=True, capture_output=True, check=True, timeout=4)
+            result = json.loads(proc.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            raise ValueError('本地推演未就绪，请检查 Node.js 18 或更高版本。') from exc
+        decision = result['ranked'][0]['action']
+        who = actor['payload'].get('name') or actor['label']
+        witness = (cast[witness_id]['payload'].get('name') or cast[witness_id]['label']) if witness_id else ''
+        action = next((r['choice'] for r in rows if r.get('choice')), '') or '为此迈出第一步'
+        if decision == 'act':
+            line = f'{who}决定{action}。'
+            outcome = f'{who}已为“{goal}”采取行动。'
+        elif decision == 'ask':
+            line = f'{who}向{witness}问起与“{goal}”有关的细节，等对方回应。'
+            outcome = f'{witness}听见了这个问题。'
+        else:
+            line = f'{who}暂缓行动，把“{goal}”留到更稳妥的时机。'
+            outcome = f'{who}仍未采取原定行动。'
+        text = ' '.join([f'{who}想要{goal}。', line])
+        question = f'{witness}会怎样回应眼前的举动？' if witness else f'{who}接下来愿意付出什么代价？'
+        draft = {**current, 'text': text, 'outcome': outcome, 'next_question': question,
+                 'choice_trace': {'actor_id': actor_id, 'witness_id': witness_id, 'action': decision, 'tension': result['tension']}}
+        return {'draft': draft, 'source_versions': snapshot['source_versions'], 'base_hash': snapshot['base_hash'],
+                'basis': 'local_candidate', 'usage': summarize_usage([])}
+
     async def propose(self, project_id, owner_id, scene_id, body):
         owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
         with ChangeSuggestionService(self.store).lock(project_id):
@@ -387,6 +450,7 @@ class SceneRehearsalService:
         if not isinstance(result, dict):
             raise ValueError('模型没有返回可用场景安排，请重试。')
         draft = self._validate_draft(project_id, result.get('draft'), require_text=True)
+        draft.pop('choice_trace', None)
         if any(tid not in {item['id'] for item in snapshot['context']['techniques']} for tid in draft['technique_ids']):
             raise ValueError('模型推荐了本次资料中没有的技法，请重试。')
         literary = result.get('literary_impacts') or []
@@ -404,6 +468,12 @@ class SceneRehearsalService:
             owner, rows, index = self._check(project_id, owner_id, scene_id, body, require_draft_sources=True)
             draft = self._validate_draft(project_id, body.get('draft'), require_text=True)
             snapshot = self._snapshot(project_id, owner_id, scene_id, draft['technique_ids'])
+            trace = draft.get('choice_trace')
+            if trace:
+                cast = set(snapshot['context']['cast_ids'])
+                witness = trace['witness_id']
+                if trace['actor_id'] not in cast or (witness and (witness not in cast or witness == trace['actor_id'])):
+                    raise ValueError('人物已离开本场，请重新推演。')
             current = rows[index].get('rehearsal') or {}
             if current.get('status') == 'confirmed' and not snapshot['stale'] and self._draft(current) == draft and current.get('source_versions') == snapshot['source_versions'] == body['source_versions']:
                 return {**snapshot, 'updated_at': owner.get('updated_at'), 'change_suggestions': {'queued_count': 0, 'task_ids': []}}
