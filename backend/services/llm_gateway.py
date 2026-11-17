@@ -146,6 +146,8 @@ class LLMGateway:
             "max_tokens": max_tokens,
             "stream": True,
         }
+        if provider == 'llama_cpp' and extra.get('_response_schema'):
+            payload['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'proposal', 'schema': extra['_response_schema']}}
         timeout = float(extra.get("timeout_s", self.timeout))
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", f"{base.rstrip('/')}/v1/chat/completions", headers=headers, json=payload) as resp:

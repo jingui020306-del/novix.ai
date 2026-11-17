@@ -17,7 +17,7 @@ def strip_author_only(value, _private_context=False):
         private = private or _private_context
         result = {key: [strip_author_only(row, private) for row in child if isinstance(row, dict) and row.get('usage') != 'author_only' and not row.get('removed')]
                 if key == 'detail_sections' and isinstance(child, list) else strip_author_only(child, private) for key, child in value.items() if key not in {'author_notes', 'private_notes', 'author_only'}}
-        if private:
+        if private or str(value.get('id', '')).startswith('self_'):
             # Shared import quotations can repeat a now-private detail; keep source references, not that raw quotation.
             keys = {'id', 'kind', 'path', 'source_id', 'record_id', 'version', 'import_batch_id', 'page', 'pages', 'line_range', 'url'}
             for key in ['source', 'sources']:
@@ -46,10 +46,13 @@ def validate_detail_sections(store, project_id, sections, *, allow_removed=False
             if not allow_removed or row['removed'] is not True:
                 raise ValueError('移除阶段补充须保留原段编号；初始资料直接删除该段。')
             continue
-        for key, limit in [('title', 200), ('content', 12000), ('summary', 2000), ('situation', 2000)]:
+        for key, limit in [('title', 200), ('content', 12000), ('summary', 2000), ('situation', 2000), ('response', 120)]:
             text = row.get(key, '')
             if not isinstance(text, str) or len(text) > limit or key in {'title', 'content'} and not text.strip():
                 raise ValueError('请填写人物补充段名称与内容，名称最多200字、正文最多12000字。')
+        rating = row.get('desirability')
+        if rating is not None and (type(rating) is not int or not -10 <= rating <= 10):
+            raise ValueError('事件对目标的影响须为 −10 至 10 的整数，或留空。')
         if row.get('usage', 'relevant') not in {'relevant', 'focus', 'author_only'}:
             raise ValueError('补充段请选择按场景参考、重点参考或仅作者查看。')
         world.validate_context(project_id, row.get('scope') or {}, extra_entities=extra_entities)

@@ -7,9 +7,9 @@ import re
 from difflib import unified_diff
 
 from services.change_suggestion_service import ChangeSuggestionService
-from services.local_rehearsal import PRESETS, participant_risks, rehearse, scene_cast, simulation_format, validate_cast
+from services.local_rehearsal import LocalRehearsal, PRESETS, participant_risks, rehearse, scene_cast, simulation_format, validate_cast
 from rehearsal_engines.runtime import availability
-from services.automatic_rehearsal import candidate, logger
+from services.automatic_rehearsal import candidate, initial_spec, logger, motive_trial
 from services.token_usage import summarize_usage
 from services.shared_material_service import SharedMaterialService
 from services.knowledge_graph_service import KnowledgeGraphService
@@ -439,14 +439,25 @@ class SceneRehearsalService:
             snapshot = self._snapshot(project_id, owner_id, scene_id, current['technique_ids'])
         if not self.authoring:
             raise ValueError('尚未配置场景推演模型；仍可手动修改、预览和确认。')
-        prompt = _json({'已有资料': snapshot['context'], '作者当前改稿': current, '本次要调整的选择': body.get('instructions') or '',
-                        '输出结构': {'draft': {'text': '可读的连续场景安排', 'outcome': '这一场实际改变什么', 'next_question': '由本场后果引出的具体下场问题', 'technique_ids': [], 'technique_applications': [{'technique_id': '已有编号', 'placement': '具体落点', 'reason': '采用条件与理由', 'effect': '预期效果'}]}, 'literary_impacts': []}})
+        material = {'已有资料': snapshot['context'], '作者当前改稿': current, '本次要调整的选择': body.get('instructions') or '',
+                        '输出结构': {'draft': {'text': '可读的连续场景安排', 'outcome': '这一场实际改变什么', 'next_question': '由本场后果引出的具体下场问题', 'technique_ids': [], 'technique_applications': [{'technique_id': '已有编号', 'placement': '具体落点', 'reason': '采用条件与理由', 'effect': '预期效果'}]}, 'literary_impacts': []}}
+        spec = initial_spec({**snapshot, 'draft': current})
+        if isinstance(spec, LocalRehearsal):
+            material['双人排演'] = {'先行动': spec.actor_id, '后回应': spec.partner_id,
+                                '现有可选行动': spec.choices.model_dump()}
+            material['输出结构']['motive_trial'] = {
+                'choices': {'act': '主动选择', 'hold': '另一选择', 'effect': '对方可感知的后果',
+                            'respond': '对方主动回应', 'check': '对方的另一选择'},
+                'actor_goal_fit': '主动选择相对另一选择是否符合此人动机，整数 -1、0 或 1',
+                'partner_goal_fit': '主动回应相对另一选择是否符合回应者动机，整数 -1、0 或 1'}
+        prompt = _json(material)
         if len(prompt) > 32000:
             raise ValueError('本场材料过多，请精简当前改稿或关联资料后重推；手动预览和确认仍可使用。')
         calls = []
         text = await self.authoring.complete(project_id, body, 'setup_story',
             '你是小说场景排演合作者，写给不熟悉技法的作者看。只输出符合给定结构的JSON，不加围栏。'
             '写成可读的因果推进稿，不是待填动作表或正文成品：各人维护自己的目标，一人的举动改变另一人的选择；接上前场后果，安排具体的行动、反应、阻碍、选择、注意与空间变化，最后让局面改变并留下由本场产生的下场问题。'
+            '结合已采用的动机和当时适用的人物细节安排选择及其代价；性格来由只在相应处境影响行为，旁人只能对可见行动作出回应。'
             '人物底线和已确认世界限制优先；作者规划与未来事件不代表人物当时已知。未设定、灵感、推定不得当事实，不擅造关键身份秘密或永久设定。必要的新动作与文学连接均只是建议，不能伪称已有证据。'
             '遵守明确的性别、代词、称呼说明与世界称谓通则；address_as是当前人物如何称呼target，不能反用，不能凭外貌或ABO推断亲属称呼。'
             '围绕作者本次改变的选择重新考虑牵动的反应和代价；不要平均堆动作或五感，也不要用通用短语拼接冒充场景。'
@@ -471,7 +482,8 @@ class SceneRehearsalService:
         with ChangeSuggestionService(self.store).lock(project_id):
             self._check(project_id, owner_id, scene_id, {'source_versions': snapshot['source_versions'], 'base_hash': snapshot['base_hash']})
             preview = self._preview(project_id, owner_id, scene_id, draft, literary)
-        return {**preview, 'basis': 'suggested', 'usage': summarize_usage(calls)}
+        return {**preview, 'basis': 'suggested', 'usage': summarize_usage(calls),
+                'motive_trial': motive_trial(spec, result.get('motive_trial'))}
 
     def confirm(self, project_id, owner_id, scene_id, body, background_tasks=None, change_service=None):
         owner_id, scene_id = self._canonical(project_id, owner_id, scene_id)
