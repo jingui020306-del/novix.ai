@@ -99,7 +99,7 @@ def runtime_command(port, name="default"):
     return [executable, '--model', str(path), '--alias', spec['id'],
             '--host', '127.0.0.1', '--port', str(port),
             '--ctx-size', str(spec['context_window']), '--parallel', '1',
-            '--threads', str(spec.get('threads', min(8, os.cpu_count() or 4))), '--n-gpu-layers', '0',
+            '--threads', str(min(8, os.cpu_count() or 4)), '--n-gpu-layers', '0',
             '--jinja', '--reasoning', 'off', '--reasoning-format', 'deepseek',
             '--chat-template-kwargs', '{"enable_thinking":false}', '--no-warmup']
 
