@@ -96,10 +96,15 @@ def runtime_command(port, name="default"):
     available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 4)
     threads = os.environ.get('LLAMA_ARG_THREADS') or str(min(8, available))
     path = directory / spec['file']
+    # Draft repeated text from the input and verify it with the same pacing model.
+    lookup = []
+    if name == 'pacing' and not os.getenv('LLAMA_ARG_SPEC_TYPE'):
+        lookup = ['--spec-type', 'ngram-simple', '--spec-ngram-simple-size-n', '3',
+                  '--spec-ngram-simple-size-m', '6']
     return [executable, '--model', str(path), '--alias', spec['id'],
             '--host', '127.0.0.1', '--port', str(port),
             '--ctx-size', str(spec['context_window'] * int(slots)), '--parallel', slots,
-            '--threads', threads,
+            '--threads', threads, *lookup,
             '--jinja', '--reasoning', 'off', '--reasoning-format', 'deepseek',
             '--chat-template-kwargs', '{"enable_thinking":false}', '--no-warmup']
 

@@ -16,12 +16,27 @@ from services.planning_threads import thread_names
 from services.world_scope_service import WorldScopeService
 
 log = logging.getLogger(__name__)
-VERSION = 'pacing-5'
+VERSION = 'pacing-6'
 BLOCK_VERSION = 'pacing-4'  # Model inputs and output schema for existing block results.
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def resolve_thread_ids(values, threads):
+    resolved = []
+    for value in values:
+        if value in threads:
+            key = value
+        else:
+            matches = [key for key, label in threads.items() if label == value]
+            if len(matches) != 1:
+                continue
+            key = matches[0]
+        if key not in resolved:
+            resolved.append(key)
+    return resolved
 
 
 class PacingScope(NamedTuple):
@@ -263,7 +278,7 @@ class PacingService:
         identity = {'version': VERSION, 'model_revision': model_revision, 'scope': list(scope), 'story': scope.story,
                     'order': order, 'source': source}
         state = {**identity, 'status': 'processing', 'notice': '', 'progress': 0, 'total': len(blocks), 'block_size': block_size}
-        cache = old.get('blocks', {}) if old.get('version') in {BLOCK_VERSION, VERSION} else {}
+        cache = old.get('blocks', {}) if old.get('version') in {BLOCK_VERSION, 'pacing-5', VERSION} else {}
         nodes, edges = [], []
         if not self.persist(project, chapter, content, scope, {**state, 'blocks': cache}):
             return
@@ -333,7 +348,7 @@ class PacingService:
                             'after': value['after'] if value['after'] in text else '',
                             'id': node_id, 'chapter': chapter, 'offset': start + pos, 'basis': 'extracted',
                             'character_ids': [c for c in value['character_ids'] if any(p['id'] == c for p in characters)],
-                            'thread_ids': [t for t in value['thread_ids'] if t in threads]}
+                            'thread_ids': resolve_thread_ids(value['thread_ids'], threads)}
                     cause = next((n for n in candidates if n['id'] == value['cause_id'] and n['quote'] == value['cause_quote']), None)
                     if cause:
                         edges.append({'from': cause['id'], 'to': node_id, 'basis': 'candidate'})
