@@ -47,3 +47,11 @@ jobs:
           ' - chiron.tar.part-
           gh release upload "$TAG" SHA256SUMS --clobber
           gh release edit "$TAG" --draft=false --latest=false
+      - name: Attach the matching spaCy language model
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=en_core_web_lg-3.7.1-py3-none-any.whl
+          gh release download en_core_web_lg-3.7.1 --repo explosion/spacy-models --pattern "$wheel"
+          sha256sum "$wheel" > "$wheel.sha256"
+          gh release upload "$TAG" "$wheel" "$wheel.sha256" --clobber

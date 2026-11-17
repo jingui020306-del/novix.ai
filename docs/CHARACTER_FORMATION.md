@@ -46,3 +46,27 @@ AutoTokenizer.from_pretrained("google-t5/t5-large").save_pretrained("/models/glu
 ```
 
 通用 T5-large 仅提供配置和分词器。推理需要作者的 GLUCOSE 微调权重。模型结果均为创作候选。
+
+## 人物卡的四重自我
+
+打开人物卡的「从原文分析四重自我」，贴入若干段有角色姓名的原文。勾选个人、社会、核心或隐藏自我。核心可细分为衍生、保护和消失自我。可只生成一项，逐条对照原文、修改文字，再点「采用到人物草稿」并保存。沿用人物卡的「锁定」可冻结已保存字段。证据不足可以留白。
+
+| 工具 | 作用与入口 |
+| --- | --- |
+| [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | [Novix 本地发行包](https://github.com/jingui020306-del/novix.ai/releases/tag/local-3ec2e57)内已有的中文模型。可直接从所给材料提出人物理解，也负责把 CHIRON 的保留结果整理为中文候选。每条候选可查看所选原文。 |
+| [CHIRON 官方代码](https://github.com/Alex-Gurung/CHIRON/tree/68ebec21202381f58665866e94f3338a851f263a) | 选择「CHIRON · 原文核验后用中文整理」。按原项目顺序运行片段提问、陈述简化、推理、核验打分与去重。仅把保留陈述及对应原文交给 Qwen。四个层面属于 Novix 的整理方式，核验分数针对上游陈述。 |
+| [FAtiMA Toolkit](https://github.com/GAIPS/FAtiMA-Toolkit) | 在人物细节填适用处境、可见行动及事件对目标的影响。保存后，双人排演在处境匹配、对方观察到行动时，用已确认的评价计算情绪。已手填的排演设置优先。「隐藏自我」默认仅作者可见。 |
+
+### 安装 CHIRON 官方流程
+
+使用 Linux 或 WSL2、Conda 与支持 vLLM 的 NVIDIA CUDA 环境。从项目根目录运行以下命令。
+
+```bash
+bash scripts/setup_chiron.sh
+```
+
+安装程序会建立独立环境、安装英文分句模型，随后从 [Novix 权重发布页](https://github.com/jingui020306-del/novix.ai/releases/tag/chiron-weights-v1) 下载分卷、校验 SHA-256 并还原本地模型。默认目录为 `models/chiron/`，可通过 `NOVIX_CHIRON_HOME` 更改。保留下载分卷时，请为分卷和解包后的权重各预留约 30 GB，运行环境另计。若从原作者取权重，运行 `bash scripts/setup_chiron.sh --from-hub`。
+
+生成使用论文的 [Mistral-7B-Instruct-v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2)，核验使用[作者微调的核验权重](https://huggingface.co/agurung/character_sheet_entailment_model___mistral7bv2)。源码随仓库保存在 `backend/rehearsal_engines/chiron/`，含原 MIT 许可证。保留作者的提问和筛选逻辑，输出文件名按本机路径规则处理，简化未返回内容的条目留空。上游 requirements 的 NumPy 2 与其指定的 vLLM 版本约束冲突，安装使用 NumPy 1.26.4 和 spaCy 3.7.5。中文核验质量需用自己的文本评估。
+
+首次使用双人排演时，可按项目的[引擎安装说明](../backend/rehearsal_engines/install.py)安装 FAtiMA 和 Sabre。Qwen、性格来由的 COMET／GLUCOSE 和本页的 CHIRON 可独立配置。[Novix 人物补全改动](https://github.com/jingui020306-del/novix.ai/pull/30)

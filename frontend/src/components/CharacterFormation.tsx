@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { CharacterPortrait } from './CharacterPortrait'
 import { api } from '../api/client'
 import { pointerLocked } from './AuthorControls'
 import { Button } from './ui/Button'
@@ -94,7 +95,7 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
     setProposal(null); setSelected([]); setMessage('已填入草稿，可继续修改后保存人物。')
   }
 
-  return <details className="py-2">
+  return <><details className="py-2">
     <summary className="cursor-pointer text-sm font-medium">补写性格来由</summary>
     <div className="mt-3 space-y-3">
       <Textarea aria-label="已有性格、经历或行为" value={observation} maxLength={2000}
@@ -123,5 +124,5 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
       </div>}
       {message && <p role="status" className="text-sm text-muted">{message}</p>}
     </div>
-  </details>
+  </details><CharacterPortrait key={project + card.id} {...{ project, card, storyId, lockedPaths, onChange }} /></>
 }

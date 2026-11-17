@@ -64,3 +64,5 @@ coverage/
 /models/*.log
 /models/.novix-model-*
 /data/_global/local_model.json
+
+/models/chiron/

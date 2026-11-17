@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from services.authoring_service import AuthoringService
 from services.character_formation import FormationRequest, propose as propose_formation
+from services.character_portrait import PortraitRequest, propose_portrait
 from services.writing_run_service import WritingRunService
 from services.knowledge_graph_service import KnowledgeGraphService
 from services.story_planning_service import StoryPlanningService
@@ -256,6 +257,16 @@ async def propose_story_planning(project_id: str, body: PlanningRequest, svc: Au
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(502, '模型调用失败，请检查模型设置后重试。') from exc
+
+
+@router.post('/cards/character-portrait')
+async def character_portrait(project_id: str, body: PortraitRequest, svc: AuthoringService = Depends(get_authoring)):
+    try:
+        return await propose_portrait(svc, project_id, body)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, '人物分析未完成，请检查本地模型连接。') from exc
 
 
 @router.post('/cards/character-formation')

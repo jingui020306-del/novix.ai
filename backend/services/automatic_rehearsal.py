@@ -18,14 +18,21 @@ _cache_lock = Lock()
 _workers = [Lock() for _ in range(32)]
 
 
-def formation_response(person, scene):
+def matching_responses(person, scene):
     from services.character_detail_service import detail_is_relevant
     for row in person['payload'].get('detail_sections', []):
-        if row.get('id') != 'formation_response' or row.get('removed') or row.get('usage') == 'author_only':
+        if row.get('removed') or row.get('usage') == 'author_only':
             continue
-        situation = (row.get('situation') or '').strip()
-        action = (row.get('content') or '').strip()
-        if situation and 0 < len(action) <= 120 and detail_is_relevant({'situation': situation}, scene):
+        if row.get('id') != 'formation_response' and not str(row.get('id', '')).startswith('self_'):
+            continue
+        if row.get('situation') and detail_is_relevant({'situation': row['situation']}, scene):
+            yield row
+
+
+def formation_response(person, scene):
+    for row in matching_responses(person, scene):
+        action = (row.get('content' if row['id'] == 'formation_response' else 'response') or '').strip()
+        if 0 < len(action) <= 120:
             return action
     return ''
 
@@ -72,7 +79,9 @@ def initial_spec(snapshot):
     topic = next((v.strip() for v in (exchange.get('goal'), goal, cast[first]['payload'].get('core_motivation'), scene.get('scene'), scene.get('purpose'),
                                       scene.get('plot')) if isinstance(v, str) and v.strip()), '本场人物的意图')
     return LocalRehearsal(actor_id=first, partner_id=other, topic=topic[:120], available=True,
-                          actor_confidence=0.7, partner_confidence=0.7, choices=choices)
+                          actor_confidence=0.7, partner_confidence=0.7, choices=choices,
+                          desirability=next((row['desirability'] for row in matching_responses(cast[other], scene)
+                                             if type(row.get('desirability')) is int and abs(row['desirability']) <= 10), 0))
 
 
 def motive_trial(spec, suggestion):
