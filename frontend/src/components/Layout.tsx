@@ -7,7 +7,7 @@ export default function Layout({ left, center, right, header, surface = '', navi
   const [toolsHidden, setToolsHidden] = useState(true)
   const [techniquesHidden, setTechniquesHidden] = useState(() => {
     const saved = localStorage.getItem('novix.writing.hideTechniques')
-    return saved === null ? window.innerWidth < 900 : saved === 'true'
+    return saved !== 'false'
   })
   const hideRight = writing ? techniquesHidden : toolsHidden
   const setHideRight = (hidden: boolean) => {
@@ -29,7 +29,9 @@ export default function Layout({ left, center, right, header, surface = '', navi
         <button className='sidebar-scrim' aria-label='关闭作品目录' onClick={() => setHideLeft(true)} />
         <aside className='workspace-sidebar' aria-label='作品目录'>
           <div className='workspace-brand'><span><BookOpen size={21} strokeWidth={1.6} /><strong>novix</strong><span className='brand-description'>写作工作台</span></span><button className='icon-control' onClick={() => setHideLeft(true)} aria-label='收起作品目录'><PanelLeftClose size={17} /></button></div>
-          <div className='workspace-sidebar-body'>{left}</div>
+          <div className='workspace-sidebar-body' onClick={(event) => {
+            if (window.innerWidth < 900 && (event.target as Element).closest('.sidebar-nav-item')) setHideLeft(true)
+          }}>{left}</div>
         </aside>
       </>}
       <main className='workspace-main'>

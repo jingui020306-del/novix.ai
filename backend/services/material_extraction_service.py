@@ -14,6 +14,37 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
+def _character_identity_hint(text, name, candidates):
+    """Return a review hint for one explicitly attributed, distinguishing identity."""
+    subject = re.escape(name)
+    if re.search(rf'{subject}(?:的身份)?(?:不是|并非|不再是|并不是|可能是|也许是|假扮|冒充)', text):
+        return None
+    fields = rf'(?:姓名|名称)[：:][ \t]*{subject}[ \t]*\r?\n身份[：:][ \t]*'
+    assertion = rf'{subject}(?:的身份是|是|担任|任职为)'
+    speaker = rf'{subject}(?:说|答道|自称|自我介绍|报上(?:自己的)?(?:职务|身份))?[：:，,]?[“「"]我(?:是|担任)'
+    statement = (rf'(?:^|(?<=[。！？；]))[ \t]*(?P<quote>(?:{fields}|{assertion}|{speaker})'
+                 rf'(?P<role>[^，,。！？?!；;：:\r\n“”「」"]{{2,100}}?)'
+                 rf'(?:[。！][”」"]?|[”」"]?[ \t]*(?=\r?$)))')
+    declarations = {}
+    for match in re.finditer(statement, text, re.MULTILINE):
+        role = match['role'].strip()
+        if re.search(r'不是|并非|未曾|假扮|冒充|可能|也许|如果|是否|或者|还是', role):
+            return None
+        declarations[role] = match['quote'].strip()
+    if len(declarations) != 1:
+        return None
+    role, quote = next(iter(declarations.items()))
+    # Recognize a qualified card title only when the role distinguishes one candidate.
+    title = re.sub(r'^(?:一名|一位|一个)', '', role.rsplit('的', 1)[-1])
+    if len(title) < 2 or title in name:
+        return None
+    matches = [row for row in candidates if row['identity'].strip() in {role, title}
+               or row['identity'].strip().endswith('的' + title)]
+    if len(matches) == 1:
+        return {'target_id': matches[0]['id'], 'reason': quote, 'status': 'pending_author_review'}
+    return None
+
+
 async def extract_material(service, project_id, batch_id, body):
     from services.material_import_service import _TASKS, _BOOT_ID
     key = str(service.store._project_dir(project_id)) + ':' + batch_id
@@ -199,9 +230,18 @@ async def extract_material(service, project_id, batch_id, body):
                     item['identity_matches'] = matches[:8]
                     item['possible_target_ids'] = [row['id'] for row in matches[:8]]
                     item['needs_review'] = '存在名称或阶段称呼匹配，请核对是否为同一对象；不会仅凭同名合并。'
+                    if len(matches) > 1 and item['kind'] == 'character':
+                        # Only the author can bind an imported character to an ambiguous existing card.
+                        item.pop('target_id', None)
+                        item.pop('decision', None)
                     if len(matches) > 8:
                         item['needs_review'] = f'找到{len(matches)}项同名资料，请缩小世界或时期后核对；未交给模型猜测。'
                     if not 1 < len(matches) <= 8:
+                        continue
+                    if item['kind'] == 'character':
+                        hint = _character_identity_hint(unit['text'], label, matches)
+                        if hint:
+                            item['identity_suggestion'] = hint
                         continue
                     identity_text = item['values'].get('identity')
                     exact = [row for row in matches if identity_text and row['identity'] == identity_text]

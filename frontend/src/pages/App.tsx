@@ -1,3 +1,4 @@
+import type { ManuscriptPosition } from '../components/WritingTools'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR, { mutate as mutateCache } from 'swr'
 import {
@@ -409,6 +410,8 @@ export default function App() {
   const [chapterEditorText, setChapterEditorText] = useState('')
   const [chapterTitleDraft, setChapterTitleDraft] = useState('')
   const [chapterContextDraft, setChapterContextDraft] = useState<any>(null)
+  const writingPositions = useRef(new Map<string, ManuscriptPosition>())
+  const recentWriting = useRef<{project: string; chapter: string} | null>(null)
   const chapterScopeKey = `${project}:${selectedChapter}`
   const analysisScope = useRef(chapterScopeKey); analysisScope.current = chapterScopeKey
   const analysisRequest = useRef(0)
@@ -445,6 +448,22 @@ export default function App() {
   )
   const volumeRows = Array.isArray(volumes) ? volumes : []
   const chapterRows = Array.isArray(draftDetails) ? draftDetails : []
+  useEffect(() => {
+    if (view !== 'chapter' || chapterPane !== '正文' || (!Array.isArray(draftDetails) || !draftDetails.some((row: any) => row.chapter_id === selectedChapter))) return
+    recentWriting.current = { project, chapter: selectedChapter }
+    try { localStorage.setItem(`novix.lastChapter:${project}`, selectedChapter) } catch {}
+  }, [view, chapterPane, project, selectedChapter, draftDetails])
+  const resumeChapter = () => {
+    let id = recentWriting.current?.project === project ? recentWriting.current.chapter : ''
+    if (!id) { try { id = localStorage.getItem(`novix.lastChapter:${project}`) || '' } catch {} }
+    return chapterRows.find((row: any) => row.chapter_id === id) || chapterRows.find((row: any) => row.chapter_id === selectedChapter) || chapterRows[0]
+  }
+  const openManuscript = (id: string) => {
+    setSelectedChapter(id)
+    setChapterPane('正文')
+    setActiveActivity('explorer')
+    setView('chapter')
+  }
   const currentChapterMeta = (draft?.meta || chapterRows.find((x: any) => x.chapter_id === selectedChapter) || {}) as any
   const chapterReferenceKey = `${project}:${selectedChapter}`
   const savedChapterReferenceIds = chapterReferenceIds(currentChapterMeta)
@@ -2022,7 +2041,7 @@ export default function App() {
       setPersonPane(target.stage_id || target.eventOrigin ? '经历' : '概况'); setMaterialFocusRequest({ id: card.id, requestId: Date.now(), editPath: target.editPath, stage_id: target.stage_id })
       setCharacterEditorOpen(true); setCharacterForm(cardDraftCache.current[`${project}:character:${card.id}`] || card); setActiveActivity('cards'); setView('characters')
     } else if (['world', 'world_rule', 'lore', 'worldview', 'style'].includes(card.type)) {
-      setMaterialFocusRequest({ id: card.id, requestId: Date.now(), editPath: target.editPath, stage_id: target.stage_id }); setActiveActivity('cards'); setView(card.type === 'style' ? 'style' : 'world')
+      setWorldNavigationRequest(null); setMaterialFocusRequest({ id: card.id, requestId: Date.now(), editPath: target.editPath, stage_id: target.stage_id }); setActiveActivity('cards'); setView(card.type === 'style' ? 'style' : 'world')
     } else if (card.type === 'outline' && card.payload?.planning_worksheet) {
       const story = (Array.isArray(allCards) ? allCards : []).find((row: any) => row.id === card.payload.story_card_id)
       if (story) setStoryForm(cardDraftCache.current[`${project}:story:${story.id}`] || normalizeStoryCard(story))
@@ -2276,23 +2295,24 @@ export default function App() {
     setActiveActivity('planning')
     setView('planning')
   }
+  const sidebarActivity = view === 'relationships' ? 'characters' : ['characters', 'world'].includes(view) ? view : activeActivity
   const left = (
     <div>
       <div className='sidebar-project'><label htmlFor='sidebar-project'>当前作品</label><Select id='sidebar-project' value={project} onChange={(e) => setProject(e.target.value)}>{(projects || []).map((row: any) => <option key={row.id} value={row.id}>{row.title || '未命名作品'}</option>)}</Select></div>
       <nav className='sidebar-nav' aria-label='写作工作区'>
-        {[['story', '作品总览', BookOpen], ['planning', '故事安排', Table2], ['cards', '人物与世界', UserRound], ['explorer', '卷与章', FilePenLine]].map(([id, label, Icon]: any) => <button key={id} className={`sidebar-nav-item ${activeActivity === id ? 'is-current' : ''}`} aria-current={activeActivity === id ? 'page' : undefined} onClick={async () => {
+        {[['story', '作品总览', BookOpen], ['planning', '故事安排', Table2], ['characters', '人物', UserRound], ['world', '世界', Globe], ['explorer', '卷与章', FilePenLine]].map(([id, label, Icon]: any) => <button key={id} className={`sidebar-nav-item ${sidebarActivity === id ? 'is-current' : ''}`} aria-current={sidebarActivity === id ? 'page' : undefined} onClick={async () => {
           setEventOrigin(null)
           if (id === 'story') setStoryPlanningTab('Overview')
-          if (id === 'cards') { setPersonPane('概况'); setCharacterEditorOpen(false) }
+          if (id === 'characters') { setPersonPane('概况'); setCharacterEditorOpen(false) }
           setActiveActivity(id)
-          if (id === 'cards') setWorldNavigationRequest({ section: 'overview', requestId: Date.now() })
+          if (id === 'world') setWorldNavigationRequest({ section: 'overview', requestId: Date.now() })
           if (id === 'explorer') {
             const rows = Array.isArray(draftDetails) ? draftDetails : await api.get(`/api/projects/${project}/drafts/details`)
             if (!editorSnapshotRef.current.key.startsWith(`${project}:`)) return
             if (!Array.isArray(rows)) { push('章节读取失败，请重试。', 'error'); return }
             if (rows.length) { if (!rows.some((row: any) => row.chapter_id === selectedChapter)) setSelectedChapter(rows[0].chapter_id); setView('chapter') }
             else setView('projects')
-          } else setView(({ story: 'story', planning: 'planning', cards: 'characters', techniques: 'techniques', canon: 'canon', settings: 'settings' } as Record<string, string>)[id])
+          } else setView(({ story: 'story', planning: 'planning', characters: 'characters', world: 'world', techniques: 'techniques', canon: 'canon', settings: 'settings' } as Record<string, string>)[id])
         }}><Icon size={17} strokeWidth={1.7} /><span>{label}</span></button>)}
       </nav>
       {activeActivity === 'explorer' && <section className='sidebar-context' aria-label='章节目录'>
@@ -3507,18 +3527,23 @@ export default function App() {
     if (view === 'story') {
       const savedPlan = (Array.isArray(storyCards) ? storyCards : []).find((card: any) => card.id === storyForm.id)?.payload
       const storyTab = storyPlanningTab === 'Stages' ? 'Lines' : storyPlanningTab
+      const resume = storyTab === 'Overview' ? resumeChapter() : null
       return (
         <div className='story-workspace'>
           {storyLocal.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>有未保存的故事草稿。</p><div className='flex gap-2'><Button onClick={storyLocal.restore}>恢复草稿</Button><Button variant='ghost' onClick={storyLocal.dismiss}>保留保存版</Button></div></div>}
           <header className='story-heading'>
             <div className='story-heading-copy'><input className='story-title' aria-label='作品名' value={storyForm?.title || ''} onChange={(e) => updateStoryRoot('title', e.target.value)} placeholder='作品名称' /></div>
-            <div className='space-y-2'><Button variant='primary' disabled={cardSaveState[`${project}:${storyForm.id}`] === '保存中…'} onClick={saveStoryCard}>保存故事设定</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${storyForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${storyForm.id}`] === '保存中…' ? cardSaveState[`${project}:${storyForm.id}`] : storyLocal.dirty ? '有未保存的修改' : cardSaveState[`${project}:${storyForm.id}`] || ''}</p></div>
+            {(storyTab !== 'Overview' || !resume || storyLocal.dirty || storyForm.id === 'story_new' || cardSaveState[`${project}:${storyForm.id}`]) && <div className='space-y-2'><Button variant={resume ? 'secondary' : 'primary'} disabled={cardSaveState[`${project}:${storyForm.id}`] === '保存中…'} onClick={saveStoryCard}>保存故事设定</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${storyForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${storyForm.id}`] === '保存中…' ? cardSaveState[`${project}:${storyForm.id}`] : storyLocal.dirty ? '有未保存的修改' : cardSaveState[`${project}:${storyForm.id}`] || ''}</p></div>}
           </header>
           <nav className='story-task-nav' aria-label='作品总览'>{[['Overview','概览'],['Outline','全书构想'],['Preferences','作品设定']].map(([id,label]) => <button key={id} aria-current={storyTab === id ? 'page' : undefined} onClick={() => setStoryPlanningTab(id)}>{label}</button>)}</nav>
           {storyTab === 'Preferences' && <Button className='self-start' onClick={() => setView('style')}>文风与样文</Button>}
           {storyTab === 'Outline' && <label className='story-field-label'>全书构想<Textarea className='novix-outline' value={storyPayload.full_outline || ''} onChange={e => updateStoryPayload('full_outline', e.target.value)} /></label>}
           {storyTab === 'Outline' && <SuspensePanel key={`${project}:${storyForm.id}:${savedPlan?.world_context?.world_id || ''}:${savedPlan?.world_context?.branch_id || ''}`} project={project} storyId={storyForm.id} branch={savedPlan?.world_context?.branch_id} worldId={savedPlan?.world_context?.world_id} foreshadowings={savedPlan?.foreshadowings}
             openChapter={id => { setSelectedChapter(id); setChapterPane('本章安排'); setActiveActivity('explorer'); setView('chapter') }} />}
+          {resume && <div className='resume-manuscript'>
+            <div><span>章节正文</span><h2>{resume.chapter_title || resume.title || '未命名章节'}</h2></div>
+            <Button variant='primary' onClick={() => openManuscript(resume.chapter_id)}>打开正文</Button>
+          </div>}
           {storyTab === 'Overview' && <BookOverview project={project} cards={Array.isArray(allCards) ? allCards : []}
             events={Array.isArray(overviewEvents) ? overviewEvents : []} story={storyPayload}
             onPicture={key => updateStoryPayload('overview_picture', key)} onOpenMaterial={openMaterial}
@@ -3783,8 +3808,31 @@ export default function App() {
       const createPerson = () => { if (characterForm.id === 'character_new' && (characterForm.payload?.name || characterForm.payload?.identity) && !window.confirm('当前新人物尚未保存，确定另起一张人物卡？')) return false; setCharacterForm({ id: 'character_new', type: 'character', title: '', tags: [], links: [], _revision: '', payload: { name: '', identity: '', detail_level: 'brief' } }); setCharacterEditorOpen(true); return true }
       const backgroundPeople = people.filter((card: any) => card.payload?.detail_level === 'brief' && !['protagonist', 'supporting', 'antagonist'].includes(card.payload?.role))
       const mainPeople = people.filter((card: any) => !backgroundPeople.includes(card))
-      const personGrid = (members: any[]) => <div className='character-overview-grid'>{members.map((card: any) => <button key={card.id} className='character-overview-entry focus-ring' onClick={() => { setCharacterForm(cardDraftCache.current[`${project}:character:${card.id}`] || card); setPersonPane('概况'); setCharacterEditorOpen(true) }}>{card.payload?.reference_image?.asset_id && <img className='book-portrait' alt='' src={`/api/projects/${project}/character-images/${encodeURIComponent(card.payload.reference_image.asset_id)}`} />}<strong>{card.payload?.name || card.title || '未命名人物'}</strong>{card.payload?.identity && <p>{card.payload.identity}</p>}</button>)}</div>
-      if (!characterEditorOpen) return <div className='space-y-6'><header className='story-heading'><div><h1 className='page-title'>人物与组织</h1></div><div className='flex flex-wrap gap-2'><Button onClick={createPerson}>创建人物</Button><Button onClick={() => { if (!createPerson()) return; setTimeout(() => { const field = document.getElementById('character-idea'); const panel = field?.closest('details'); if (panel) panel.open = true; field?.focus() }, 0) }}>AI 构思人物</Button></div></header><section className='space-y-3'><h2 className='text-lg font-semibold'>主要人物</h2>{personGrid(mainPeople)}{backgroundPeople.length > 0 && <details><summary className='cursor-pointer text-sm font-medium'>其他人物（{backgroundPeople.length}）</summary>{personGrid(backgroundPeople)}</details>}{!people.length && <p className='text-sm text-muted'>暂无人物</p>}</section>{(Array.isArray(savedWorldCards) ? savedWorldCards : []).some((card: any) => ['organization', 'faction', '人物与组织', '组织', '阵营'].includes(card.payload?.entry_type)) && <section className='space-y-3 border-t border-border pt-5'><h2 className='text-lg font-semibold'>组织与阵营</h2><ul className='space-y-2'>{(savedWorldCards as any[]).filter((card: any) => ['organization', 'faction', '人物与组织', '组织', '阵营'].includes(card.payload?.entry_type)).map((card: any) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => openMaterial(card)}>{card.title || '未命名组织'}</button></li>)}</ul></section>}<details><summary>人物关系总览</summary><KnowledgeGraph project={project} title='主要人物联系' onOpen={openMaterial} showStages /><SharedRelationships project={project} worldContext={storyForm.payload?.world_context} storyId={storyForm.id} onOpen={openMaterial} /></details></div>
+      const personTable = (members: any[]) => <table className="index-table">
+        <thead><tr><th scope="col">姓名</th><th scope="col">身份</th></tr></thead>
+        <tbody>{members.map((card: any) => <tr key={card.id}>
+          <td><button className="index-link focus-ring" onClick={() => {
+            setCharacterForm(cardDraftCache.current[`${project}:character:${card.id}`] || card)
+            setPersonPane('概况')
+            setCharacterEditorOpen(true)
+          }}>
+            {card.payload?.reference_image?.asset_id && <img className="index-portrait" alt="" src={`/api/projects/${project}/character-images/${encodeURIComponent(card.payload.reference_image.asset_id)}`} />}
+            {card.payload?.name || card.title || '未命名人物'}
+          </button></td>
+          <td>{card.payload?.identity || '—'}</td>
+        </tr>)}</tbody>
+      </table>
+      if (!characterEditorOpen) return <div className="space-y-6">
+        <header className='story-heading'><div><h1 className='page-title'>人物</h1></div><div className='flex flex-wrap gap-2'><Button onClick={createPerson}>创建人物</Button><Button onClick={() => { if (!createPerson()) return; setTimeout(() => { const field = document.getElementById('character-idea'); const panel = field?.closest('details'); if (panel) panel.open = true; field?.focus() }, 0) }}>AI 构思人物</Button></div></header>
+        <div className="people-overview">
+          <KnowledgeGraph project={project} overview title="人物关系" onOpen={openMaterial} showStages />
+          <section aria-label="人物名册"><h2 className="index-heading">人物名册</h2>
+            {people.length ? personTable(mainPeople.length ? mainPeople : backgroundPeople) : <p className="text-sm text-muted">暂无人物</p>}
+            {mainPeople.length > 0 && backgroundPeople.length > 0 && <details className="mt-3"><summary>其他人物（{backgroundPeople.length}）</summary>{personTable(backgroundPeople)}</details>}
+          </section>
+        </div>
+        <details><summary>管理关系</summary><SharedRelationships project={project} worldContext={storyForm.payload?.world_context} storyId={storyForm.id} onOpen={openMaterial} /></details>
+      </div>
       return (
         <div className='space-y-3 density-space'>
           {characterLocal.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>有未保存的人物草稿。</p><div className='flex gap-2'><Button onClick={characterLocal.restore}>恢复草稿</Button><Button variant='ghost' onClick={characterLocal.dismiss}>保留保存版</Button></div></div>}
@@ -3930,7 +3978,7 @@ export default function App() {
           <header className='chapter-heading'><input aria-label='章节标题' className='story-title' value={chapterTitleDraft} onChange={e => setChapterTitleDraft(e.target.value)} placeholder='章节标题' /><nav className='story-task-nav' aria-label='章节视图'>{['正文','本章安排'].map(label => <button key={label} aria-current={chapterPane === label ? 'page' : undefined} onClick={() => setChapterPane(label)}>{label}</button>)}</nav><Button className='text-xs' onClick={() => { setChapterReferencesOpen(false); setChapterMaterialsOpen(true) }}>本次生成材料</Button></header>
           {chapterLocal.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>有未保存的章节草稿，可恢复后对照。</p><div className='flex gap-2'><Button onClick={chapterLocal.restore}>恢复本地正文</Button><Button variant='ghost' onClick={chapterLocal.dismiss}>保留保存版</Button></div></div>}
           <div hidden={chapterPane !== '正文'}>
-          <section className='manuscript-sheet space-y-3' aria-label='章节正文编辑'>{draftReadError && <div className='space-y-2'><p role='alert' className='text-sm text-red-700 dark:text-red-300'>正文暂时未能读取，当前编辑仍保留。重新读取成功后再保存或生成。</p><Button onClick={() => { void mutateDraft().catch(() => undefined) }}>重新读取正文</Button></div>}<ManuscriptEditor sceneRef={selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm.id}` ? selectedSceneAnchor : undefined} baseRevision={editorSnapshotRef.current.revision} techniques={Array.isArray(techniqueCards) ? techniqueCards.filter((card: any) => !isIncompleteReference(card)) : []} key={chapterScopeKey} project={project} chapterId={selectedChapter} text={chapterEditorText} saved={chapterEditorText === draft?.content && chapterTitleDraft === editorSnapshotRef.current.title && !pendingChapterReferences && !pendingChapterMaterials} saving={chapterSaving} locked={!draft || isChapterGenerating || Boolean(draftReadError) || pointerLocked(chapterLockedPaths,'/')} onSave={saveChapterDraft} onChange={setChapterEditorText} onApplied={(content, revision) => {
+          <section className='manuscript-sheet space-y-3' aria-label='章节正文编辑'>{draftReadError && <div className='space-y-2'><p role='alert' className='text-sm text-red-700 dark:text-red-300'>正文暂时未能读取，当前编辑仍保留。重新读取成功后再保存或生成。</p><Button onClick={() => { void mutateDraft().catch(() => undefined) }}>重新读取正文</Button></div>}<ManuscriptEditor positions={writingPositions.current} sceneRef={selectedSceneAnchor?.key === `${project}:${selectedChapter}:${storyForm.id}` ? selectedSceneAnchor : undefined} baseRevision={editorSnapshotRef.current.revision} techniques={Array.isArray(techniqueCards) ? techniqueCards.filter((card: any) => !isIncompleteReference(card)) : []} key={chapterScopeKey} project={project} chapterId={selectedChapter} text={chapterEditorText} saved={chapterEditorText === draft?.content && chapterTitleDraft === editorSnapshotRef.current.title && !pendingChapterReferences && !pendingChapterMaterials} saving={chapterSaving} locked={!draft || isChapterGenerating || Boolean(draftReadError) || pointerLocked(chapterLockedPaths,'/')} onSave={saveChapterDraft} onChange={setChapterEditorText} onApplied={(content, revision) => {
               editorSnapshotRef.current = { ...editorSnapshotRef.current, content, revision }
               void mutateDraft()
               void mutateVersions()
@@ -5600,14 +5648,8 @@ export default function App() {
         right={writingManuscript ? chapterTechniques : view === 'settings' ? <p className='text-sm leading-7 text-muted'>模型按任务分工；密钥只在本机保存。连接状态与配置在当前页面查看。</p> : ['chapter', 'scene-rehearsal'].includes(view) ? right : scopedMaterialPanel}
         center={<>
           {['characters', 'relationships', 'world'].includes(view) && <>
-            <nav className='section-switcher' aria-label='人物与世界'>
-              <button aria-current={view !== 'world' ? 'page' : undefined} onClick={() => {
-                setEventOrigin(null); setCharacterEditorOpen(false); setView('characters')
-              }}>人物</button>
-              <button aria-current={view === 'world' ? 'page' : undefined} onClick={() => {
-                setEventOrigin(null); setView('world')
-              }}>世界</button>
-            </nav>
+            {!eventOrigin && recentWriting.current?.project === project && chapterRows.some((row: any) => row.chapter_id === recentWriting.current?.chapter) &&
+              <button className='return-manuscript focus-ring' onClick={() => openManuscript(recentWriting.current!.chapter)}>← 返回正文</button>}
             {eventOrigin && <button className='toolbar-control' onClick={() => enterStoryEvent(eventOrigin.owner, eventOrigin.scene)}>
               返回事件 · {eventOrigin.label}
             </button>}
