@@ -12,6 +12,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+python backend\rehearsal_engines\install.py
+if errorlevel 1 echo [backend] Local analysis setup incomplete. See installer output.
+
 if not "%NPM_REGISTRY%"=="" (
   npm config set registry %NPM_REGISTRY%
 )

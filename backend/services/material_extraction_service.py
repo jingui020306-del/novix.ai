@@ -201,7 +201,20 @@ async def extract_material(service, project_id, batch_id, body):
                     item['needs_review'] = '存在名称或阶段称呼匹配，请核对是否为同一对象；不会仅凭同名合并。'
                     if len(matches) > 8:
                         item['needs_review'] = f'找到{len(matches)}项同名资料，请缩小世界或时期后核对；未交给模型猜测。'
-                    if 1 < len(matches) <= 8 and performed < limit:
+                    if not 1 < len(matches) <= 8:
+                        continue
+                    identity_text = item['values'].get('identity')
+                    exact = [row for row in matches if identity_text and row['identity'] == identity_text]
+                    if len(exact) == 1:
+                        # A copied pair of labelled fields can support a review hint without another model call.
+                        fields = (rf'^(?:姓名|名称)[：:][ \t]*{re.escape(label)}[ \t]*\r?\n'
+                                  rf'身份[：:][ \t]*{re.escape(identity_text)}[ \t]*$')
+                        evidence = re.search(fields, unit['text'], re.MULTILINE)
+                        if evidence:
+                            item['identity_suggestion'] = {'target_id': exact[0]['id'], 'reason': evidence.group(),
+                                                           'status': 'pending_author_review'}
+                            continue
+                    if performed < limit:
                         # Identity hints never apply a merge; the author still confirms the target.
                         try:
                             performed += 1
@@ -217,9 +230,7 @@ async def extract_material(service, project_id, batch_id, body):
                         except Exception:
                             item['needs_review'] = '同名辅助判断未完成，已保留提取结果；请根据原文与已有身份手动选择。'
                 candidates = copy.deepcopy(record.get('candidates', []))
-                for item in parsed['candidates']:
-                    if not isinstance(item, dict):
-                        raise ValueError('候选格式不正确，请核对这一片段。')
+                for item in extracted:
                     for evidence in item.get('evidence', []) or []:
                         if source:
                             evidence['source_id'] = source['id']

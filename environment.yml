@@ -10,6 +10,6 @@ dependencies:
   - openjdk=21
   - dotnet-sdk=8
   - poppler
-  - llama.cpp=12418=cpu*
+  - llama.cpp=12418
   - pip:
       - -r backend/requirements.txt

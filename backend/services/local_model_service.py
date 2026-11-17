@@ -3,7 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import sys
+import shutil
 import tempfile
 import time
 from urllib.request import Request, urlopen
@@ -76,30 +76,27 @@ def _install_file(spec):
     return target
 
 
-
 def model_path(name="default"):
     return model_directory() / model_spec(name)['file']
 
 
 def runtime_command(port, name="default"):
-    import shutil
     spec = model_spec(name)
     executable = shutil.which('llama-server')
     if not executable:
         raise RuntimeError('本地模型运行时尚未安装，请重新运行环境安装命令。')
-    path = model_path(name)
-    if not path.is_file() or path.stat().st_size != spec['size']:
-        raise RuntimeError('本地模型尚未完整安装，请重新运行环境安装命令。')
-    if file_hash(path) != spec['sha256']:
-        raise RuntimeError('本地模型校验失败，请重新运行环境安装命令。')
-    for part in spec.get('files', []):
-        file = model_directory() / part['file']
+    directory = model_directory()
+    for part in spec.get('files', [spec]):
+        file = directory / part['file']
         if not file.is_file() or file.stat().st_size != part['size'] or file_hash(file) != part['sha256']:
-            raise RuntimeError('节奏模型分片校验失败，请重新运行环境安装命令。')
+            raise RuntimeError(f"本地模型文件缺失或校验失败：{file.name}。请重新运行环境安装命令。")
+    available = len(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else (os.cpu_count() or 4)
+    threads = os.environ.get('LLAMA_ARG_THREADS') or str(min(8, available))
+    path = directory / spec['file']
     return [executable, '--model', str(path), '--alias', spec['id'],
             '--host', '127.0.0.1', '--port', str(port),
             '--ctx-size', str(spec['context_window']), '--parallel', '1',
-            '--threads', str(min(8, os.cpu_count() or 4)), '--n-gpu-layers', '0',
+            '--threads', threads,
             '--jinja', '--reasoning', 'off', '--reasoning-format', 'deepseek',
             '--chat-template-kwargs', '{"enable_thinking":false}', '--no-warmup']
 
@@ -111,7 +108,7 @@ def provision_profile(base_url):
     profiles = cfg.read_profiles()
     previous = profiles.get(spec['id'], {})
     profile = {**previous, 'provider': 'llama_cpp', 'model': spec['id'],
-               'base_url': base_url, 'stream': True, 'supports_vision': False,
+               'base_url': base_url, 'local_only': True, 'stream': True, 'supports_vision': False,
                'context_window': spec['context_window'], 'display_name': spec['name'],
                'timeout_s': previous.get('timeout_s', 600), 'managed_by': 'novix'}
     if previous != profile:

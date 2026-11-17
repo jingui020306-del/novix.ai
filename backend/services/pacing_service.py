@@ -4,24 +4,36 @@ from collections import Counter
 import hashlib
 import json
 import logging
-import os
 import re
 import time
-from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, Field
-from typing import Literal
-from services.local_model_service import model_spec
+from typing import Literal, NamedTuple
+from rehearsal_engines.pacing_model import pacing_profile
+from services.llm_gateway import LLMGateway
 from services.planning_threads import thread_names
 from services.world_scope_service import WorldScopeService
 
 log = logging.getLogger(__name__)
-VERSION = 'pacing-2'
+VERSION = 'pacing-3'
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+class PacingScope(NamedTuple):
+    story: str
+    world: str
+    branch: str
+    narrative_pov: str
+    pov_character_id: str
+
+
+def model_identity():
+    profile = pacing_profile()
+    return digest([profile['provider'], profile['model'], profile.get('revision')])
 
 
 class Moment(BaseModel):
@@ -50,33 +62,43 @@ class PacingService:
         return [key for key in self.store.read_md(project, 'drafts/.chapter_order').splitlines()
                 if re.fullmatch(r'[\w-]{1,120}', key)]
 
-    def owner(self, project, chapter):
-        owner = WorldScopeService(self.store).resolve(project, chapter_id=chapter)['scope'].get('story_card_id', '')
-        if owner:
-            return owner
-        stories = [p.stem for p in self.store._safe_path(project, 'cards').glob('*.yaml')
-                   if self.store.read_yaml(project, f'cards/{p.name}').get('type') == 'story']
-        return stories[0] if len(stories) == 1 else ''
+    def scope(self, project, chapter):
+        world = WorldScopeService(self.store)
+        resolved = world.resolve(project, chapter_id=chapter)
+        if not resolved['scope'].get('story_card_id'):
+            stories = [path.stem for path in self.store._safe_path(project, 'cards').glob('*.yaml')
+                       if self.store.read_yaml(project, f'cards/{path.name}').get('type') == 'story']
+            if len(stories) == 1:
+                resolved = world.resolve(project, chapter_id=chapter, story_card_id=stories[0])
+        value = resolved['scope']
+        return PacingScope(value.get('story_card_id', ''), value.get('world_id', ''), value['branch_id'],
+                           resolved['narrative_pov'], value.get('pov_character_id', ''))
 
     def record(self, project, chapter):
         return self.store.read_json(project, f'meta/pacing/{chapter}.json')
 
-    def context(self, project, chapter, story):
-        prior = []
+    def history(self, project, chapter, scope, model_revision):
+        order, prior = [], []
         for key in self.chapters(project):
             if key == chapter:
                 break
-            if self.owner(project, key) != story:
+            if self.scope(project, key) != scope:
+                continue
+            order.append(key)
+            if not scope.story or (scope.narrative_pov and not scope.pov_character_id):
                 continue
             record = self.record(project, key)
-            if record.get('story') == story and record.get('source') == digest(self.store.read_md(project, f'drafts/{key}.md')):
-                prior.extend(record.get('nodes', []))
-        return prior
+            if (record.get('status') != 'ready' or record.get('scope') != list(scope) or record.get('order') != digest(order)
+                    or record.get('version') != VERSION or record.get('model_revision') != model_revision):
+                continue
+            if record.get('source') != digest(self.store.read_md(project, f'drafts/{key}.md')):
+                continue
+            prior.extend(record.get('nodes', []))
+        return digest([*order, chapter]), prior
 
-    def entities(self, project, story):
+    def entities(self, project, story, world=None):
         cards = [self.store.read_yaml(project, f'cards/{p.name}')
                  for p in self.store._safe_path(project, 'cards').glob('*.yaml')]
-        world = self.store.read_yaml(project, f'cards/{story}.yaml').get('payload', {}).get('world_context', {}).get('world_id') if story else None
         characters = [{'id': c['id'], 'name': c.get('payload', {}).get('name') or c.get('title', '')}
                       for c in cards if c.get('type') == 'character' and c.get('id')
                       and (not world or not c.get('payload', {}).get('world_context', {}).get('world_id')
@@ -85,11 +107,8 @@ class PacingService:
         threads = {key: name for c in sheets for key, name in thread_names(c.get('payload', {})).items()}
         return characters, {'main': '主线', **threads}, sheets
 
-    async def extract(self, text, previous, prior, characters, threads):
-        spec = model_spec('pacing')
-        base = os.environ.get('NOVIX_PACING_MODEL_URL', f"http://127.0.0.1:{spec['port']}")
-        if urlparse(base).hostname not in {'127.0.0.1', 'localhost', '::1'}:
-            raise ValueError('节奏分析需要本机模型地址。')
+    async def extract(self, text, previous, prior, characters, threads, viewpoint=None):
+        profile = pacing_profile()
         prompt = ('从本段原文提取明确的选择、后果、揭示、情绪变化、铺垫或余波。'
                   'quote 必须逐字复制本段连续文字，label 简洁且只描述本段。before/after 仅可逐字复制本段原句，不能复制前因描述。'
                   'audience 区分读者获知与人物获知，读者已经知道的信息仍可能是人物首次获知。'
@@ -99,144 +118,198 @@ class PacingService:
                   '只返回 JSON：{"moments":[{"kind":"选择","label":"简短描述","quote":"原句",'
                   '"audience":"未区分","character_ids":[],"thread_ids":[],"before":"","after":"",'
                   '"cause_id":"","cause_quote":""}]}。最多8项。')
+        if viewpoint:
+            prompt += '遵守所给叙述视角。读者所知仅归读者，不推定人物知情。'
         # Keep decoding grammar small; validate detailed field bounds after generation.
         schema = {'type': 'object', 'properties': {'moments': {'type': 'array', 'items': {'type': 'object'}}},
                   'required': ['moments'], 'additionalProperties': False}
-        async with httpx.AsyncClient(timeout=600, trust_env=False) as client:
-            response = await client.post(base.rstrip('/') + '/v1/chat/completions', json={
-                'model': spec['id'], 'temperature': 0, 'max_tokens': 1800, 'stream': False,
-                'response_format': {'type': 'json_schema', 'json_schema': {'name': 'moments', 'strict': True, 'schema': schema}},
-                'messages': [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': json.dumps({
-                    '本段': text, '前文': previous, '候选前因': prior, '人物': characters, '故事线': threads}, ensure_ascii=False)}]})
-            response.raise_for_status()
-            return Moments.model_validate_json(response.json()['choices'][0]['message']['content']).moments
+        messages = [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': json.dumps({
+            '本段': text, '前文': previous, '候选前因': prior, '人物': characters, '故事线': threads,
+            **({'叙述视角': viewpoint} if viewpoint else {})}, ensure_ascii=False)}]
+        reply = await LLMGateway().chat_complete(messages, profile['model'], 0, 1800, {**profile, 'format': schema})
+        return Moments.model_validate_json(reply['text']).moments
 
-    def persist(self, project, chapter, content, story, record):
+    def persist(self, project, chapter, content, scope, record, *, inputs_stamp=None):
         from services.change_suggestion_service import ChangeSuggestionService
         with ChangeSuggestionService(self.store).lock(project):
-            if content != self.store.read_md(project, f'drafts/{chapter}.md') or story != self.owner(project, chapter):
+            if content != self.store.read_md(project, f'drafts/{chapter}.md') or scope != self.scope(project, chapter):
                 return False
+            if inputs_stamp is not None:
+                if record['model_revision'] != model_identity():
+                    return False
+                if inputs_stamp != self.input_stamp(self.store._project_dir(project)):
+                    latest = self.analysis_inputs(project, chapter, content, scope, record['model_revision'])
+                    if record['basis'] != digest([VERSION, record['model_revision'], content, scope, record['block_size'], latest]):
+                        return False
             self.store.write_json(project, f'meta/pacing/{chapter}.json', record)
             return True
 
+    def analysis_inputs(self, project, chapter, content, scope, model_revision):
+        characters, threads, _ = self.entities(project, scope.story, scope.world)
+        pov_character = next((c for c in characters if c['id'] == scope.pov_character_id), None)
+        viewpoint = {'写法': scope.narrative_pov, '人物': pov_character} if scope.narrative_pov or scope.pov_character_id else None
+        characters = [c for c in characters if c == pov_character or (c['name'] and c['name'] in content)]
+        order, earlier = self.history(project, chapter, scope, model_revision)
+        prior = [self.candidate(node) for node in earlier if not scope.pov_character_id or node['audience'] != '读者']
+        return characters, threads, viewpoint, order, prior
+
     async def process(self, project, chapter):
         content = self.store.read_md(project, f'drafts/{chapter}.md')
-        story = self.owner(project, chapter)
-        characters, threads, _ = self.entities(project, story)
-        characters = [c for c in characters if c['name'] and c['name'] in content]
-        earlier = self.context(project, chapter, story) if story else []
-        order = digest(self.chapters(project))
+        scope = self.scope(project, chapter)
+        model_revision = model_identity()
+        inputs_stamp = self.input_stamp(self.store._project_dir(project))
+        inputs = self.analysis_inputs(project, chapter, content, scope, model_revision)
+        characters, threads, viewpoint, order, prior = inputs
         old = self.record(project, chapter)
         block_size = old.get('block_size', 1000)
-        basis = digest([VERSION, model_spec('pacing')['revision'], content, story, order, block_size, characters, threads, earlier])
+        basis = digest([VERSION, model_revision, content, scope, block_size, inputs])
         if old.get('basis') == basis and old.get('status') == 'ready':
+            self.retry.pop((project, chapter), None)
             return
         if self.retry.get((project, chapter), 0) > time.monotonic():
             return
         source = digest(content)
-        total = sum(1 for block in re.finditer(r'[^\r\n]+', content)
-                    for offset in range(block.start(), block.end(), block_size)
-                    if content[offset:min(offset + block_size, block.end())].strip())
-        state = {**old, 'status': 'processing', 'notice': '', 'target': source, 'progress': 0, 'total': total, 'block_size': block_size}
-        if not self.persist(project, chapter, content, story, state):
-            return
+        blocks = [(start, content[start:min(start + block_size, line.end())])
+                  for line in re.finditer(r'[^\r\n]+', content)
+                  for start in range(line.start(), line.end(), block_size)]
+        blocks = [(start, text) for start, text in blocks if text.strip()]
+        identity = {'version': VERSION, 'model_revision': model_revision, 'scope': list(scope), 'story': scope.story,
+                    'order': order, 'source': source}
+        state = {**identity, 'status': 'processing', 'notice': '', 'progress': 0, 'total': len(blocks), 'block_size': block_size}
         cache, nodes, edges = old.get('blocks', {}), [], []
-        used = {}
+        if not self.persist(project, chapter, content, scope, {**state, 'blocks': cache}):
+            return
+        used, occurrences = {}, Counter()
+        indexed = [(item, self.bigrams(item['quote'])) for item in prior]
         try:
-            for block in re.finditer(r'[^\r\n]+', content):
-                for start in range(block.start(), block.end(), block_size):
+            for start, text in blocks:
+                previous = content[max(0, start - 240):start]
+                block_characters = [c for c in characters if c['id'] == scope.pov_character_id or c['name'] in text or c['name'] in previous]
+                tokens = self.bigrams(text)
+                scored = [(sum((tokens & grams).values()), item) for item, grams in reversed(indexed)]
+                candidates = [item for score, item in sorted(scored, key=lambda pair: pair[0], reverse=True)[:6] if score]
+                key = digest([VERSION, model_revision, scope, text, previous, candidates, block_characters, threads])
+                values = cache.get(key)
+                state['progress'] += 1
+                if values is None:
                     if content != self.store.read_md(project, f'drafts/{chapter}.md'):
                         return
-                    text = content[start:min(start + block_size, block.end())]
-                    if not text.strip():
-                        continue
-                    # Retrieve a small set of earlier moments sharing text features.
-                    grams = lambda s: Counter(s[i:i + 2] for i in range(len(s) - 1))
-                    tokens = grams(text)
-                    candidates = sorted(earlier + nodes, key=lambda n: sum((tokens & grams(n['quote'])).values()), reverse=True)[:6]
-                    previous = content[max(0, start - 240):start]
-                    block_characters = [c for c in characters if c['name'] in text or c['name'] in previous]
-                    key = digest([VERSION, text, previous, candidates, block_characters, threads])
-                    values = cache.get(key)
-                    if values is None:
-                        values = [m.model_dump() for m in await self.extract(text, previous, candidates, block_characters, threads)]
+                    values = [m.model_dump() for m in await self.extract(text, previous, candidates, block_characters, threads, viewpoint)]
                     used[key] = values
-                    state['progress'] += 1
-                    if not self.persist(project, chapter, content, story, {**state, 'blocks': {**cache, **used}}):
+                    if not self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used}}):
                         return
-                    for index, value in enumerate(values):
-                        quote = value['quote']
-                        pos = text.find(quote)
-                        if pos < 0 or text.find(quote, pos + 1) >= 0:
-                            continue
-                        node_id = 'text_' + digest([chapter, start, index, quote])[:24]
-                        label = quote if any(n['label'] == value['label'] and n['quote'] != quote for n in candidates) else value['label']
-                        node = {**value, 'label': label,
-                                'before': value['before'] if value['before'] in text else '',
-                                'after': value['after'] if value['after'] in text else '',
-                                'id': node_id, 'chapter': chapter, 'offset': start + pos, 'basis': 'extracted',
-                                'character_ids': [c for c in value['character_ids'] if any(p['id'] == c for p in characters)],
-                                'thread_ids': [t for t in value['thread_ids'] if t in threads]}
-                        cause = next((n for n in candidates if n['id'] == value['cause_id'] and n['quote'] == value['cause_quote']), None)
-                        if cause:
-                            edges.append({'from': cause['id'], 'to': node_id, 'basis': 'candidate'})
-                        nodes.append(node)
-            # Recheck after inference. Results always identify their exact source revision.
-            from services.change_suggestion_service import ChangeSuggestionService
-            with ChangeSuggestionService(self.store).lock(project):
-                if content != self.store.read_md(project, f'drafts/{chapter}.md') or story != self.owner(project, chapter):
-                    return
-                self.store.write_json(project, f'meta/pacing/{chapter}.json', {
-                    'version': VERSION, 'basis': basis, 'source': source, 'story': story, 'order': order,
-                    'status': 'ready', 'block_size': block_size, 'nodes': nodes, 'edges': edges, 'blocks': used})
+                else:
+                    used[key] = values
+                for value in values:
+                    quote = value['quote']
+                    pos = text.find(quote)
+                    if pos < 0 or text.find(quote, pos + 1) >= 0:
+                        continue
+                    node_id = 'text_' + digest([chapter, scope, quote, occurrences[quote]])[:24]
+                    occurrences[quote] += 1
+                    label = quote if any(n['label'] == value['label'] and n['quote'] != quote for n in candidates) else value['label']
+                    node = {**value, 'label': label,
+                            'before': value['before'] if value['before'] in text else '',
+                            'after': value['after'] if value['after'] in text else '',
+                            'id': node_id, 'chapter': chapter, 'offset': start + pos, 'basis': 'extracted',
+                            'character_ids': [c for c in value['character_ids'] if any(p['id'] == c for p in characters)],
+                            'thread_ids': [t for t in value['thread_ids'] if t in threads]}
+                    cause = next((n for n in candidates if n['id'] == value['cause_id'] and n['quote'] == value['cause_quote']), None)
+                    if cause:
+                        edges.append({'from': cause['id'], 'to': node_id, 'basis': 'candidate'})
+                    nodes.append(node)
+                    if not scope.pov_character_id or node['audience'] != '读者':
+                        indexed.append((self.candidate(node), self.bigrams(quote)))
+            if not self.persist(project, chapter, content, scope, {
+                **identity, 'basis': basis, 'status': 'ready', 'block_size': block_size,
+                'nodes': nodes, 'edges': edges, 'blocks': used}, inputs_stamp=inputs_stamp):
+                return
             self.retry.pop((project, chapter), None)
         except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
             log.warning('Pacing analysis deferred: %s', type(exc).__name__)
             if isinstance(exc, httpx.ReadTimeout):
                 state['block_size'] = max(120, block_size // 2)
             self.retry[project, chapter] = time.monotonic() + 30
-            self.persist(project, chapter, content, story, {**state, 'blocks': {**cache, **used},
+            self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used},
                 'status': 'unavailable', 'notice': '本机节奏模型尚未就绪，后台将自动重试。'})
 
+    @staticmethod
+    def candidate(node):
+        return {key: node[key] for key in ('id', 'quote', 'label', 'after', 'audience')}
+
+    @staticmethod
+    def bigrams(text):
+        return Counter(zip(text, text[1:]))
+
+    @staticmethod
+    def input_stamp(directory):
+        # Atomic saves replace files; stat only the inputs on an idle sweep.
+        stamp = []
+        for folder, patterns in [('drafts', ('*.md', '*.meta.json', '.chapter_order')), ('cards', ('*.yaml',)),
+                                 ('canon', ('author_stages.jsonl',))]:
+            for pattern in patterns:
+                for path in sorted((directory / folder).glob(pattern)):
+                    stat = path.stat()
+                    stamp.append((path.name, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size))
+        return stamp
+
     async def run(self):
-        # Scanning also recovers interrupted work and covers generation, rollback and imports.
+        stamps = {}
         while True:
-            for directory in list(self.store.data_dir.iterdir()):
+            for directory in self.store.data_dir.iterdir():
                 if not directory.is_dir() or directory.name.startswith(('_', '.')):
                     continue
                 project = directory.name
-                for chapter in self.chapters(project):
-                    try:
-                        await self.process(project, chapter)
-                    except (ValueError, OSError, KeyError):
-                        log.exception('Pacing scan deferred for %s/%s', project, chapter)
-                    await asyncio.sleep(0)
+                try:
+                    stamp = (model_identity(), self.input_stamp(directory))
+                    due = any(pid == project and until <= time.monotonic() for (pid, _), until in self.retry.items())
+                    if stamps.get(project) == stamp and not due:
+                        continue
+                    chapters = self.chapters(project)
+                    current = set(chapters)
+                    for key in list(self.retry):
+                        if key[0] == project and key[1] not in current:
+                            self.retry.pop(key)
+                    for chapter in chapters:
+                        try:
+                            await self.process(project, chapter)
+                        except (ValueError, OSError, KeyError):
+                            self.retry[project, chapter] = time.monotonic() + 30
+                            log.exception('Pacing scan deferred for %s/%s', project, chapter)
+                        await asyncio.sleep(0)
+                    stamps[project] = stamp
+                except (OSError, ValueError):
+                    log.exception('Pacing scan deferred for %s', project)
             await asyncio.sleep(2)
 
     def graph(self, project, story):
-        characters, threads, sheets = self.entities(project, story)
+        _, threads, sheets = self.entities(project, story)
         chapters, nodes, edges = [], [], []
-        order = self.chapters(project)
-        story_count = sum(self.store.read_yaml(project, f'cards/{p.name}').get('type') == 'story'
-                          for p in self.store._safe_path(project, 'cards').glob('*.yaml'))
-        for key in order:
-            owner = self.owner(project, key)
-            if owner != story and not (not owner and story_count == 1):
+        orders = {}
+        model_revision = model_identity()
+        for key in self.chapters(project):
+            scope = self.scope(project, key)
+            if scope.story != story:
                 continue
+            order = orders.setdefault(scope, [])
+            order.append(key)
             meta = self.store.read_json(project, f'drafts/{key}.meta.json')
             content = self.store.read_md(project, f'drafts/{key}.md')
             record = self.record(project, key)
-            fresh = record.get('source') == digest(content) and record.get('story') == owner and record.get('order') == digest(order)
+            fresh = (record.get('version') == VERSION and record.get('model_revision') == model_revision
+                     and record.get('source') == digest(content) and record.get('scope') == list(scope)
+                     and record.get('order') == digest(order))
             chapters.append({'id': key, 'title': meta.get('title') or meta.get('chapter_title') or key,
                              'act': meta.get('pacing_act', ''), 'status': record.get('status', 'pending') if fresh else 'pending',
-                             'notice': record.get('notice', '') or (f"后台已拆解 {record.get('progress', 0)}/{record['total']} 段，可继续写作。" if record.get('status') == 'processing' and record.get('total') else '')})
-            if fresh:
+                             'notice': (record.get('notice', '') or (f"后台已拆解 {record.get('progress', 0)}/{record['total']} 段，可继续写作。" if record.get('status') == 'processing' and record.get('total') else '')) if fresh else ''})
+            if fresh and record.get('status') == 'ready':
                 nodes.extend(record.get('nodes', []))
                 edges.extend(record.get('edges', []))
+        chapter_ids = {c['id'] for c in chapters}
         for sheet in sheets:
             scenes = sheet.get('payload', {}).get('important_scenes', [])
             for scene in scenes:
-                if scene.get('chapter') and scene['chapter'] not in {c['id'] for c in chapters}:
+                if scene.get('chapter') and scene['chapter'] not in chapter_ids:
                     continue
                 identity = f"{sheet['id']}:{scene.get('id')}"
                 nodes.append({'id': identity, 'label': scene.get('scene') or scene.get('plot') or '待定场景',

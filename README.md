@@ -8,7 +8,7 @@ Novix 是一款本地小说写作工作台。你可以先安排故事、人物�
 
 ## 环境配置
 
-完整包可从 [Releases](https://github.com/jingui020306-del/novix.ai/releases) 下载，其中预装了权重；首次安装仍需联网配置环境。
+[Releases](https://github.com/jingui020306-del/novix.ai/releases) 提供含两份模型权重的完整包。将同一版本的 `novix-local.7z.001`、`.002` 等全部分卷下载到同一目录，用 7-Zip 打开第一卷并解压。首次安装仍需联网配置环境。
 
 先安装 [Miniforge 或 Miniconda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)，在本仓库点 **Code → Download ZIP** 并解压。在包含 `start.py` 的目录打开终端。Windows 可使用 Miniforge Prompt 或 Anaconda Prompt。
 
@@ -39,10 +39,20 @@ conda run --no-capture-output -n novix python start.py --prod
 
 默认本地模型可直接用于文字创作，无需密钥。「模型设置 → 本地模型」可查看加载状态和权重位置。轻量模型适合起步，长篇复杂写作可在此接入更强模型；图片识别需要另配视觉模型。
 
+安装器允许 Conda 根据驱动选择兼容的 llama.cpp 构建。启动器依次加载两个模型，由运行时按可用显存分配 GPU 层；CPU 推理默认最多使用 8 个可用线程。进入 `novix` 环境后运行 `llama-server --list-devices` 可检查 CUDA、Metal 或 Vulkan 设备。已有 NVIDIA 环境如仍使用 CPU 构建，可执行 `conda install -n novix -c conda-forge "llama.cpp=12418=cuda*"`。需要固定 CPU 线程或关闭 GPU 卸载时，分别设置环境变量 `LLAMA_ARG_THREADS` 或 `LLAMA_ARG_DEVICE=none`。
+
 1. 打开左侧 **作品工具 → 模型设置 → 添加与管理模型**。纯手动写作可以直接开始。
 2. 选择服务商，填写自定义的「配置名称」和服务商提供的「模型名称」。云端 API 通常可沿用预设服务地址，再填自己的 API 密钥。使用本地 Ollama 时，先启动服务并下载模型，地址填 `http://127.0.0.1:11434`，模型名称照抄 `ollama list` 的结果。
 3. 点击 **保存模型**，在 **任务使用哪个模型** 里把配置分配给「正文写作」「正文审查」或「润色与改写」。同一个模型可以承担多项任务。
 4. 验证润色时，进入 **卷与章**，选一小段正文并预览候选。看到真实模型返回的文字即完成连通验证。「模拟预览」用于体验界面。
+
+Conda 启动时，「节奏编排」的总纲、段落标注和「线路与正文」的自动拆解共用同一份 Qwen2.5-7B。沿用独立后端和本机 Ollama 的用户可启动 Ollama，再运行以下命令准备 `qwen2.5:7b`。
+
+```bash
+conda run --no-capture-output -n novix python backend/rehearsal_engines/install.py pacing
+```
+
+也可用 `docker compose up --build` 安装包含排演环境和 Ollama 节奏模型的版本，完成后打开 `http://127.0.0.1:8000`；正文模型在设置中另行配置。首次需要联网下载依赖和节奏模型，作品仍保存在仓库的 `data` 目录。
 
 ## 使用技巧
 

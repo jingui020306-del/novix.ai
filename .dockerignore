@@ -1,0 +1,15 @@
+**
+!frontend/
+!frontend/**
+!backend/
+!backend/**
+!models/
+!models/default.json
+!models/pacing.json
+frontend/node_modules
+frontend/dist
+backend/static_dist
+backend/tests
+**/__pycache__
+**/bin/Debug
+**/obj

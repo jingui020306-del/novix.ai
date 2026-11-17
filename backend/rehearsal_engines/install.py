@@ -1,13 +1,17 @@
 """Install the pinned local rehearsal engines. Run this file from the project root."""
 import argparse
 import hashlib
+import json
+import sys
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
-from runtime import FATIMA, HERE, SABRE, engine_dir, fatima_dll, sabre_jar
+from pacing_model import OLLAMA_URL, PACING_MODEL
+from runtime import FATIMA, HERE, SABRE, availability, engine_dir, fatima_dll, sabre_jar
 
 
 def install_sabre(staging):
@@ -35,10 +39,31 @@ def install_fatima(staging, work):
     shutil.copy(source / 'License.txt', staging / 'FAtiMA-License.txt')
 
 
+def install_pacing():
+    local = build_opener(ProxyHandler({}))
+    def request(action):
+        payload = json.dumps({'model': PACING_MODEL, 'stream': False}).encode()
+        return Request(f'{OLLAMA_URL}/api/{action}', payload, {'Content-Type': 'application/json'})
+    try:
+        with local.open(request('show'), timeout=20):
+            return
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+    print(f'正在安装本地模型 {PACING_MODEL}…', flush=True)
+    with local.open(request('pull'), timeout=3600) as response:
+        if json.load(response).get('status') != 'success':
+            raise RuntimeError('Ollama 未完成模型安装。')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('engines', choices=['sabre', 'fatima', 'all'], nargs='?', default='all')
-    choice = parser.parse_args().engines
+    parser.add_argument('engines', choices=['sabre', 'fatima', 'pacing', 'all'], nargs='?', default='all')
+    parser.add_argument('--skip-pacing', action='store_true', help='Use the model managed by the launcher.')
+    args = parser.parse_args()
+    choice = args.engines
+    if choice in ('all', 'fatima') and not shutil.which('dotnet'):
+        sys.exit('本地组件未就绪：请先安装 .NET 8 SDK，再运行安装程序。')
     root = engine_dir()
     root.mkdir(parents=True, exist_ok=True)
     for name, target in [('sabre', sabre_jar()), ('fatima', fatima_dll())]:
@@ -58,3 +83,12 @@ if __name__ == '__main__':
                 if not target.is_file():
                     raise
         print('Installed', name, target)
+    if choice == 'all':
+        missing = [name for name, ready in availability().items() if not ready]
+        if missing:
+            sys.exit('未就绪的必需排演组件：' + '、'.join(missing) + '。请检查 Node 20+、Java 21+、.NET 8。')
+    if choice in ('pacing', 'all') and not args.skip_pacing:
+        try:
+            install_pacing()
+        except (OSError, RuntimeError, ValueError) as exc:
+            sys.exit(f'节奏模型安装失败。请先启动本机 Ollama 后重试：{exc}')

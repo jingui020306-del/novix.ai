@@ -39,7 +39,8 @@ def prepare_app():
     subprocess.run([npm, 'run', 'build:static'], cwd=frontend, check=True)
     subprocess.run([sys.executable, ROOT / 'scripts/setup_local_model.py'], cwd=ROOT, check=True)
     install_word_reader()
-    subprocess.run([sys.executable, ROOT / 'backend/rehearsal_engines/install.py'], cwd=ROOT, check=True)
+    for engine in ('sabre', 'fatima'):
+        subprocess.run([sys.executable, ROOT / 'backend/rehearsal_engines/install.py', engine], cwd=ROOT, check=True)
 
 
 def main():
