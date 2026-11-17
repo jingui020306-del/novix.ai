@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from services.authoring_service import AuthoringService
+from services.character_formation import FormationRequest, propose as propose_formation
 from services.writing_run_service import WritingRunService
 from services.knowledge_graph_service import KnowledgeGraphService
 from services.story_planning_service import StoryPlanningService
@@ -255,6 +256,16 @@ async def propose_story_planning(project_id: str, body: PlanningRequest, svc: Au
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(502, '模型调用失败，请检查模型设置后重试。') from exc
+
+
+@router.post('/cards/character-formation')
+async def character_formation(project_id: str, body: FormationRequest, svc: AuthoringService = Depends(get_authoring)):
+    try:
+        return await propose_formation(svc, project_id, body)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, '本地人物模型未完成生成，请检查模型连接。') from exc
 
 
 @router.post('/cards/generate-field')

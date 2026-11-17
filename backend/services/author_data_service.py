@@ -566,6 +566,14 @@ class AuthorDataService:
             for row in snapshot['relations'] if all(person['entity_id'] in visible for person in row['state']['participants'])]
         return {**snapshot, 'relations': relations, 'relationships': relations, 'uncertainties': snapshot['warnings']}
 
+    def relationships_at(self, project_id, scope):
+        for relation in self.relationships(project_id):
+            if not self.world.applies(project_id, relation.get('scope'), scope)[0]:
+                continue
+            stages, _ = self._active_stages(project_id, 'relationship', relation['id'], scope)
+            state, conflicts = self._apply_changes(project_id, {key: relation[key] for key in ['label', 'participants', 'direction', 'notes']}, stages)
+            yield {**relation, 'state': state, 'stages': stages, 'uncertainties': conflicts}
+
     def author_state(self, project_id, **scope_args):
         resolved = self.world.resolve(project_id, **scope_args)
         scope = resolved['scope']
@@ -586,13 +594,7 @@ class AuthorDataService:
                 uncertain.extend(conflicts)
                 state, local_changes = self.world.apply_overrides(project_id, card, state, scope)
                 worlds.append({'id': card['id'], 'base': card, 'state': state, 'changes': changes, 'local_changes': local_changes, 'uncertainties': uncertain, 'sources': [{'path': source}, *[{'path': STAGES_PATH, 'record_id': row['id']} for row in changes]]})
-        relations = []
-        for relation in self.relationships(project_id):
-            if not self.world.applies(project_id, relation.get('scope'), scope)[0]:
-                continue
-            stages, _ = self._active_stages(project_id, 'relationship', relation['id'], scope)
-            state, conflicts = self._apply_changes(project_id, {key: relation[key] for key in ['label', 'participants', 'direction', 'notes']}, stages)
-            relations.append({**relation, 'state': state, 'stages': stages, 'uncertainties': conflicts})
+        relations = list(self.relationships_at(project_id, scope))
         events = []
         for event in self.events(project_id, scope.get('story_card_id')):
             event_scope = event['values'].get('world_context') or {}
