@@ -490,8 +490,29 @@ class MaterialImportService:
         return result
 
     @staticmethod
+    def labeled_card(text):
+        """Only a whole unit of explicit fields can bypass semantic extraction."""
+        line = text.strip()
+        fields = re.fullmatch(r'姓名[：:][ \t]*([^\s：:][^：:\r\n]{0,79}?)[ \t]*\r?\n[ \t]*身份[：:][ \t]*([^\s：:][^：:\r\n]{0,199})', line)
+        if fields:
+            kind, label = 'character', fields[1].strip()
+            values = {'name': label, 'identity': fields[2].strip()}
+        else:
+            title = re.fullmatch(r'(?:书名|作品名)[：:][ \t]*(?:《([^《》\r\n]{1,100})》|([^《》\r\n]{1,100}))', line)
+            if not title or not (title[1] or title[2]).strip():
+                return None
+            kind, label = 'story', (title[1] or title[2]).strip()
+            values = {'title': label}
+        return {'kind': kind, 'label': label, 'values': values, 'evidence': [{'quote': line}]}
+
+    @staticmethod
     def _local_candidates(record):
         text = record['cleaned_text']
+        direct = MaterialImportService.labeled_card(text)
+        if direct:
+            if not any(text.strip() in source.get('original_text', '') for source in MaterialImportService._sources(record)):
+                direct.update(provenance='author_edit', evidence=[])
+            return [direct]
         labels = {'故事摘要': ('story', 'logline'), '核心冲突': ('story', 'main_conflict'), '主题': ('story', 'theme'), '时代': ('world', 'era'), '基础规则': ('world', 'rules')}
         candidates = []
         for line in text.splitlines():
