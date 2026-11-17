@@ -29,6 +29,7 @@ import { WritingReferenceNotice, WritingReferencePanel, WritingReferencePicker }
 import { StoryPlanningTables } from '../components/StoryPlanningTables'
 import { MaterialReferences, OpenMaterial } from '../components/MaterialReferences'
 import { BookOverview } from '../components/BookOverview'
+import { SuspensePanel } from '../components/SuspensePanel'
 import { WorldWiki } from '../components/WorldWiki'
 import { NameReferences } from '../components/MaterialDiscovery'
 import { CharacterDetails, CharacterDetailFocus } from '../components/CharacterDetails'
@@ -3497,6 +3498,7 @@ export default function App() {
     }
 
     if (view === 'story') {
+      const savedPlan = (Array.isArray(storyCards) ? storyCards : []).find((card: any) => card.id === storyForm.id)?.payload
       const storyTab = storyPlanningTab === 'Stages' ? 'Lines' : storyPlanningTab
       return (
         <div className='story-workspace'>
@@ -3509,6 +3511,8 @@ export default function App() {
           <nav className='story-task-nav' aria-label='作品总览'>{[['Overview','概览'],['Outline','全书构想'],['Preferences','作品设定']].map(([id,label]) => <button key={id} aria-current={storyTab === id ? 'page' : undefined} onClick={() => setStoryPlanningTab(id)}>{label}</button>)}</nav>
           {storyTab === 'Preferences' && <Button onClick={() => setView('style')}>文风与样文</Button>}
           {storyTab === 'Outline' && <label className='story-field-label'>全书构想<Textarea className='novix-outline' value={storyPayload.full_outline || ''} onChange={e => updateStoryPayload('full_outline', e.target.value)} /></label>}
+          {storyTab === 'Outline' && <SuspensePanel key={`${project}:${storyForm.id}:${savedPlan?.world_context?.world_id || ''}:${savedPlan?.world_context?.branch_id || ''}`} project={project} storyId={storyForm.id} branch={savedPlan?.world_context?.branch_id} worldId={savedPlan?.world_context?.world_id} foreshadowings={savedPlan?.foreshadowings}
+            openChapter={id => { setSelectedChapter(id); setChapterPane('本章安排'); setActiveActivity('explorer'); setView('chapter') }} />}
           {storyTab === 'Overview' && <BookOverview project={project} cards={Array.isArray(allCards) ? allCards : []}
             events={Array.isArray(overviewEvents) ? overviewEvents : []} story={storyPayload}
             onPicture={key => updateStoryPayload('overview_picture', key)} onOpenMaterial={openMaterial}
@@ -3939,6 +3943,9 @@ export default function App() {
             editorSnapshotRef.current.metaRevision = result.meta_revision; alignmentSavedRef.current.revision = result.meta_revision; void mutateDraft()
           }} />
             <AuthorControls key={`${project}:${selectedChapter}:bodylock`} project={project} target={`drafts/${selectedChapter}.md`} label='正文' value={chapterEditorText} revision={draft?.revision} dirty={chapterEditorText !== draft?.content} onChanged={(content, result) => { setChapterEditorText(content); editorSnapshotRef.current.revision = result.base_revision; void mutateDraft(); void mutateVersions() }} />
+          <SuspensePanel key={`${chapterScopeKey}:${storyForm.id}:${currentChapterMeta.world_context?.branch_id || ''}`} project={project} storyId={storyForm.id}
+            chapter={{ id: selectedChapter, revision: draft?.revision, dirty: chapterEditorText !== draft?.content, profileId: useAgentAssignments ? undefined : llmProfileId,
+              openOutline: () => { setActiveActivity('story'); setView('story'); setStoryPlanningTab('Outline') } }} />
           <WritingRunPanel project={project} hasUnsavedChanges={chapterEditorText !== (draft?.content || '') || Boolean(pendingChapterReferences || pendingChapterMaterials)} onProgress={refreshWritingOutputs} />
           <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>本章准备、场景安排与写法</summary><div className='mt-4'>
           {alignmentLocal.recovery && <div className='mb-4 space-y-2'><p className='text-sm'>找到本章尚未保存的补充与写法。</p><div className='flex gap-2'><Button onClick={alignmentLocal.restore}>恢复本章写法</Button><Button variant='ghost' onClick={alignmentLocal.dismiss}>保留保存版</Button></div></div>}

@@ -7,6 +7,7 @@ from services.writing_reference_service import WritingReferenceService
 from services.world_scope_service import WorldScopeService
 from services.author_data_service import AuthorDataService, STAGES_PATH
 from services.information_service import InformationService, REGISTRY_PATH
+from services.suspense_service import SuspenseService
 from services.character_detail_service import strip_author_only, select_character_details
 from services.material_reference_service import MaterialReferenceService, references as source_references, paragraph_references, effective_provenance
 
@@ -123,8 +124,23 @@ class ContextPackService:
         add('文风要求', fixed.get('style_guide', {}), 'cards/style_001.yaml', 'style_001', required=True)
         rehearsals = manifest.get('scene_rehearsals', {})
         rehearsal_dependencies = {STAGES_PATH, 'drafts/.chapter_order'}
-        information = manifest.get('information_materials') or InformationService(self.store).materials(
-            project_id, scope, actor_ids=requirements.get('场景', {}).get('cast', []), max_chars=min(5000, max_chars // 3))
+        story = scope.get('story_card_id')
+        suspense_ids = set()
+        reader_offset = manifest.get('reader_offset', len(current_end))
+        if story:
+            suspense = SuspenseService(self.store).chapter_context(
+                project_id, story, chapter_id, scope.get('branch_id'), reader_offset=reader_offset)
+            rehearsal_dependencies.update(suspense['sources'])
+            suspense_ids.update(suspense['information_ids'])
+            if suspense['items'] and control.get('include_lines') is not False:
+                add('悬念安排与读者已见原文', suspense['items'], item_id='suspense_context', required=True)
+                body['阅读边界'] += '悬念引文只表示读者已见，不代表人物知情。setup 提出疑问，response 回应已有线索；谜底未获本章授权时保留未知。'
+        info = InformationService(self.store)
+        protected_facts = {row['fact_ref'] for row in info.list(project_id)
+                           if row['id'] in suspense_ids and row.get('fact_ref')} if suspense_ids else set()
+        info_limit = 4000 if 'reader_offset' in manifest else min(5000, max_chars // 3)
+        information = info.materials(project_id, scope, actor_ids=requirements.get('场景', {}).get('cast', []),
+            max_chars=info_limit, suspense_ids=suspense_ids, reader_chapter_id=chapter_id, reader_offset=reader_offset)
         if information.get('omitted_count'):
             raise ValueError('本场关键的信息边界超过取材预算，请减少关联信息或扩大本次范围，不能静默丢弃认知限制。')
         for source in information.get('sources', []):
@@ -276,6 +292,8 @@ class ContextPackService:
                 effective_provenance(material_items[-1], effective, scope=scope)
 
         for fact in event_context.get('facts', []) if event_context.get('scene_ref') else linked.get('facts', []):
+            if fact.get('record', fact).get('id') in protected_facts:
+                continue
             value = fact if event_context.get('scene_ref') else at_this_chapter(fact)
             if not scope_service.fact_visible(project_id, fact.get('record', fact), scope):
                 dropped += 1
@@ -346,10 +364,14 @@ class ContextPackService:
             if str(source.get('path') or '').startswith('assets/') and not source.get('card_id'):
                 # Raw imports lack formal world/time/knowledge applicability; author browsing remains available.
                 continue
-            if source.get('path') in {'canon/facts.jsonl', 'canon/revisions.jsonl', STAGES_PATH}:
+            source_path = str(source.get('path') or '').split('#', 1)[0]
+            if source_path in {'canon/facts.jsonl', 'canon/revisions.jsonl', STAGES_PATH, REGISTRY_PATH}:
                 continue
-            if source.get('card_id'):
-                source_card = self.store.read_yaml(project_id, f"cards/{source['card_id']}.yaml")
+            card_path = f"cards/{source['card_id']}.yaml" if source.get('card_id') else source_path
+            if card_path.startswith('cards/') and card_path.endswith('.yaml'):
+                source_card = self.store.read_yaml(project_id, card_path)
+                if source_card.get('type') == 'story' and any(source_card.get('payload', {}).get(key) for key in ('hidden_line', 'foreshadowings')):
+                    continue
                 if not scope_service.card_visible(project_id, source_card, scope):
                     continue
                 if strip_author_only(source_card.get('payload', {})) != source_card.get('payload', {}):
@@ -431,7 +453,7 @@ class ContextPackService:
         citations = [{'id': meta['id'], 'source': meta['source']} for _, meta in selected_pairs if meta['source']]
         versions = dict(expanded['source_versions'])
         for source in {citation['source'].split('#', 1)[0] for citation in citations} | rehearsal_dependencies:
-            if source.startswith(('cards/', 'drafts/', 'canon/')):
+            if source.startswith(('cards/', 'drafts/', 'canon/', 'sessions/suspense/')):
                 path = self.store._safe_path(project_id, source)
                 versions[source] = hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest()
         report = {'ready': not overflow, 'overflow': overflow, 'items': [meta for _, meta in selected_pairs], 'required_chars': required_chars,

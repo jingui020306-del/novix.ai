@@ -304,7 +304,29 @@ class JobManager:
                 story = choices[0]
         def linked(section: str) -> list[dict[str, Any]]:
             rows = story.get(section, []) or []
-            return [r for r in rows if r.get("chapter") == chapter_id or r.get("chapter_id") == chapter_id or r.get("first_chapter") == chapter_id or r.get("payoff_chapter") == chapter_id]
+            positions = ('chapter', 'chapter_id', 'first_chapter', 'payoff_chapter')
+            if section == 'hidden_line':
+                positions += ('reveal_chapter', 'reveal_timing')
+            result = []
+            for row in rows:
+                if not isinstance(row, dict) or not any(row.get(key) == chapter_id for key in positions):
+                    continue
+                if section == 'foreshadowings':
+                    # The setup can show the surface clue. Only its payoff chapter gets the planned reveal.
+                    fields = ['id', 'surface_signal']
+                    if row.get('payoff_chapter') == chapter_id:
+                        fields += ['payoff', 'true_meaning']
+                elif section == 'hidden_line':
+                    fields = ['visible_hint']
+                    if chapter_id in (row.get('reveal_chapter'), row.get('reveal_timing')):
+                        fields += ['truth', 'hidden_meaning']
+                else:
+                    result.append(row)
+                    continue
+                visible = {key: row[key] for key in fields if row.get(key)}
+                if visible:
+                    result.append(visible)
+            return result
 
         return {
             'scope': 'author_plan',

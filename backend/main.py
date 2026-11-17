@@ -25,7 +25,7 @@ from services.writing_run_service import WritingRunService
 from storage.fs_store import FSStore
 from routers import author_controls, information, trials
 from routers import material_index, world_library, card_operations
-from routers import family
+from routers import family, suspense
 
 DATA_DIR = BACKEND_DIR.parents[0] / 'data'
 store = FSStore(DATA_DIR)
@@ -105,6 +105,7 @@ app.include_router(material_index.router)
 app.include_router(world_library.router)
 app.include_router(card_operations.router)
 app.include_router(family.router)
+app.include_router(suspense.router)
 app.include_router(material_imports.router)
 app.include_router(scene_rehearsals.router)
 app.include_router(character_images.router)
