@@ -2,41 +2,63 @@ name: release-package
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'models/default.json'
+      - 'scripts/setup_local_model.py'
+      - 'scripts/setup_env.py'
+      - 'backend/services/local_model_service.py'
+      - 'environment.yml'
+      - 'start.py'
+      - '.github/workflows/release-package.yml'
     tags:
       - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  package-linux:
+  package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
+          node-version: '22'
       - name: Build frontend static bundle
         run: |
           cd frontend
-          npm ci
+          npm install --no-audit --no-fund
           npm run build:static
-
-      - name: Build release archive
+      - name: Download and verify bundled model
+        run: python scripts/setup_local_model.py
+      - name: Build full source archive
         run: |
           mkdir -p release/novix
-          cp -r backend release/novix/backend
-          cp -r data release/novix/data
-          cp start.py start.sh start.bat README.md release/novix/
-          cp -r docs release/novix/docs
+          git archive HEAD | tar -x -C release/novix
+          cp -r backend/static_dist release/novix/backend/
+          cp models/*.gguf models/MODEL-LICENSE release/novix/models/
           cd release
-          zip -r novix-${GITHUB_REF_NAME}-linux.zip novix
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          zip -0qr novix-local.zip novix
+      - uses: actions/upload-artifact@v4
         with:
-          name: novix-${{ github.ref_name }}-linux
-          path: release/novix-${{ github.ref_name }}-linux.zip
+          name: novix-local
+          path: release/novix-local.zip
+          compression-level: 0
+      - name: Attach full package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            release_tag="local-${GITHUB_SHA:0:7}"
+          fi
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release upload "$release_tag" release/novix-local.zip --clobber
+          else
+            gh release create "$release_tag" release/novix-local.zip --target "${GITHUB_SHA}" --title "Novix 本地模型版 · $release_tag" --generate-notes
+          fi
