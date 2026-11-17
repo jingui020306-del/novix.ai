@@ -105,6 +105,13 @@ class MaterialReferenceService:
             if not self.world.card_visible(project, card, scope):
                 raise ValueError('来源不适用当前世界、分支或故事时间。')
             payload = card.get('payload', {})
+            protected = {'hidden_line', 'foreshadowings'} if card.get('type') == 'story' else set()
+            if 'information_registry' in payload:
+                protected.add('information_registry')
+            if protected.intersection(payload):
+                if fragment.removeprefix('payload.').split('.')[0] in protected:
+                    raise ValueError('暗线、伏笔和信息底稿请按章节取用已授权部分。')
+                payload = {key: value for key, value in payload.items() if key not in protected}
             if payload.get('canon_status') in {'hypothesis', 'inspiration'} or payload.get('confirmation_status') in {'pending', 'pending_author_review'}:
                 raise ValueError('来源尚未确认，不能作为本次正式依据展开。')
             if scope.get('pov_character_id') and payload.get('known_by') and scope['pov_character_id'] not in payload['known_by']:

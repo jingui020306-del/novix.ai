@@ -315,7 +315,7 @@ class InformationService:
             result.update(card.get('payload', {}).get('information_ids', []) or [])
         return result
 
-    def materials(self, project_id, scope, *, for_review=False, reader_chapter_id=None, reader_offset=None, information_ids=None, actor_ids=(), max_chars=5000):
+    def materials(self, project_id, scope, *, for_review=False, reader_chapter_id=None, reader_offset=None, information_ids=None, actor_ids=(), max_chars=5000, suspense_ids=()):
         if information_ids is None:
             cards = [*actor_ids, *([scope['story_card_id']] if scope.get('story_card_id') else [])]
             information_ids = self.selected_ids(project_id, chapter_id=scope.get('chapter_id'), event_ref=scope.get('event_ref'), card_ids=cards)
@@ -332,7 +332,12 @@ class InformationService:
         pov = scope.get('pov_character_id')
         for item in snapshot['items']:
             awareness = [row for row in item['awareness'] if (not pov or row['data'].get('character_id') == pov) and row.get('current') is not False]
-            if pov and not for_review:
+            if item['id'] in suspense_ids and not for_review:
+                # The suspense packet carries the reader's exact excerpts. The writer can
+                # respect a character's knowledge boundary without seeing the hidden answer.
+                entry = {'id': item['id'], 'awareness': [{key: row['data'][key] for key in ('character_id', 'state') if key in row['data']}
+                                                        for row in awareness]}
+            elif pov and not for_review:
                 def limited(row):
                     data = copy.deepcopy(row['data'])
                     if row['record_type'] == 'expression' and data.get('speaker_id') != pov:
@@ -341,14 +346,11 @@ class InformationService:
                             'source': {'path': STAGES_PATH, 'record_id': row['id']}}
                 entry = {'id': item['id'], 'awareness': [limited(row) for row in awareness], 'expressions': [limited(row) for row in item['expressions'] if pov == row['data'].get('speaker_id') or pov in row['data'].get('heard_by', [])]}
                 # Values come from the person's actual belief; never substitute the truth registry.
+                entry['reader_boundary'] = [{key: row['data'][key] for key in ('chapter_id', 'mode') if key in row['data']} for row in item['reader_disclosures']]
             else:
                 entry = {key: item[key] for key in ['id', 'label', 'truth_status', 'truth_value', 'occurrences', 'expressions', 'awareness', 'reader_disclosures', 'planned', 'review_decisions']}
                 if not for_review:
                     entry.pop('planned', None)
-            if for_review or not pov:
-                entry['reader_disclosures'] = item['reader_disclosures']
-            else:
-                entry['reader_boundary'] = [{key: row['data'][key] for key in ['chapter_id', 'mode'] if key in row['data']} for row in item['reader_disclosures']]
             result['items'].append(entry)
             if len(json.dumps(result, ensure_ascii=False)) > max_chars - 50:
                 result['items'].pop()

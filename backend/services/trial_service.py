@@ -8,7 +8,6 @@ from difflib import unified_diff
 from services.author_data_service import AuthorDataService
 from services.context_pack_service import ContextPackService
 from services.edit_version_service import check_revision, revision
-from services.information_service import InformationService
 from services.knowledge_graph_service import KnowledgeGraphService
 from services.token_usage import summarize_usage
 from services.world_scope_service import WorldScopeService, entity_id
@@ -154,10 +153,9 @@ class TrialService:
             direction = body.get('scene_direction') or self.store.read_json(project_id, f'drafts/{chapter}.meta.json').get('writing_alignment', {}).get('scene_direction', {})
             guidance = prose_guidance(direction)
             linked = KnowledgeGraphService(self.store).materials(project_id, chapter, {'world_context': scope}, world_context=scope, scene_ref=scope.get('event_ref'), max_chars=8000)
-            materials = InformationService(self.store).materials(project_id, scope, reader_chapter_id=chapter, reader_offset=value['target_range']['start'], max_chars=4000)
             controls = {**body.get('generation_control', {}), 'world_context': scope}
             manifest = {'author_scope': {'scope': scope, 'narrative_pov': value.get('narrative_pov', ''), 'sources': [], 'warnings': []},
-                'linked_materials': linked, 'generation_control': controls, 'information_materials': materials}
+                'linked_materials': linked, 'generation_control': controls, 'reader_offset': value['target_range']['start']}
             limit = body.get('context_max_chars', 20000)
             if isinstance(limit, bool) or not isinstance(limit, int) or not 4000 <= limit <= 100000:
                 raise ValueError('试写取材范围须为4000至100000字符。')
