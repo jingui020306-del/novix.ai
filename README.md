@@ -30,7 +30,7 @@ conda run --no-capture-output -n novix python start.py --prod
 
 | 使用方式 | 建议配置 |
 | --- | --- |
-| 本地写作、场景推演、调用云端 API | 64 位 Windows、macOS 或 Linux，4 核 CPU、8 GB 内存，预留 12 GB 磁盘空间。使用普通浏览器即可，无需独立显卡。 |
+| 本地写作、场景推演、调用云端 API | 64 位 Windows、macOS 或 Linux，4 核 CPU、8 GB 内存，预留 20 GB 磁盘空间。使用普通浏览器即可，无需独立显卡。 |
 | 在本机运行语言模型 | 默认轻量模型可使用 CPU，建议 16 GB 内存。更大模型按其权重和上下文长度准备内存或显存。 |
 
 表中数值是安装和日常使用的建议。大量导入图片、地图或 PDF 时，请另外预留作品空间。
