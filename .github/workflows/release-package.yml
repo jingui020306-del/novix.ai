@@ -6,6 +6,7 @@ on:
     paths:
       - 'models/default.json'
       - 'scripts/setup_local_model.py'
+      - 'scripts/setup_chiron.sh'
       - 'scripts/setup_env.py'
       - 'backend/services/local_model_service.py'
       - 'environment.yml'

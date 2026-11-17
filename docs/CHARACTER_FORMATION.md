@@ -53,7 +53,7 @@ AutoTokenizer.from_pretrained("google-t5/t5-large").save_pretrained("/models/glu
 
 | 工具 | 作用与入口 |
 | --- | --- |
-| [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | [Novix 本地发行包](https://github.com/jingui020306-del/novix.ai/releases/tag/local-3ec2e57)内已有的中文模型。可直接从所给材料提出人物理解，也负责把 CHIRON 的保留结果整理为中文候选。每条候选可查看所选原文。 |
+| [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | [Novix 本地发行包](https://github.com/jingui020306-del/novix.ai/releases/latest)内已有的中文模型。可直接从所给材料提出人物理解，也负责把 CHIRON 的保留结果整理为中文候选。每条候选可查看所选原文。 |
 | [CHIRON 官方代码](https://github.com/Alex-Gurung/CHIRON/tree/68ebec21202381f58665866e94f3338a851f263a) | 选择「CHIRON · 原文核验后用中文整理」。按原项目顺序运行片段提问、陈述简化、推理、核验打分与去重。仅把保留陈述及对应原文交给 Qwen。四个层面属于 Novix 的整理方式，核验分数针对上游陈述。 |
 | [FAtiMA Toolkit](https://github.com/GAIPS/FAtiMA-Toolkit) | 在人物细节填适用处境、可见行动及事件对目标的影响。保存后，双人排演在处境匹配、对方观察到行动时，用已确认的评价计算情绪。已手填的排演设置优先。「隐藏自我」默认仅作者可见。 |
 
