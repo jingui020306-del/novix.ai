@@ -19,7 +19,7 @@ from services.prose_strategy_service import prose_guidance, BASE_RULES
 from services.character_detail_service import strip_author_only
 
 ADDRESS_GUIDANCE = '遵守人物已保存的性别、代词、称呼说明和世界称谓通则；人物关系address_as表示当前人物如何称呼target，不能反用。不从外貌、ABO分类或性别推断亲属与称呼，未知时用姓名或保留未知。'
-RUNTIME_META = {'chapter_status', 'technique_brief', 'technique_checklist', 'writing_scene', 'context_manifest', 'updated_at', 'chapter_id'}
+RUNTIME_META = {'chapter_status', 'technique_brief', 'technique_checklist', 'writing_scene', 'context_manifest', 'updated_at', 'chapter_id', 'canon_extraction_coverage'}
 
 
 def source_version(store, project, source):

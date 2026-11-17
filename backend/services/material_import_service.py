@@ -18,12 +18,43 @@ from services.material_reader_service import MAX_TEXT, normalize_text, read_file
 from services.token_usage import summarize_usage
 from storage.fs_store import now_iso
 
-KINDS = {'story', 'character', 'world', 'relationship', 'event', 'worksheet', 'fact', 'style'}
+KINDS = {'story', 'character', 'world', 'relationship', 'event', 'worksheet', 'fact', 'style', 'information', 'information_record'}
 PURPOSES = {'story', 'world', 'relations', 'style'}
 _TASKS = {}
 _BOOT_ID = uuid.uuid4().hex
 _MISSING = object()
 PROVENANCE = {'material_fact', 'character_statement', 'inference', 'ai_addition', 'author_edit'}
+
+
+class _PlannedStore:
+    """Pure validation sees this batch's planned objects before the journal writes them."""
+    def __init__(self, store, files, appends):
+        self.store, self.files, self.appends = store, files, appends
+
+    def __getattr__(self, name):
+        return getattr(self.store, name)
+
+    def read_yaml(self, project_id, path):
+        return copy.deepcopy(self.files[path] or {}) if path in self.files else self.store.read_yaml(project_id, path)
+
+    def read_json(self, project_id, path):
+        return copy.deepcopy(self.files[path] or {}) if path in self.files else self.store.read_json(project_id, path)
+
+    def read_jsonl(self, project_id, path):
+        return [*self.store.read_jsonl(project_id, path), *copy.deepcopy(self.appends.get(path, []))]
+
+    def _safe_path(self, project_id, path):
+        actual = self.store._safe_path(project_id, path)
+        if path != 'cards':
+            return actual
+        files = self.files
+        class Directory:
+            def __getattr__(self, name):
+                return getattr(actual, name)
+
+            def glob(self, pattern):
+                return sorted({*(path for path in actual.glob(pattern) if files.get('cards/' + path.name, {}) is not None), *(actual / Path(source).name for source, value in files.items() if value is not None and source.startswith('cards/') and Path(source).match('cards/' + pattern))})
+        return Directory()
 
 
 def _json(value):
@@ -365,6 +396,8 @@ class MaterialImportService:
         lookup_scope = world.resolve(project_id, world_context=context, story_card_id=record.get('story_card_id'))['scope'] if context or record.get('story_card_id') else None
         from services.author_data_service import AuthorDataService
         events = AuthorDataService(self.store).events(project_id, record.get('story_card_id') or None)
+        from services.information_service import InformationService
+        saved_information = InformationService(self.store).list(project_id)
         result, seen = [], set()
         for index, candidate in enumerate(values):
             if not isinstance(candidate, dict) or candidate.get('kind') not in KINDS or not isinstance(candidate.get('values'), dict):
@@ -392,6 +425,8 @@ class MaterialImportService:
                     item['values']['canon_status'] = 'hypothesis'
                 elif item['kind'] == 'fact':
                     item['values']['status'] = 'planned'
+                elif item['kind'] == 'information':
+                    item['values']['truth_status'] = 'unverified'
             fields = item.get('field_provenance') or {}
             if not isinstance(fields, dict) or any(value not in PROVENANCE for value in fields.values()):
                 raise ValueError('字段来源分类不正确。')
@@ -411,6 +446,8 @@ class MaterialImportService:
             if not manual and not evidence and item['provenance'] != 'ai_addition':
                 item['selected'], item['needs_review'] = False, '模型未提供原文依据，请补充依据后确认。'
             existing = next((card for card in cards if {source_key, item['origin_source_key']} & set(card.get('payload', {}).get('import_source_keys', []))), None)
+            if item['kind'] == 'information':
+                existing = next((row for row in saved_information if {source_key, item['origin_source_key']} & set(row.get('import_source_keys', []))), None)
             if existing:
                 item['target_id'], item['classification'] = existing['id'], 'supplement'
             elif item.get('target_id'):
@@ -605,6 +642,7 @@ class MaterialImportService:
 
     def _plan(self, project_id, record, body):
         from services.author_data_service import AuthorDataService
+        from services.information_service import InformationService, REGISTRY_PATH
         shared = AuthorDataService(self.store)
         selected = set(body.get('selected_ids') or [])
         candidates = [item for item in record['candidates'] if item['id'] in selected]
@@ -612,7 +650,9 @@ class MaterialImportService:
             raise ValueError('请选择存在的候选内容，再确认分配。')
         decisions = body.get('decisions') or {}
         files, originals, original_values, append_rows, mappings, extra = {}, {}, {}, {}, {}, {}
-        targets, results, event_ids = {}, [], {}
+        targets, results, event_ids, event_refs = {}, [], {}, {}
+        planned_store = _PlannedStore(self.store, files, append_rows)
+        planned_shared, information = AuthorDataService(planned_store), InformationService(planned_store)
         existing = self._cards(project_id)
         events = shared.events(project_id, record.get('story_card_id') or None)
         for candidate in candidates:
@@ -622,10 +662,14 @@ class MaterialImportService:
             independent = decision.get('mode') in {'new', 'add'}
             target = None if independent else decision.get('target_id') or candidate.get('target_id')
             kind, values = candidate['kind'], candidate['values']
-            if kind in {'character', 'world', 'style', 'story', 'relationship'}:
+            if kind in {'character', 'world', 'style', 'story', 'relationship', 'information'}:
                 suffix = _hash([candidate['source_key'], record['id']])[:18] if independent else candidate['source_key'][:18]
-                target = target or (record.get('story_card_id') if kind == 'story' and not independent else None) or f'{kind}_import_{suffix}'
+                target = target or (record.get('story_card_id') if kind == 'story' and not independent else None) or (values.get('id') if kind == 'information' and not independent else None) or f'{kind}_import_{suffix}'
                 _identifier(target)
+                if target in extra and extra[target] != kind:
+                    raise ValueError('同一稳定编号不能同时分配为不同类型的资料，请核对采用目标。')
+                if kind == 'information' and (any(card['id'] == target for card in existing) or target in extra and extra[target] != 'information'):
+                    raise ValueError('信息须关联共享信息记录，不能采用人物、世界或其他资料卡作为信息本身。')
                 targets[candidate['id']] = target
                 extra[target] = kind
                 for label in [target, candidate['id'], candidate['label'], values.get('name'), values.get('title')]:
@@ -633,9 +677,18 @@ class MaterialImportService:
                         mappings.setdefault(label, set()).add(target)
             elif kind == 'event':
                 prior = next((event for event in events if event['id'] == target or event['canonical_id'] == target), None)
-                event_id = prior['scene_id'] if prior else values.get('id') or 'event_import_' + candidate['source_key'][:18]
+                if prior:
+                    from services.world_scope_service import WorldScopeService
+                    event_ref = WorldScopeService.event_ref(prior['canonical_id'])
+                else:
+                    suffix = _hash([candidate['source_key'], record['id']])[:18] if independent else candidate['source_key'][:18]
+                    event_ref = {'owner_card_id': f'outline_planning_{record.get("story_card_id")}', 'scene_id': (values.get('id') if not independent else None) or 'event_import_' + suffix}
+                event_id = event_ref['scene_id']
+                event_refs[candidate['id']] = event_ref
                 for label in [candidate['id'], candidate['label'], event_id]:
                     event_ids[label] = event_id
+            elif kind == 'information_record':
+                targets[candidate['id']] = 'information_record_import_' + _hash([candidate['source_key'], record['id']])[:18]
         for card in existing:
             for label in [card['id'], card.get('title'), card.get('payload', {}).get('name'), *card.get('payload', {}).get('aliases', [])]:
                 if isinstance(label, str):
@@ -646,6 +699,8 @@ class MaterialImportService:
                     mappings.setdefault(label, set()).add(relationship['id'])
             extra[relationship['id']] = 'relationship'
         def entity(value):
+            if not isinstance(value, str):
+                raise ValueError('关联资料须使用已有条目或本批候选的稳定编号。')
             ids = mappings.get(value, set())
             if len(ids) != 1:
                 raise ValueError(f'“{value}”无法唯一关联，请先核对人物、世界条目及同名对象。')
@@ -657,8 +712,31 @@ class MaterialImportService:
                 files[path] = self.store.read_yaml(project_id, path) if originals[path] else copy.deepcopy(default)
                 original_values[path] = copy.deepcopy(files[path]) if originals[path] else None
             return files[path]
-        priority = {'character': 0, 'world': 0, 'style': 0, 'story': 1, 'event': 2, 'worksheet': 3, 'relationship': 4, 'fact': 5}
-        for item in sorted(candidates, key=lambda candidate: priority[candidate['kind']]):
+        def mapped_scope(value):
+            value = copy.deepcopy(value or {})
+            if not isinstance(value, dict) or 'time' in value and not isinstance(value['time'], dict):
+                raise ValueError('候选的适用范围和发生时间须为对象。')
+            for key in ['world_id', 'story_card_id', 'pov_character_id', 'period_id']:
+                if value.get(key) and not isinstance(value[key], str):
+                    raise ValueError('候选的世界、故事与人物须选择稳定编号。')
+                if value.get(key) in mappings:
+                    value[key] = entity(value[key])
+            for key in ['region_ids', 'base_setting_ids']:
+                if key in value:
+                    if not isinstance(value[key], list) or any(not isinstance(ref, str) for ref in value[key]):
+                        raise ValueError('候选地区与基础设定须为编号列表。')
+                    value[key] = [entity(ref) if ref in mappings else ref for ref in value[key]]
+            for container in [value, value.get('time') or {}]:
+                reference = container.get('event_ref')
+                if isinstance(reference, str) and reference in event_refs:
+                    container['event_ref'] = copy.deepcopy(event_refs[reference])
+            return value
+
+        priority = {'character': 0, 'world': 0, 'style': 0, 'story': 1, 'event': 2, 'worksheet': 3, 'relationship': 4, 'information': 5, 'fact': 6, 'information_record': 7}
+        def order(candidate):
+            # Expressions precede awareness records that explicitly refer to them.
+            return priority[candidate['kind']], 0 if candidate['kind'] == 'information_record' and candidate['values'].get('record_type') == 'expression' else 1
+        for item in sorted(candidates, key=order):
             kind, values = item['kind'], copy.deepcopy(item['values'])
             decision = decisions.get(item['id']) or {}
             mode = decision.get('mode') or 'fill'
@@ -672,7 +750,7 @@ class MaterialImportService:
                 raise ValueError(f'“{item["label"]}”的依据尚未核对，不能直接写入。')
             source = {'kind': 'import', 'import_batch_id': record['id'], 'version': record['source']['version'], 'path': self._path(record['id']), 'quote': '\n'.join(row.get('quote', '') for row in item.get('evidence', [])), 'url': record['source'].get('url'), 'reference_scope': record['source'].get('reference_scope')}
             source.update(provenance=item['provenance'], field_provenance=copy.deepcopy(item['field_provenance']), evidence=copy.deepcopy(item.get('evidence', [])), source_versions={original['id']: original['version'] for original in self._sources(record)})
-            scope = item.get('scope') or record.get('world_context') or {}
+            scope = mapped_scope(item.get('scope') or record.get('world_context') or {})
             if kind in {'character', 'world', 'style', 'story'}:
                 target = targets[item['id']]
                 if item.get('parent_candidate_id'):
@@ -733,6 +811,60 @@ class MaterialImportService:
                 rows[:] = [row for row in rows if row.get('id') != rid]
                 rows.append(value)
                 target = rid
+            elif kind == 'information':
+                registry = load(REGISTRY_PATH, {'id': 'outline_author_registry', 'type': 'outline', 'title': '共享人物关系与信息', 'tags': [], 'links': [], 'payload': {}})
+                rows = registry['payload'].setdefault('information_registry', [])
+                target = targets[item['id']]
+                previous = next((row for row in rows if row.get('id') == target), None)
+                if previous and item['source_key'] in previous.get('import_source_keys', []) and mode != 'replace':
+                    results.append({'candidate_id': item['id'], 'target_id': target, 'label': item['label'], 'status': 'already_imported',
+                                    'lock_target': REGISTRY_PATH, 'lock_paths': ['/payload/information_registry/@' + target]})
+                    continue
+                adopted = self._merge(previous or {}, {**values, 'id': target, 'label': values.get('label') or item['label'],
+                    'scope': mapped_scope(item.get('scope') or values.get('scope') or record.get('world_context') or {}),
+                    'provenance': item['provenance']}, mode)
+                incoming_sources = values.get('sources') or []
+                if not isinstance(incoming_sources, list) or any(not isinstance(row, dict) for row in incoming_sources):
+                    raise ValueError('信息来源须为含出处对象的列表。')
+                adopted['sources'] = [*(previous or {}).get('sources', []), *incoming_sources, source]
+                value = information.prepare_item(project_id, adopted, previous, extra_entities=extra)
+                value['import_source_keys'] = list(dict.fromkeys([*(previous or {}).get('import_source_keys', []), item['source_key'], item.get('origin_source_key') or item['source_key']]))
+                rows[:] = [row for row in rows if row.get('id') != target]
+                rows.append(value)
+            elif kind == 'information_record':
+                info_candidate = values.pop('information_candidate_id', None)
+                information_id = targets.get(info_candidate) if info_candidate else values.get('information_id')
+                if not information_id or info_candidate and extra.get(information_id) != 'information':
+                    raise ValueError('信息记录须关联已有信息，或同时采用本批对应的信息候选。')
+                if information_id in mappings:
+                    information_id = entity(information_id)
+                data = copy.deepcopy(values.get('data') or {})
+                if not isinstance(data, dict):
+                    raise ValueError('信息表达、认知和披露内容须为对象。')
+                for key in ['speaker_id', 'character_id']:
+                    if data.get(key):
+                        data[key] = entity(data[key])
+                for key in ['audience_ids', 'heard_by']:
+                    if key in data:
+                        if not isinstance(data[key], list):
+                            raise ValueError('表达对象与听到的人须为人物编号列表。')
+                        data[key] = [entity(person) for person in data[key]]
+                if data.get('expression_candidate_id'):
+                    expression_id = targets.get(data.pop('expression_candidate_id'))
+                    if not expression_id:
+                        raise ValueError('认知依据须同时采用本批表达候选，或选择已有表达记录。')
+                    data['expression_ref'] = expression_id
+                path = 'canon/author_stages.jsonl'
+                history = self.store.read_jsonl(project_id, path)
+                voids = {sid for old in history for sid in old.get('voids', [])}
+                previous = next((old for old in history if old.get('import_source_key') == item['source_key'] and old.get('entity_id') == information_id and old.get('id') not in voids), None)
+                row = previous or information.prepare_record(project_id, information_id, {**values, 'id': targets[item['id']], 'scope': scope,
+                    'data': data, 'source': source}, extra_entities=extra)
+                if not previous:
+                    row.update(import_source_key=item['source_key'], import_batch_id=record['id'])
+                    append_rows.setdefault(path, []).append(row)
+                target = row['id']
+                targets[item['id']] = target
             elif kind in {'event', 'worksheet'}:
                 story_id = record.get('story_card_id')
                 if not story_id:
@@ -794,12 +926,25 @@ class MaterialImportService:
                 history = self.store.read_jsonl(project_id, path)
                 voids = {sid for old in history for sid in old.get('voids', [])}
                 previous = next((old for old in history if old.get('import_source_key') == item['source_key'] and old.get('id') not in voids), None)
-                row = previous or shared.prepare_stage(project_id, entity_type, entity_id, {**values, 'id': 'stage_import_' + _hash([item['source_key'], record['id']])[:18], 'scope': scope, 'source': source, 'import_batch_id': record['id']}, extra_entities=extra)
+                for knowledge in values.get('knowledge', []):
+                    if knowledge.get('information_candidate_id'):
+                        info_id = targets.get(knowledge.pop('information_candidate_id'))
+                        if not info_id or extra.get(info_id) != 'information':
+                            raise ValueError('人物认知须同时采用关联的信息候选，不能丢掉选定关联。')
+                        knowledge['information_id'] = info_id
+                    if knowledge.get('known_by'):
+                        knowledge['known_by'] = [entity(person) for person in knowledge['known_by']]
+                row = previous or planned_shared.prepare_stage(project_id, entity_type, entity_id, {**values, 'id': 'stage_import_' + _hash([item['source_key'], record['id']])[:18], 'scope': scope, 'source': source, 'import_batch_id': record['id']}, extra_entities=extra)
                 if not previous:
                     row['import_source_key'] = item['source_key']
                     append_rows.setdefault(path, []).append(row)
                 target = row['id']
-            results.append({'candidate_id': item['id'], 'target_id': target, 'label': item['label'], 'status': 'adopted'})
+            result = {'candidate_id': item['id'], 'target_id': target, 'label': item['label'], 'status': 'adopted'}
+            if kind == 'information':
+                result.update(lock_target=REGISTRY_PATH, lock_paths=['/payload/information_registry/@' + target])
+            elif kind in {'information_record', 'fact'}:
+                result.update(lock_target='canon/author_stages.jsonl', lock_paths=['/@' + target])
+            results.append(result)
         operations = []
         for path, value in files.items():
             from schemas.json_schemas import CARD_TYPE_SCHEMAS
@@ -823,7 +968,7 @@ class MaterialImportService:
                 parent = ancestor.get('payload', {}).get('parent_id')
             if value.get('payload', {}).get('world_context'):
                 from services.world_scope_service import WorldScopeService
-                WorldScopeService(self.store).validate_context(project_id, value['payload']['world_context'], extra_entities=extra)
+                WorldScopeService(planned_store).validate_context(project_id, value['payload']['world_context'], extra_entities=extra)
             if value.get('payload', {}).get('important_scenes'):
                 from services.world_scope_service import WorldScopeService
                 WorldScopeService(self.store).validate_event_links(project_id, value, overrides={item['id']: item for item in files.values()})
@@ -860,6 +1005,9 @@ class MaterialImportService:
 
     def _execute(self, project_id, record, *, undo=False):
         operations = record['undo_operations' if undo else 'operations']
+        if undo:
+            from services.shared_material_service import SharedMaterialService
+            SharedMaterialService(self.store).assert_card_deletions(project_id, operations)
         self._check_controls(project_id, operations)
         for operation in operations:
             path = operation['path']
@@ -873,6 +1021,7 @@ class MaterialImportService:
                 for row in operation['rows']:
                     if row['id'] not in ids:
                         self.store.append_jsonl(project_id, path, row)
+                        ids.add(row['id'])
             else:
                 current = target.read_text(encoding='utf-8') if target.exists() else None
                 if current == operation['after']:
@@ -889,6 +1038,12 @@ class MaterialImportService:
         record['status'] = 'undone' if undo else 'applied'
         record['error'] = ''
         record['applied_at' if not undo else 'undone_at'] = now_iso()
+        if not undo:
+            from services.author_control_service import AuthorControlService
+            controls = AuthorControlService(self.store)
+            for item in record.get('results', []):
+                if item.get('lock_target'):
+                    item['lock_base_revision'] = controls.base_revision(project_id, item['lock_target'])
         result = self._save(project_id, record)
         self._pending(project_id, record['id'], False)
         return result
@@ -909,7 +1064,7 @@ class MaterialImportService:
                     if row.get('kind') == 'void':
                         after = [value for value in after if value.get('id') not in row.get('voids', [])]
                     else:
-                        controls.assert_stage(project_id, row.get('entity_type'), row.get('entity_id'), row.get('changes'), row.get('status'))
+                        controls.assert_stage(project_id, row.get('entity_type'), row.get('entity_id'), row.get('data') if row.get('entity_type') == 'information' else row.get('changes'), row.get('status'))
                         if row.get('id') not in {value.get('id') for value in after}:
                             after.append(row)
                 controls.assert_write(project_id, path, before, after)
@@ -985,6 +1140,8 @@ class MaterialImportService:
                     restored = operation['before'] if current == operation['after'] else _json(self._inverse(operation.get('before_value') or {}, json.loads(operation['after']), self.store.read_yaml(project_id, path)))
                 operations.append({'path': path, 'kind': 'replace', 'before': current, 'after': restored})
             self._check_controls(project_id, operations)
+            from services.shared_material_service import SharedMaterialService
+            SharedMaterialService(self.store).assert_card_deletions(project_id, operations)
             self._pending(project_id, batch_id, True)
             record.update(status='undoing', undo_operations=operations)
             self._save(project_id, record)

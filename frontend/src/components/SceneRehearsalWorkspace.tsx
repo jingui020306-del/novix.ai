@@ -179,6 +179,7 @@ export function SceneRehearsalWorkspace({ project, ownerCardId, sceneId, sceneLa
               {(proposal.response.steps || []).map((step: any) => <div key={step.actor_id}><strong>{step.name}</strong>{step.chosen && ` · ${step.chosen}`}
                 {step.goal && <p>目标：{step.goal}</p>}{step.observed && <p>看到：{step.observed}</p>}{step.effect && <p>后果：{step.effect}</p>}
                 {step.alternatives?.filter(Boolean).length > 0 && <p>可选行动：{step.alternatives.filter(Boolean).join(' / ')}</p>}
+                {step.character_bias && (step.character_bias.confidence_delta !== 0 || step.character_bias.loss_delta !== 0) && <p>计入性格后：行动把握 {Math.round(step.confidence_used * 100)}%，失败代价 {step.loss_used}。</p>}
                 {typeof step.expected_cautious === 'number' && <p>主动行动 {step.expected_active ?? '条件未满足'}，保留选择 {step.expected_cautious}。</p>}
               </div>)}
               {proposal.response.engines?.praxish && <p>Praxish · {proposal.response.engines.praxish.first.includes('act') ? '前提允许主动行动' : '前提排除了主动行动'}。</p>}

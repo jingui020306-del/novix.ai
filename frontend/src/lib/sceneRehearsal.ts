@@ -1,12 +1,14 @@
+export type ChoiceStakes = {goal_fit?: number; stance?: number; exposes_weakness?: boolean}
 export type LocalChoices = Record<'act' | 'hold' | 'effect' | 'respond' | 'check', string>
 export type PairSimulation = {
+  actor_stakes?: ChoiceStakes; partner_stakes?: ChoiceStakes;
   mode?: 'pair'; version: 1; actor_id: string; partner_id: string; topic: string; available: boolean;
   actor_confidence: number; partner_confidence: number; actor_loss: number; partner_loss: number;
   choices: LocalChoices; engines: ('praxish' | 'sabre' | 'fatima')[]; desirability: number; plan_goal: 'respond' | 'check';
 }
 
 export type CastParticipant = {
-  actor_id: string; goal?: string; act?: string; hold?: string; effect?: string;
+  stakes?: ChoiceStakes; actor_id: string; goal?: string; act?: string; hold?: string; effect?: string;
   available?: boolean; confidence?: number; loss?: number; visible_to?: string[] | null;
 }
 export type CastSimulation = { mode: 'solo' | 'ensemble'; topic?: string; participants: CastParticipant[] }

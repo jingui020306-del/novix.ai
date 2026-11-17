@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, ValidationError, field_validator, model_validator
 
 from services import rehearsal_tools
+from services.family_service import decision_bias
 
 
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
@@ -29,6 +30,13 @@ class Choices(BaseModel):
 PAIR_ENGINES = ('praxish', 'sabre', 'fatima')
 
 
+class ChoiceStakes(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    goal_fit: Literal[-1, 0, 1] = 0
+    stance: Literal[-1, 0, 1] = 0
+    exposes_weakness: bool = False
+
+
 class LocalRehearsal(BaseModel):
     model_config = ConfigDict(extra='forbid')
     mode: Literal['pair'] = Field(default='pair', exclude=True)
@@ -39,6 +47,8 @@ class LocalRehearsal(BaseModel):
     available: bool
     actor_confidence: Probability
     partner_confidence: Probability
+    actor_stakes: ChoiceStakes = Field(default_factory=ChoiceStakes)
+    partner_stakes: ChoiceStakes = Field(default_factory=ChoiceStakes)
     actor_loss: Literal[2, 5, 8] = 5
     partner_loss: Literal[2, 5, 8] = 5
     choices: Choices
@@ -59,6 +69,7 @@ OptionalText = Annotated[str, StringConstraints(strip_whitespace=True, max_lengt
 class Participant(BaseModel):
     model_config = ConfigDict(extra='forbid')
     actor_id: ShortText
+    stakes: ChoiceStakes = Field(default_factory=ChoiceStakes)
     goal: OptionalText = ''
     act: OptionalText = ''
     hold: OptionalText = ''
@@ -103,7 +114,18 @@ PRESETS = {
 }
 
 
-def _decide(available, confidence, loss, active, cautious):
+def choice_bonus(payload, stakes):
+    # Action relevance is explicitly authored; free-text desires and secrets stay unparsed.
+    exposure = 1.5 if stakes.exposes_weakness and payload.get('vulnerability') else 0.
+    return 1.2 * stakes.goal_fit + 0.8 * stakes.stance - exposure
+
+
+def _decide(available, confidence, loss, active, cautious, payload=None, stakes=None):
+    payload = payload or {}
+    bias = decision_bias(payload)
+    bonus = choice_bonus(payload, stakes or ChoiceStakes())
+    confidence = min(1., max(0., confidence + bias["confidence_delta"]))
+    loss = min(12, max(1, loss + bias["loss_delta"]))
     from psychsim.agent import Agent
     from psychsim.probability import Distribution
     from psychsim.pwl import makeTree, setToConstantMatrix, trueRow
@@ -115,7 +137,7 @@ def _decide(available, confidence, loss, active, cautious):
     world.addAgent(person)
     opportunity = world.defineState(person.name, 'opportunity', bool)
     supported = world.defineState(person.name, 'support', bool)
-    value = world.defineState(person.name, 'value', float, -12, 3)
+    value = world.defineState(person.name, 'value', float, -16, 7)
     world.setFeature(opportunity, available)
     # Hypothetical support is used only in the actor's evaluation, never reported as a fact.
     world.setFeature(supported, True)
@@ -123,8 +145,8 @@ def _decide(available, confidence, loss, active, cautious):
     act = person.addAction({'verb': 'act'}, makeTree({'if': trueRow(opportunity), True: True, False: False}))
     hold = person.addAction({'verb': 'hold'})
     world.setDynamics(value, act, makeTree({'if': trueRow(supported),
-                                            True: setToConstantMatrix(value, 3.),
-                                            False: setToConstantMatrix(value, -float(loss))}))
+                                            True: setToConstantMatrix(value, 3. + bonus),
+                                            False: setToConstantMatrix(value, -float(loss) + bonus)}))
     world.setDynamics(value, hold, makeTree(setToConstantMatrix(value, -0.4)))
     world.setOrder([person.name])
     person.setReward(maximizeFeature(value, person.name), 1.)
@@ -134,8 +156,9 @@ def _decide(available, confidence, loss, active, cautious):
     acts = decision['action'] == act
     return {'chosen': active if acts else cautious, 'acts': acts,
             'alternatives': [active, cautious] if available else [cautious],
-            'expected_active': round(confidence * 3 - (1 - confidence) * loss, 3) if available else None,
-            'expected_cautious': -0.4}
+            'expected_active': round(confidence * 3 - (1 - confidence) * loss + bonus, 3) if available else None,
+            'expected_cautious': -0.4, 'character_bias': bias,
+            'confidence_used': confidence, 'loss_used': loss, 'choice_bonus': bonus}
 
 
 def scene_cast(context):
@@ -180,7 +203,7 @@ def _cast_turns(people, spec):
         name = person['payload'].get('name') or person['label']
         # A later response needs an observable trigger. Private goals never enter this channel.
         can_act = part.available and bool(part.act) and (index == 0 or bool(observed))
-        decision = _decide(can_act, part.confidence, part.loss, part.act, part.hold)
+        decision = _decide(can_act, part.confidence, part.loss, part.act, part.hold, person["payload"], part.stakes)
         decision['alternatives'] = [choice for choice in decision['alternatives'] if choice]
         visible = part.effect if decision['acts'] else ''
         steps.append({**decision, 'actor_id': part.actor_id, 'name': name, 'goal': part.goal,
@@ -211,25 +234,36 @@ def rehearse(context, spec):
         if not availability[name]:
             raise ValueError(f'{name} 尚未安装在后端主机，请查看本地引擎安装说明。')
     goals = {row['values'].get('character_id'): row['values'].get('goal') for row in context['storylines']}
-    def turn(person_id, available, confidence, loss, act, hold):
+    def turn(person_id, available, confidence, loss, act, hold, stakes):
         person = people[person_id]
         name = person['payload'].get('name') or person['label']
-        return {**_decide(available, confidence, loss, act, hold), 'actor_id': person_id,
+        return {**_decide(available, confidence, loss, act, hold, person["payload"], stakes), 'actor_id': person_id,
                 'name': name, 'goal': goals.get(person_id) or person['payload'].get('core_motivation') or ''}
     choices = spec.choices
     reports = {}
     reports['praxish'] = rehearsal_tools.social_actions(spec.available)
     opportunity = 'act' in reports['praxish']['first']
-    first = turn(spec.actor_id, opportunity, spec.actor_confidence, spec.actor_loss, choices.act, choices.hold)
+    first = turn(spec.actor_id, opportunity, spec.actor_confidence, spec.actor_loss, choices.act, choices.hold, spec.actor_stakes)
     steps = [first]
     witnessed = 'respond' in reports['praxish']['after']['act' if first['acts'] else 'hold']
     partner_loss = spec.partner_loss
     if witnessed:
         emotion = rehearsal_tools.appraise(spec.desirability)
+        # Novix policy: adverse mood increases the perceived cost, within a bounded range.
         partner_loss = max(1, min(12, partner_loss - float(emotion['mood']) / 2))
         reports['fatima'] = {**emotion, 'adjusted_loss': round(partner_loss, 2)}
-        steps.append(turn(spec.partner_id, True, spec.partner_confidence, partner_loss, choices.respond, choices.check))
-    reports['sabre'] = rehearsal_tools.plan(spec, partner_loss)
+        steps.append(turn(spec.partner_id, True, spec.partner_confidence, partner_loss, choices.respond, choices.check, spec.partner_stakes))
+    actor_bias = decision_bias(people[spec.actor_id]['payload'])
+    partner_bias = decision_bias(people[spec.partner_id]['payload'])
+    evaluated = spec.model_copy(update={
+        'actor_confidence': min(1., max(0., spec.actor_confidence + actor_bias['confidence_delta'])),
+        'actor_loss': min(12, max(1, spec.actor_loss + actor_bias['loss_delta'])),
+        'partner_confidence': min(1., max(0., spec.partner_confidence + partner_bias['confidence_delta'])),
+    })
+    reports['sabre'] = rehearsal_tools.plan(
+        evaluated, min(12, max(1, partner_loss + partner_bias['loss_delta'])),
+        choice_bonus(people[spec.actor_id]['payload'], spec.actor_stakes),
+        choice_bonus(people[spec.partner_id]['payload'], spec.partner_stakes))
     text = [f'围绕“{spec.topic}”，{first["name"]}选择{first["chosen"]}。']
     if len(steps) == 2:
         second = steps[1]

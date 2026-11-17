@@ -500,6 +500,8 @@ class WorldScopeService:
         return value
 
     def fact_visible(self, project_id, fact, scope):
+        if fact.get('status') in {'pending', 'planned', 'unverified'} or fact.get('confirmation_status') in {'pending_author_review', 'pending'}:
+            return False
         if fact.get('id'):
             from services.information_service import InformationService
             if not InformationService(self.store).fact_allowed(project_id, fact['id'], scope):

@@ -68,7 +68,7 @@ export function CharacterReferenceImage({ project, characterId, value, appearanc
     onApplyAppearance(candidate.text)
     setCandidate(null); setMessage('候选已填入外貌，其他人物资料保留。请核对并保存人物。')
   }
-  return <section className='border-y border-border py-4' aria-label='人物参考图'>
+  return <section className='border-t border-border pt-4' aria-label='人物参考图'>
     <details open={Boolean(value?.asset_id)}><summary className='cursor-pointer text-sm font-medium'>人物参考图（可选）</summary><div className='mt-4 space-y-4'>
       <p className='text-xs leading-6 text-muted'>图片用于稳定外貌与初印象，不固定每章的表情。上传和保存不会自动读图，只有主动提取才调用人物任务模型。</p>
       {value?.asset_id && <div className='space-y-2'>{!previewError ? <img src={`/api/projects/${project}/character-images/${encodeURIComponent(value.asset_id)}`} alt='人物参考图' className='max-h-72 max-w-full object-contain' onError={() => setPreviewError(true)} /> : <p className='text-sm text-muted'>图片暂时无法预览，可以重新上传或移除关联。</p>}<p className='break-words text-xs text-muted'>{value.filename || '人物参考图'}</p><Button variant='ghost' className='text-xs' onClick={() => { uploadSequence.current++; analysisSequence.current++; onImageChange(undefined); setCandidate(null); setUploading(false); setAnalyzing(false); setError(''); setMessage('参考图已从人物表单移除，请保存人物后生效。') }}>移除参考图</Button></div>}

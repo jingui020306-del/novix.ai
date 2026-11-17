@@ -22,21 +22,32 @@ def get_runs() -> WritingRunService:
     return writing_runs
 
 
+class DialogueScene(BaseModel):
+    owner_card_id: str = Field(pattern=r'^[\w-]+$', max_length=120)
+    scene_id: str = Field(pattern=r'^[\w-]+$', max_length=120)
+
+
 class RevisionRequest(BaseModel):
     base_revision: str | None = None
     source_text: str = Field(max_length=100000)
     start: int = Field(default=0, ge=0)
     end: int | None = Field(default=None, ge=0)
-    mode: Literal['polish', 'rewrite', 'cinematic', 'expand', 'construct'] = 'polish'
+    scene_ref: DialogueScene | None = None
+    editor_revision: str | None = Field(default=None, max_length=128)
+    mode: Literal['polish', 'rewrite', 'cinematic', 'expand', 'construct', 'dialogue'] = 'polish'
     scene_direction: dict | None = None
     allow_plot_change: bool = False
     instructions: str = Field(default='', max_length=4000)
+    expression_style: str = Field(default='', max_length=1000)
+    emotional_atmosphere: str = Field(default='', max_length=1000)
+    writing_references: list[str] = Field(default_factory=list, max_length=100)
     llm_profile_id: str | None = None
     story_card_id: str | None = Field(default=None, pattern=r'^[\w-]+$', max_length=120)
 
 
 class RevisionApply(RevisionRequest):
-    text: str = Field(min_length=1, max_length=100000)
+    dialogue_hash: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
+    text: str = Field(max_length=100000)
     base_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 

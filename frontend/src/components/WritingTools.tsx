@@ -21,10 +21,23 @@ export function ProseStrategy({ value = '', onChange }: { value?: string; onChan
   return <div className='space-y-2'><label className='block text-sm font-medium'>读者怎样逐步看到这一场</label><Select aria-label='描写顺序与观察方式' value={value} onChange={(event) => onChange(event.target.value)}><option value=''>由情节与视角决定，也可在下方自由说明</option>{PROSE_STRATEGIES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</Select>{current && <><p className='text-xs leading-6 text-muted'>{current[2]} 最终生成小说文字，保持人物意图与已确认事实。</p><details><summary className='cursor-pointer text-xs text-muted'>看一个短例</summary><p className='mt-2 text-sm leading-7'>{current[3]}</p><p className='mt-2 text-xs leading-6 text-muted'>只是写法示例，不加入作品设定。避免把每个动作都写成特写，或用人物此时不可能感知的内容制造效果。</p></details></>}</div>
 }
 
-export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
+function selectedRevisionText(revision: any, ids: string[]) {
+  const original = Array.from(String(revision.source_text || '')).slice(revision.start, revision.end)
+  const selected = (revision.ops || []).filter((op: any) => ids.includes(op.op_id)).sort((left: any, right: any) => left.start - right.start || left.end - right.end)
+  let previousEnd = 0
+  for (const op of selected) {
+    if (!Number.isInteger(op.start) || !Number.isInteger(op.end) || op.start < previousEnd || op.end < op.start || op.end > original.length || original.slice(op.start, op.end).join('') !== op.before) throw new Error('候选范围与原文不一致，请重新生成；没有应用修改。')
+    previousEnd = op.end
+  }
+  const result = [...original]
+  for (const op of [...selected].reverse()) result.splice(op.start, op.end - op.start, ...Array.from(String(op.after)))
+  return result.join('')
+}
+
+export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, sceneRef, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
   project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
   saved: boolean; saving: boolean; locked: boolean; onSave: () => void;
-  baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
+  sceneRef?: {owner_card_id: string; scene_id: string}; baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const [range, setRange] = useState({start: 0, end: 0})
@@ -36,14 +49,21 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
   const [mode, setMode] = useState('polish')
   const [strategy, setStrategy] = useState('')
   const [instructions, setInstructions] = useState('')
+  const [expressionStyle, setExpressionStyle] = useState('')
+  const [emotionalAtmosphere, setEmotionalAtmosphere] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState<any>(null)
+  const [selectedChanges, setSelectedChanges] = useState<string[]>([])
+  const [manual, setManual] = useState(false)
+  const [manualText, setManualText] = useState('')
+  const [notice, setNotice] = useState('')
+  const [receipt, setReceipt] = useState<{ scope: string; before: string; after: string; revision: string } | null>(null)
 
   const activeScope = useRef(`${project}:${chapterId}`); activeScope.current = `${project}:${chapterId}`
   const latestText = useRef(text); latestText.current = text
   const requestNumber = useRef(0)
-  useEffect(() => { setRevision(null); setError(''); setBusy(false); return () => { requestNumber.current++ } }, [project, chapterId])
+  useEffect(() => { activeScope.current = `${project}:${chapterId}`; setRevision(null); setSelectedChanges([]); setManual(false); setManualText(''); setReceipt(null); setNotice(''); setError(''); setBusy(false); return () => { requestNumber.current++; activeScope.current = '' } }, [project, chapterId])
 
   useEffect(() => {
     if (scope) controlsRef.current?.scrollIntoView({ block: 'nearest' })
@@ -56,23 +76,25 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
     const number = ++requestNumber.current
     setBusy(true)
     setError('')
-    setRevision(null)
+    setRevision(null); setNotice('')
     try {
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise`, {
-        source_text: text, base_revision: baseRevision, mode, instructions: [technique && `本次技法：${technique}`, instructions].filter(Boolean).join('\n'), llm_profile_id: profileId,
+        source_text: text, base_revision: baseRevision, mode, instructions, writing_references: technique ? [technique] : [], llm_profile_id: profileId,
         allow_plot_change: false, scene_direction: { ...sceneDirection, ...(strategy ? { prose_strategy: strategy } : {}) },
-        story_card_id: storyCardId,
+        story_card_id: storyCardId, ...(mode === 'dialogue' ? {scene_ref: sceneRef} : {}),
+        ...(mode !== 'polish' ? { expression_style: expressionStyle, emotional_atmosphere: emotionalAtmosphere } : {}),
         start: Array.from(text.slice(0, start)).length,
         end: Array.from(text.slice(0, end)).length,
       })
       if (number !== requestNumber.current) return
       if (result.detail) throw new Error(String(result.detail))
-      setRevision({ ...result, project, chapterId })
+      setRevision({ ...result, project, chapterId }); setSelectedChanges((result.ops || []).map((op: any) => op.op_id)); setManual(!Array.isArray(result.ops)); setManualText(result.text)
     } catch (err) { if (number === requestNumber.current) setError(err instanceof Error ? err.message : '修改未完成，请重试。') }
     finally { if (number === requestNumber.current) setBusy(false) }
   }
 
-  const apply = async () => {
+  const apply = async (all = false) => {
+    if (locked) { setError('请先结束当前生成或核对正文锁定状态。'); return }
     if (text !== revision.source_text || project !== revision.project || chapterId !== revision.chapterId) {
       setError('正文已经修改，请重新处理后再应用。')
       return
@@ -81,18 +103,45 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
     setBusy(true)
     setError('')
     try {
-      const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, revision)
+      const candidateText = manual ? manualText : selectedRevisionText(revision, all ? revision.ops.map((op: any) => op.op_id) : selectedChanges)
+      if (candidateText === Array.from(String(revision.source_text)).slice(revision.start, revision.end).join('')) throw new Error('候选与原文相同，无须再次保存。')
+      const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, { source_text: revision.source_text, start: revision.start, end: revision.end, base_hash: revision.base_hash, mode: revision.mode, text: candidateText, ...(revision.mode === 'dialogue' ? {scene_ref: revision.scene_ref, dialogue_hash: revision.dialogue_hash, story_card_id: revision.story_card_id, instructions: revision.instructions} : {}) })
       if (activeScope.current !== held) return
       if (result.detail) throw new Error(String(result.detail))
-      onApplied(result.content, result.revision)
-      if (latestText.current !== revision.source_text) { throw new Error('提交时的修改已保存，等待期间的新编辑保留，请核对后再保存。') }
+      const appliedRevision = result.applied_revision || result.revision
+      if (appliedRevision) setReceipt({ scope: held, before: revision.source_text, after: result.content, revision: appliedRevision })
+      onApplied(result.content, appliedRevision)
+      if (latestText.current !== revision.source_text) throw new Error('提交时的修改已保存，等待期间的新编辑保留，请核对后再保存。')
       setScope(null)
       onChange(result.content)
+      if (!appliedRevision) setNotice('修改已保存，可在章节版本历史中回看。')
       setRevision(null)
     } catch (err) { if (activeScope.current === held) setError(err instanceof Error ? err.message : '应用失败，请重试。') }
     finally { if (activeScope.current === held) setBusy(false) }
   }
 
+  const undo = async () => {
+    const held = `${project}:${chapterId}`
+    if (!receipt || receipt.scope !== held || !receipt.revision) return
+    if (locked) { setError('请先结束当前生成或核对正文锁定状态，再撤销。'); return }
+    if (text !== receipt.after) { setError('正文已有新编辑，不能直接撤销本次修改；请先核对当前正文。'); return }
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, { source_text: receipt.after, start: 0, end: Array.from(receipt.after).length, text: receipt.before, base_hash: receipt.revision, mode: 'polish' })
+      if (activeScope.current !== held) return
+      if (result.detail) throw new Error(String(result.detail))
+      setReceipt(null); setRevision(null); onApplied(result.content, result.applied_revision || result.revision)
+      if (latestText.current !== receipt.after) throw new Error('本次修改已撤销并保存；等待期间的新编辑保留，请核对后再保存。')
+      onChange(result.content); setScope(null); setNotice('已撤销本次修改，应用前的正文已恢复并保存。')
+    } catch (cause) { if (activeScope.current === held) setError(cause instanceof Error ? cause.message : '未能撤销，当前正文保留。') }
+    finally { if (activeScope.current === held) setBusy(false) }
+  }
+  const ops: any[] = Array.isArray(revision?.ops) ? revision.ops : []
+  let previewText = manualText, selectionError = ''
+  if (revision && !manual) {
+    try { previewText = selectedRevisionText(revision, selectedChanges) }
+    catch (cause) { selectionError = cause instanceof Error ? cause.message : '候选范围需重新核对。' }
+  }
   return (
     <section aria-label='章节稿纸'>
       <div className='manuscript-actions'>
@@ -123,31 +172,38 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
       <button disabled={busy} onClick={() => {setScope(null);setRevision(null);editorRef.current?.focus()}}>关闭</button></div>
       <div className='flex flex-wrap gap-2'>
         <Select aria-label='修改方式' value={mode} onChange={e => {setMode(e.target.value);setRevision(null)}} disabled={busy}>
-          <option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
+          <option value='dialogue'>按人物写对话</option><option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
         </Select>
         <Button onClick={revise} disabled={busy || locked}>{busy ? '处理中…' : '预览候选'}</Button>
       </div>
       {techniques.length > 0 && <Select aria-label='本次技法' value={technique} disabled={busy} onChange={e => { setTechnique(e.target.value); setRevision(null) }}>
         <option value=''>沿用本章技法</option>
-        {techniques.filter(card => card.title).map(card => <option key={card.id} value={card.title}>{card.title}</option>)}
+        {techniques.filter(card => card.title).map(card => <option key={card.id} value={card.id}>{card.title}</option>)}
       </Select>}
       {mode === 'cinematic' && <ProseStrategy value={strategy || sceneDirection?.prose_strategy || ''} onChange={setStrategy} />}
+      {mode !== 'polish' && <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>{[['expression-style', '表达风格', expressionStyle, setExpressionStyle, ['清晰自然', '简洁克制', '细腻抒情', '凝练含蓄']], ['emotional-atmosphere', '情绪氛围', emotionalAtmosphere, setEmotionalAtmosphere, ['平静', '温暖', '紧张', '压抑', '悲凉']]].map(([id, label, value, change, choices]: any) => <div key={id} className='space-y-2'><label htmlFor={id} className='block text-sm'>{label}（可自定义）</label><Select aria-label={`选择${label}`} value={choices.includes(value) ? value : ''} onChange={(e) => change(e.target.value)}><option value=''>沿用原文 / 自定义</option>{choices.map((choice: string) => <option key={choice} value={choice}>{choice}</option>)}</Select><Textarea id={id} value={value} maxLength={1000} onChange={(e) => change(e.target.value)} placeholder={`可选，也可直接写希望的${label}`} /></div>)}</div>}
       <div>
         <label htmlFor='rewrite-instructions' className='text-sm text-muted'>本次要求（可选）</label>
-        <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
+        <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder={mode === 'dialogue' ? '每人一行，例如：林秋：想问清来意，暂不提那封信。' : '例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。'} />
       </div>
-      {error && <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{error}</p>}
       {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
-        <label htmlFor='revision-result' className='text-sm font-medium'>修改后的段落</label>
-        <Textarea id='revision-result' className='min-h-40 font-serif leading-7' value={revision.text} onChange={(e) => setRevision({ ...revision, text: e.target.value })} />
+        {ops.length > 0 ? <section className='space-y-3' aria-label='逐处核对润色与改写'><h4 className='text-sm font-medium'>核对每一处变化</h4>{ops.map((op: any, index: number) => <article key={op.op_id} className='space-y-2 border-b border-border py-3'><label className='flex items-center gap-2 text-sm'><input type='checkbox' disabled={busy || manual} checked={selectedChanges.includes(op.op_id)} onChange={(event) => setSelectedChanges((current) => event.target.checked ? [...current, op.op_id] : current.filter((id) => id !== op.op_id))} />采用第 {index + 1} 处修改</label><div className='grid grid-cols-1 gap-3 sm:grid-cols-2'><div><p className='text-xs text-muted'>原文</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.before || '此处没有原文（新增）'}</p></div><div><p className='text-xs text-muted'>建议</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.after || '删除此处文字'}</p></div></div></article>)}</section> : Array.isArray(revision.ops) && <p className='text-xs text-muted'>候选与原文一致，暂无要采用的修改；仍可自行编辑下方文字。</p>}
+        <div className='space-y-2'><label htmlFor='revision-result' className='text-sm font-medium'>{manual ? '自行编辑的候选' : '所选修改的结果预览（可手改）'}</label>
+        <Textarea id='revision-result' disabled={busy} className='min-h-40 font-serif leading-7' value={previewText} onChange={(event) => { setManual(true); setManualText(event.target.value) }} />
+        {manual ? <p className='text-xs leading-6 text-muted'>采用时以这份手改稿为准，不同时叠加上方勾选。{ops.length > 0 && <button className='ml-2 text-brand-600 underline focus-ring' disabled={busy} onClick={() => setManual(false)}>改回按处勾选</button>}</p> : manualText !== revision.text && <button className='text-xs text-brand-600 underline focus-ring' disabled={busy} onClick={() => setManual(true)}>恢复我的手改稿</button>}
+        {selectionError && <p role='alert' className='text-xs text-red-700 dark:text-red-300'>{selectionError}</p>}</div>
         <TokenUsage usage={revision.usage} />
         <WritingReferenceNotice usage={revision.writing_reference_usage} />
-        <div className='flex gap-2'>
-          <Button variant='primary' disabled={busy || locked || !revision.text.trim()} onClick={apply}>应用并保存</Button>
+        <div className='flex flex-wrap gap-2'>
+          <Button variant='primary' disabled={busy || locked || Boolean(selectionError) || previewText === Array.from(String(revision.source_text)).slice(revision.start, revision.end).join('') || !manual && !selectedChanges.length} onClick={() => apply()}>{manual ? '采用手改稿并保存' : '采用所选修改并保存'}</Button>
+          {!manual && ops.length > 0 && <Button disabled={busy || locked} onClick={() => apply(true)}>全部采用</Button>}
           <Button disabled={busy} onClick={() => setRevision(null)}>保留原文</Button>
         </div>
       </div>}
       </div>}
+      {error && <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{error}</p>}
+      {notice && <p role='status' className='text-xs leading-6 text-muted'>{notice}</p>}
+      {receipt?.scope === `${project}:${chapterId}` && <div className='space-y-2 border-t border-border pt-3'><p className='text-xs leading-6 text-muted'>本次修改已保存，快照与修改历史仍保留。撤销仅针对这次应用；后续正文另有修改时不会覆盖。</p><Button disabled={busy || locked || text !== receipt.after} onClick={undo}>撤销本次修改</Button>{text !== receipt.after && <p className='text-xs text-muted'>当前正文已有新编辑，请先核对，不能直接撤销。</p>}</div>}
     </section>
   )
 }

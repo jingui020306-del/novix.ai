@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Input, Select } from './ui/Fields'
-import { CastParticipant, CastSimulation, LocalChoices, LocalSimulation, PairSimulation } from '../lib/sceneRehearsal'
+import { ChoiceStakes, CastParticipant, CastSimulation, LocalChoices, LocalSimulation, PairSimulation } from '../lib/sceneRehearsal'
 
 type Engine = PairSimulation['engines'][number]
 type Options = { cast: string[]; presets: Record<string, LocalChoices>; engines: Record<Engine, boolean> }
@@ -11,6 +11,20 @@ const choiceLabels: Record<keyof LocalChoices, string> = {
 type FormProps = {
   options: Options; people: Person[]; initial: LocalSimulation; busy: boolean;
   onChange: (spec: LocalSimulation | null) => void;
+}
+
+function StakesFields({value = {}, onChange}: {value?: ChoiceStakes; onChange: (value: ChoiceStakes) => void}) {
+  return <details className='sm:col-span-2'><summary className='cursor-pointer text-muted'>这次行动的取舍</summary>
+    <div className='mt-3 grid gap-3 sm:grid-cols-2'>
+      <label>对当前目标<Select aria-label="对当前目标" value={value.goal_fit ?? 0} onChange={e => onChange({...value, goal_fit: Number(e.target.value)})}>
+        <option value={0}>尚未确定</option><option value={1}>有利</option><option value={-1}>背离</option>
+      </Select></label>
+      <label>对本次互动的立场<Select aria-label="对本次互动的立场" value={value.stance ?? 0} onChange={e => onChange({...value, stance: Number(e.target.value)})}>
+        <option value={0}>中立或未知</option><option value={1}>愿意配合</option><option value={-1}>倾向抵触</option>
+      </Select></label>
+      <label><input type='checkbox' checked={value.exposes_weakness ?? false} onChange={e => onChange({...value, exposes_weakness:e.target.checked})}/> 此举会暴露自己的软肋</label>
+    </div>
+  </details>
 }
 
 export function LocalRehearsalForm(props: FormProps) {
@@ -71,6 +85,7 @@ function CastForm({initial, people, busy, onChange}: FormProps & {initial: CastS
                 </label>)}
               </div>
             </details>}
+            <StakesFields value={person.stakes} onChange={stakes => editMember(index, {stakes})}/>
             <label className='block'>行动把握 {Math.round((person.confidence ?? .7) * 100)}%
               <input type='range' className='w-full' min={0} max={100} value={Math.round((person.confidence ?? .7) * 100)} onChange={e => editMember(index,{confidence:Number(e.target.value)/100})}/></label>
             <label className='block'>失败代价<Select value={person.loss ?? 5} onChange={e => editMember(index, {loss:Number(e.target.value)})}>
@@ -112,6 +127,7 @@ function PairForm({ options, people, initial, busy, onChange }: FormProps & {ini
             {cast.map(p => <option key={p.id} value={p.id}>{p.payload?.name || p.label}</option>)}</Select></label>
           <label className='block'>行动能达到预期的主观把握 {Math.round(100 * form[`${role}_confidence`])}%
             <input type='range' className='w-full' min={0} max={100} value={Math.round(100 * form[`${role}_confidence`])} onChange={e => change({ [`${role}_confidence`]: Number(e.target.value) / 100 })} /></label>
+          <StakesFields value={form[`${role}_stakes`]} onChange={stakes => change({[`${role}_stakes`]: stakes})}/>
           <label className='block'>这个人承担的失败代价<Select className='w-full' value={form[`${role}_loss`]} onChange={e => change({ [`${role}_loss`]: Number(e.target.value) })}>
             <option value={2}>较小</option><option value={5}>中等</option><option value={8}>较大</option></Select></label>
         </div>)}</div>

@@ -338,6 +338,7 @@ for _kind in ['story', 'outline']:
     })
 CARD_TYPE_SCHEMAS['character']['properties']['payload']['required'] = ['identity']
 CARD_TYPE_SCHEMAS['character']['properties']['payload']['properties'].update({
+    'vulnerability': {'type': 'string', 'maxLength': 2000},
     'detail_level': {'type': 'string', 'enum': ['brief', 'detailed']}, 'initial_pov': {'type': 'string'},
     'initial_age': {'type': 'number', 'minimum': 0}, 'initial_age_time': STORY_TIME_SCHEMA, 'birth_date': {'type': 'string'},
 })

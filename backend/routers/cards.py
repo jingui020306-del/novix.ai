@@ -137,12 +137,21 @@ def update_card(project_id: str, card_id: str, card: dict, s: FSStore = Depends(
 
 
 @router.delete('/cards/{card_id}')
-def delete_card(project_id: str, card_id: str, s: FSStore = Depends(get_store)):
+def delete_card(project_id: str, card_id: str, base_revision: str | None = None, s: FSStore = Depends(get_store)):
     from services.author_control_service import AuthorControlService
     controls = AuthorControlService(s)
     with controls.lock(project_id):
         path = s._safe_path(project_id, _card_path(card_id))
-        controls.assert_write(project_id, _card_path(card_id), s.read_yaml(project_id, _card_path(card_id)), None)
+        if not path.exists():
+            raise HTTPException(404, '这份资料已不存在，请重新读取。')
+        try:
+            check_revision(s, project_id, _card_path(card_id), base_revision or '')
+            controls.assert_write(project_id, _card_path(card_id), s.read_yaml(project_id, _card_path(card_id)), None)
+        except FileExistsError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        impact = SharedMaterialService(s).deletion_impact(project_id, card_id)
+        if impact['items']:
+            raise HTTPException(409, {'message': '其他资料仍在引用这份内容，请先在原位置核对关联，再删除。', 'impact': impact['items']})
         if path.exists():
             path.unlink()
             IncrementalMemoryService(s).mark(project_id, _card_path(card_id))

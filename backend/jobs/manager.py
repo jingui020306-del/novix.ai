@@ -753,19 +753,23 @@ class JobManager:
                 canon_profile = canon_selected
                 if canon_profile.get("provider") == "mock" and writer_used.get("provider") != "mock":
                     canon_profile = writer_used
-                extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": scene_index, "beats": scene.get("beats", []), "cast": scene.get("cast", [])}, canon_profile, usage_callback=lambda stats: self._record_usage(project_id, job_id, 'canon_extractor', canon_profile, stats, status=stats.get('status', 'completed')))
+                extracted = await self.canon_extractor.extract(chapter_id, updated, {"scene_index": scene_index, "beats": scene.get("beats", []), "cast": scene.get("cast", []), 'world_context': scope}, canon_profile, usage_callback=lambda stats: self._record_usage(project_id, job_id, 'canon_extractor', canon_profile, stats, status=stats.get('status', 'completed')))
                 if self.store.read_md(project_id, f'drafts/{chapter_id}.md') != updated:
                     raise ValueError('核对期间正文已有新编辑，旧事实提取结果未写入，作者新稿保留。')
+                known_facts = {fact.get('id') for fact in self.store.read_jsonl(project_id, 'canon/facts.jsonl')}
                 for fact in extracted.get("facts", []):
-                    self.store.append_jsonl(project_id, "canon/facts.jsonl", {**fact, 'world_context': scope})
+                    if fact.get('id') not in known_facts:
+                        self.store.append_jsonl(project_id, "canon/facts.jsonl", {**fact, 'world_context': scope})
+                        known_facts.add(fact.get('id'))
                 for issue in extracted.get("issues", []):
                     self.store.append_jsonl(project_id, "canon/issues.jsonl", issue)
                 for proposal in extracted.get("new_entity_proposals", []):
                     self.store.append_jsonl(project_id, "canon/proposals.jsonl", proposal)
                 meta["proposals"] = extracted.get("new_entity_proposals", [])
+                meta['canon_extraction_coverage'] = extracted.get('extraction_coverage', {})
                 meta["chapter_status"] = "已保存"
                 self.store.write_json(project_id, f"drafts/{chapter_id}.meta.json", meta)
-                await self.emit(project_id, job_id, "CANON_UPDATES", {"facts": [chapter_fact, *extracted.get("facts", [])], "proposals": extracted.get("new_entity_proposals", []), "summary": summary, "provider": writer_used.get("provider")})
+                await self.emit(project_id, job_id, "CANON_UPDATES", {"facts": [chapter_fact, *extracted.get("facts", [])], "proposals": extracted.get("new_entity_proposals", []), "summary": summary, "extraction_coverage": extracted.get('extraction_coverage', {}), "provider": writer_used.get("provider")})
             else:
                 await self.emit(project_id, job_id, "DIFF", {"diff": ""})
                 await self.emit(project_id, job_id, "MERGE_RESULT", {"chapter_id": chapter_id, "applied": False, "pending_patch": True})

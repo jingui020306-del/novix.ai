@@ -10,13 +10,14 @@ import { WorldExtras } from './WorldExtras'
 import { cardAfterSave, useDraftRecovery } from '../lib/editorDrafts'
 import { OpenMaterial } from './MaterialReferences'
 
-export function CardEditor({ project, type, profileId, onSaved, draftCache, referenceRequest, onOpenMaterial, focusRequest, pendingCandidate, onCandidateCleared, sampleIds = [] }: { project: string; type: 'world' | 'style'; profileId?: string; onSaved?: () => void; draftCache?: { current: Record<string, any> }; referenceRequest?: { type: string; cardId: string; referenceId: string; requestId: number } | null; onOpenMaterial?: OpenMaterial; focusRequest?: { id: string; requestId: number } | null; pendingCandidate?: any; onCandidateCleared?: () => void; sampleIds?: string[] }) {
+export function CardEditor({ project, type, profileId, onSaved, draftCache, referenceRequest, onOpenMaterial, focusRequest, pendingCandidate, onCandidateCleared, sampleIds = [], onActiveCardChange }: { project: string; type: 'world' | 'style'; profileId?: string; onSaved?: () => void; draftCache?: { current: Record<string, any> }; referenceRequest?: { type: string; cardId: string; referenceId: string; requestId: number } | null; onOpenMaterial?: OpenMaterial; focusRequest?: { id: string; requestId: number } | null; pendingCandidate?: any; onCandidateCleared?: () => void; sampleIds?: string[]; onActiveCardChange?: (id: string) => void }) {
   const { data, error: readError, mutate } = useSWR(`/api/projects/${project}/cards?type=${type}`, api.get)
   const { data: schema } = useSWR(`/api/schema/cards/${type}`, api.get)
   const [sampleText, setSampleText] = useState('')
   const [candidate, setCandidate] = useState<any>(null)
   useEffect(() => { setCandidate(pendingCandidate?.candidate || null) }, [pendingCandidate])
   const [form, setForm] = useState<any>(null)
+  useEffect(() => { onActiveCardChange?.(form?.id || '') }, [project, form?.id])
   const formScope = useRef(`${project}:${type}`)
   const latestForm = useRef(form)
   latestForm.current = form

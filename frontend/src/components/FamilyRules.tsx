@@ -4,7 +4,7 @@ import { Input, Select, Textarea } from './ui/Fields'
 import { Button } from './ui/Button'
 
 type Rule = { id: string; label?: string; overrides?: string; scope?: Record<string, unknown>; values: Record<string, any> }
-const pools = { surnames: '姓氏词库', given_names: '名字词库', traits: '家族性格倾向', forbidden: '禁用词' }
+const pools = { surnames: '姓氏词库', given_names: '名字词库', traits: '性格词库', identities: '人物身份', motivations: '人物动机', vulnerabilities: '人物软肋', voices: '说话习惯', forbidden: '禁用词' }
 
 export function FamilyRules({
   project,
