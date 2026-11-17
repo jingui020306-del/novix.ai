@@ -46,7 +46,7 @@ export function BookOverview({ project, cards, events, story, onPicture, onOpenM
         </Select>}
       </div>}
       {story.logline && <p>{story.logline}</p>}
-      <Button variant='ghost' onClick={onOutline}>{story.full_outline ? '继续编辑全书构想' : '写下全书构想'}</Button>
+      <Button variant='ghost' onClick={onOutline}>{story.full_outline ? '编辑全书构想' : '添加全书构想'}</Button>
     </section>
     <section>
       <h2>关键事件</h2>
@@ -56,7 +56,7 @@ export function BookOverview({ project, cards, events, story, onPicture, onOpenM
           {row.time && <small>{row.time}</small>}{row.scene || row.purpose || '未命名事件'}
         </button>
       })}
-      <Button variant='ghost' onClick={onTimeline}>打开故事时间线</Button>
+      <Button variant='ghost' onClick={onTimeline}>查看时间线</Button>
     </section>
   </div>
 }
