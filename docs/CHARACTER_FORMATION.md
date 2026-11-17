@@ -23,7 +23,16 @@ python -m pip install "transformers>=4.48,<5" sentencepiece
 
 ### GLUCOSE 权重格式
 
-[作者仓库](https://github.com/ElementalCognition/glucose)给出微调检查点和原始推理脚本。已有 Transformers 格式权重可以直接使用。持有作者发布的 T5-large TensorFlow 检查点时，可在独立转换环境安装 TensorFlow、PyTorch、sentencepiece 和 Transformers 4.57.6，运行下列 Python。将路径改成实际位置，检查点填写前缀，转换输出目录放在作品和仓库之外。
+[作者仓库](https://github.com/ElementalCognition/glucose)给出微调检查点和原始推理脚本。分享页访问失败时，可在原链接后加 `&download=1`，直接下载官方文件。在仓库之外的模型目录执行。
+
+```sh
+curl --fail --location --output glucose_t5_large.tar 'https://comoltd.sharepoint.com/:u:/s/Glucose/Ef2aqIM5YEdFr4aRFDZ-HR0BkMSpNiAHxu6Nz3TnDavHAA?e=9Bbdgg&download=1'
+tar -xzf glucose_t5_large.tar
+```
+
+本次下载文件为 1,180,919,618 字节，SHA-256 为 `06478070758b8cd0a1ee89116bc112b7c4c36816c9ac79afce09f6d84d798d7f`。解压后检查点前缀为 `large/model.ckpt-1315700`。
+
+已有 Transformers 格式权重可以直接使用。转换官方 TensorFlow 检查点时，可在独立转换环境安装 TensorFlow、PyTorch、sentencepiece 和 Transformers 4.57.6，运行下列 Python。将路径改成实际位置，检查点填写前缀，转换输出目录放在作品和仓库之外。
 
 ```python
 from transformers import AutoTokenizer, T5Config, T5ForConditionalGeneration
@@ -31,7 +40,7 @@ from transformers.models.t5.modeling_t5 import load_tf_weights_in_t5
 
 config = T5Config.from_pretrained("google-t5/t5-large")
 model = T5ForConditionalGeneration(config)
-load_tf_weights_in_t5(model, config, "/models/glucose/model.ckpt-13157000")
+load_tf_weights_in_t5(model, config, "/models/glucose/large/model.ckpt-1315700")
 model.save_pretrained("/models/glucose-hf")
 AutoTokenizer.from_pretrained("google-t5/t5-large").save_pretrained("/models/glucose-hf")
 ```
