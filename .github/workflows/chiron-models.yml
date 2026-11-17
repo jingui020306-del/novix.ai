@@ -52,6 +52,14 @@ jobs:
         run: |
           set -euo pipefail
           wheel=en_core_web_lg-3.7.1-py3-none-any.whl
-          gh release download en_core_web_lg-3.7.1 --repo explosion/spacy-models --pattern "$wheel"
-          sha256sum "$wheel" > "$wheel.sha256"
-          gh release upload "$TAG" "$wheel" "$wheel.sha256" --clobber
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')
+          gh release download "$TAG" --pattern SHA256SUMS
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --paginate \
+            --jq '.[] | select(.name | startswith("chiron.tar.part-")) | [.digest[7:], .name] | join("  ")' | sort -k2 > uploaded
+          diff SHA256SUMS uploaded
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fx "$wheel.sha256" > /dev/null; then
+            gh release download en_core_web_lg-3.7.1 --repo explosion/spacy-models --pattern "$wheel"
+            sha256sum "$wheel" > "$wheel.sha256"
+            gh release upload "$TAG" "$wheel" "$wheel.sha256" --clobber
+          fi
+          gh release edit "$TAG" --notes "人物卡 CHIRON 官方生成与核验权重，另含英文分句模型。下载及验证请参阅[本版安装说明](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/CHARACTER_FORMATION.md)或[下载含安装程序的本版源码](https://github.com/$GITHUB_REPOSITORY/archive/$GITHUB_SHA.zip)。"

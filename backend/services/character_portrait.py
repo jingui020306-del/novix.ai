@@ -46,10 +46,9 @@ def source_passages(service, project, request):
     cid = entity_id(card.get('id'), '人物')
     if card.get('type') != 'character' or not isinstance(card.get('payload'), dict):
         raise ValueError('请选择人物卡。')
-    p = strip_author_only(card['payload'])
     authors = AuthorDataService(service.store)
     scope = authors.world.resolve(project, story_card_id=request.story_card_id,
-                                  world_context=p.get('world_context') or {})['scope']
+                                  world_context=card['payload'].get('world_context') or {})['scope']
     if not authors.world.card_visible(project, card, scope):
         raise ValueError('此人物不属于当前世界或分支。')
     active, _ = authors._active_stages(project, 'character', cid, scope)
@@ -70,11 +69,17 @@ def source_passages(service, project, request):
 
     for key, label in [('identity', '身份'), ('family_background', '成长经历'), ('core_motivation', '动机'),
                        ('personality_traits', '性格'), ('beliefs', '信念'), ('goal', '当前目标'), ('vulnerability', '软肋'), ('voice', '口吻'), ('boundaries', '底线')]:
-        add(f'cards/{cid}#{key}', label, p.get(key))
+        value = p.get(key)
+        changed_at = next((stage for stage in reversed(active) if key in stage['changes'] and stage['changes'][key] == value), None)
+        source = f'canon/author_stages.jsonl#{changed_at["id"]}/{key}' if changed_at else f'cards/{cid}#{key}'
+        add(source, label, value)
     for row in p.get('detail_sections', []):
         if not row.get('id') or row['id'].startswith('self_') or not authors.world.applies(project, row.get('scope'), scope)[0]:
             continue
-        add(f'cards/{cid}#{row["id"]}', row.get('title', '经历'), row.get('content'))
+        stage = next((stage for stage in reversed(active) if any(item.get('id') == row['id'] and
+                      item.get('content') == row.get('content') for item in stage['changes'].get('detail_sections', []))), None)
+        origin = f'canon/author_stages.jsonl#{stage["id"]}/{row["id"]}' if stage else f'cards/{cid}#{row["id"]}'
+        add(origin, row.get('title', '经历'), row.get('content'))
     for rel in authors.relationships_at(project, scope):
         state = strip_author_only(rel['state'])
         people = state.get('participants', [])
@@ -98,8 +103,11 @@ def source_passages(service, project, request):
     targets = {}
     for layer in request.fields:
         base = 'self_' + layer
-        targets[layer] = (base if base not in sections or (sections[base].get('scope') or {}) == applied_scope
-                          else base + '_' + scope_key)
+        scoped = base + '_' + scope_key
+        if scoped in sections or base in sections and (sections[base].get('scope') or {}) != applied_scope:
+            targets[layer] = scoped
+        else:
+            targets[layer] = base
     controls = AuthorControlService(service.store).get(project, f'cards/{cid}.yaml')
     for key in request.fields:
         pointer = '/payload/detail_sections/@' + targets[key]
@@ -181,7 +189,7 @@ async def propose_portrait(service, project, request):
         prompt = {'人物': name, '分析角度': LAYERS[layer], '原文材料': evidence}
         answer = await service.complete(project, profile_id, 'setup_character',
             '只根据原文写一条可供作者修改的人物理解。content 只写一句简短中文，以“可能”表达推测，不超过六十字。'
-            '区分谁说、谁做、谁知道，考虑成长环境、持续关系、重复及反例。不得断言未写明的想法、归属或他人态度，不从单次经历断定性格，不续写。'
+            '区分谁说、谁做、谁知道，考虑成长环境、持续关系、重复及反例。单凭关系称谓不能推断性格；不得断言未写明的想法、归属或他人态度，不从单次经历断定性格，不续写。'
             'references 列出支撑这条判断的材料编号。缺少依据就返回空字符串和空数组。'
             'situation 和 response 可留空；只有原文描述过的具体处境和可见行动才填。仅输出 JSON。',
             json.dumps(prompt, ensure_ascii=False), max_tokens=300, prepare_memory=False, response_schema=schema)
