@@ -1,0 +1,14 @@
+name: novix
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - nodejs=22
+  - git
+  - openjdk=21
+  - dotnet-sdk=8
+  - poppler
+  - pip:
+      - -r backend/requirements.txt
