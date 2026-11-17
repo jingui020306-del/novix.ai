@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { api } from '../api/client'
 import { Button } from './ui/Button'
@@ -34,13 +34,39 @@ function selectedRevisionText(revision: any, ids: string[]) {
   return result.join('')
 }
 
-export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, sceneRef, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
-  project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
+export type ManuscriptPosition = {
+  text: string; start: number; end: number; direction: 'forward' | 'backward' | 'none'; scroll: number
+}
+
+export function ManuscriptEditor({ positions, project, chapterId, text, profileId, storyCardId, sceneDirection, sceneRef, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
+  positions: Map<string, ManuscriptPosition>; project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
   saved: boolean; saving: boolean; locked: boolean; onSave: () => void;
   sceneRef?: {owner_card_id: string; scene_id: string}; baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const [range, setRange] = useState({start: 0, end: 0})
+  const interacted = useRef(false)
+  const restored = useRef(false)
+  const positionKey = `${project}:${chapterId}`
+  useLayoutEffect(() => {
+    const editor = editorRef.current
+    const saved = positions.get(positionKey)
+    if (restored.current || interacted.current || !editor || !saved || saved.text !== text || !editor.getClientRects().length) return
+    restored.current = true
+    editor.focus({ preventScroll: true })
+    editor.setSelectionRange(saved.start, saved.end, saved.direction)
+    editor.scrollTop = saved.scroll
+    setRange({ start: saved.start, end: saved.end })
+  }, [positions, positionKey, text])
+  useLayoutEffect(() => {
+    const editor = editorRef.current
+    return () => {
+      if (editor && interacted.current) positions.set(positionKey, {
+        text: editor.value, start: editor.selectionStart, end: editor.selectionEnd,
+        direction: editor.selectionDirection, scroll: editor.scrollTop,
+      })
+    }
+  }, [positions, positionKey])
   const controlsRef = useRef<HTMLDivElement>(null)
   const [anchor, setAnchor] = useState<{left: number; top: number} | null>(null)
   const [focused, setFocused] = useState(false)
@@ -151,9 +177,9 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
       <div className='relative'>
       <textarea id='chapter-manuscript-editor' aria-label='章节正文' className='editor-text' ref={editorRef} readOnly={locked} value={text} placeholder='章节正文…'
         onChange={e => {onChange(e.target.value); setScope(null); setRevision(null); requestNumber.current++; setBusy(false)}}
-        onFocus={() => setFocused(true)}
+        onFocus={() => { interacted.current = true; setFocused(true) }}
         onKeyDown={() => setAnchor(null)}
-        onScroll={() => setAnchor(null)}
+        onScroll={() => { interacted.current = true; setAnchor(null) }}
         onMouseUp={e => {
           const el = e.currentTarget
           const rect = el.getBoundingClientRect()
