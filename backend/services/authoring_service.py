@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 import copy
+from collections import Counter
 from difflib import unified_diff
 from typing import Any
 
@@ -17,7 +19,7 @@ from services.shared_material_service import SharedMaterialService, CHARACTER_PO
 from services.knowledge_graph_service import KnowledgeGraphService
 from schemas.json_schemas import CARD_TYPE_SCHEMAS
 from storage.fs_store import now_iso
-from services.token_usage import normalize_usage
+from services.token_usage import normalize_usage, summarize_usage
 from services.world_scope_service import WorldScopeService
 from services.character_detail_service import strip_author_only
 
@@ -224,9 +226,133 @@ class AuthoringService:
     def content_hash(content: str) -> str:
         return hashlib.sha256(content.encode()).hexdigest()
 
+    def _dialogue_material(self, project_id, chapter_id, body, start, end):
+        from services.author_data_service import AuthorDataService
+        from services.information_service import InformationService
+        from services.scene_rehearsal_service import SceneRehearsalService
+
+        world = WorldScopeService(self.store)
+        scenes = SceneRehearsalService(self.store)
+        story, ref = body.get('story_card_id'), body.get('scene_ref')
+        confirmed = scenes.writer_materials(project_id, chapter_id, story, ref)['items']
+        if ref and not confirmed:
+            raise ValueError('所选场景未确认、已过期或不属于本章。请重新选择本章事件锚点。')
+        if len(confirmed) > 1:
+            raise ValueError('本章有多份已确认安排，请在「本章场景安排」选择本次事件锚点。')
+        scene = confirmed[0] if confirmed else {}
+        if scene:
+            ref = {k: scene[k] for k in ('owner_card_id', 'scene_id')}
+        scope = world.resolve(project_id, chapter_id=chapter_id, story_card_id=story, event_ref=ref)['scope']
+        spec = scene.get('local_simulation') or {}
+        cast = spec.get('participants') or []
+        if not cast and spec.get('actor_id'):
+            choices = spec.get('choices') or {}
+            cast = [{'actor_id': spec['actor_id'], 'act': choices.get('act'), 'hold': choices.get('hold'),
+                     'effect': choices.get('effect'), 'visible_to': [spec['partner_id']]},
+                    {'actor_id': spec['partner_id'], 'act': choices.get('respond'), 'hold': choices.get('check'),
+                     'visible_to': [spec['actor_id']]}]
+        if not cast and ref:
+            _, event, _, _ = world.event(project_id, ref)
+            cast = [{'actor_id': identity} for identity in dict.fromkeys([*(event.get('characters') or []), *(event.get('cast') or [])])]
+        authors = AuthorDataService(self.store)
+        info = InformationService(self.store)
+        if cast:
+            current = []
+            information = info.state(project_id, world_context=scope, reader_chapter_id=chapter_id, reader_offset=start)
+            for role in cast:
+                identity = role['actor_id']
+                card = self.store.read_yaml(project_id, f'cards/{identity}.yaml')
+                if card.get('type') == 'character' and world.card_visible(project_id, card, scope):
+                    current.append(authors.character_state(project_id, identity, world_context=scope, _information_snapshot=information))
+        else:
+            current = authors.author_state(project_id, world_context=scope)['characters']
+        people = {p['id']: p for p in current if p['state'].get('setting_status', 'set') == 'set'
+                  and p['state'].get('canon_status', 'canon') == 'canon'
+                  and p['state'].get('confirmation_status') not in {'pending', 'pending_author_review'}}
+        if not cast:
+            segment = body['source_text'][start:end]
+            counts = Counter(p['state'].get('name') for p in people.values())
+            cast = [{'actor_id': key} for key, p in people.items() if p['state'].get('name') and
+                    counts[p['state']['name']] == 1 and p['state']['name'] in segment]
+        speakers = []
+        names = Counter(people[x['actor_id']]['state'].get('name') for x in cast if x['actor_id'] in people)
+        confirmed_text = scene.get('text', '')
+        clauses = re.split(r'[。！？\n]', confirmed_text)
+        for role in cast:
+            identity = role['actor_id']
+            if identity not in people:
+                continue
+            person = people[identity]
+            fields = person['state']
+            name = fields.get('name') or person['base'].get('title') or identity
+            notes = []
+            if names[name] == 1:
+                for line in (body.get('instructions') or '').splitlines():
+                    key, sep, value = line.replace(':', '：', 1).partition('：')
+                    if sep and key.strip() == name:
+                        notes.append(value.strip())
+            records = info.materials(project_id, {**scope, 'pov_character_id': identity}, actor_ids=[identity],
+                                     reader_chapter_id=chapter_id, reader_offset=start)['items']
+            beliefs = [{'state': item.get('state', 'knows'), 'value': item.get('value')} for item in person['knowledge']]
+            utterances = []
+            for record in records:
+                beliefs.extend({k: row['data'].get(k) for k in ('state', 'value')} for row in record['awareness'] if row.get('current') is True)
+                utterances.extend({k: row['data'][k] for k in ('speaker_id', 'value', 'intent') if k in row['data']} for row in record['expressions'])
+            # A scene may use the same action for several speakers. Only attach an explicitly attributed choice.
+            own_lines = [line.partition(name)[2] for line in clauses if names[name] == 1 and name in line
+                         and not any(other and other != name and other in line for other in names)]
+            actions = [v for v in (role.get('act'), role.get('hold')) if v and any(
+                re.search(r'^\s*(?:[：:]\s*|选择了?\s*)?' + re.escape(v), line) for line in own_lines)]
+            speakers.append({'id': identity, 'name': name, 'voice': fields.get('voice'), 'motivation': fields.get('core_motivation'),
+                             'vulnerability': fields.get('vulnerability'), 'traits': fields.get('personality_traits'),
+                             'goal': role.get('goal') or spec.get('topic'), 'action': actions[0] if len(actions) == 1 else '',
+                             'visible_to': role.get('visible_to'), 'beliefs': beliefs, 'heard_or_said': utterances, 'author_notes': notes})
+        return {'scene_ref': ref, 'confirmed_plan': confirmed_text, 'outcome': scene.get('outcome', ''), 'speakers': speakers}
+
+    async def _dialogue(self, project_id, chapter_id, body, start, end, base_hash):
+        source = body['source_text']
+        material = self._dialogue_material(project_id, chapter_id, body, start, end)
+        if not source[start:end].strip() and not material['confirmed_plan']:
+            raise ValueError('可选择已有正文，或先为本章确认一场安排，再起草对话。')
+        from services.change_suggestion_service import ChangeSuggestionService
+        turns, usage = [], []
+        for person in material['speakers']:
+            heard = [t['text'] for t in turns if t['audience'] is None or person['id'] in t['audience']]
+            notes = {k: v for k, v in person.items() if k not in {'id', 'visible_to'}}
+            lines = await self.complete(project_id, body, 'proofreader',
+                '你只为一位小说人物写一两句可说出口的台词。按本人的行动、目的和口吻回应；'
+                '怀疑、误信和听说仍按原状态表达。隐瞒的内容留在言外，不揭示隐情、读者信息、他人未说的想法。'
+                '只返回台词；若这次选择沉默则只返回「沉默」。',
+                json.dumps({'本人资料': notes, '之前听到的台词': heard}, ensure_ascii=False),
+                max_tokens=400, prepare_memory=False, usage_callback=usage.append)
+            turns.append({'name': person['name'], 'text': lines, 'audience': person['visible_to']})
+        names = {p['id']: p['name'] for p in material['speakers']}
+        quoted = [{**t, 'audience': '全场' if t['audience'] is None else [names[i] for i in t['audience'] if i in names]} for t in turns]
+        general = [line for line in (body.get('instructions') or '').splitlines()
+                   if line.replace(':', '：', 1).partition('：')[0].strip() not in names.values()]
+        prompt = {'待修改段落': source[start:end], '已采用的场景安排': material['confirmed_plan'],
+                  '已采用的结果': material['outcome'], '人物台词及听众': quoted, '作者要求':'\n'.join(general)}
+        text = await self.complete(project_id, body, 'proofreader',
+            '写成可直接替换选段的小说正文。保留原段落的必要叙述与已选行动，用动作、停顿或言外之意承接台词。'
+            '各人只能回应自己听到的话。若给了分角色台词，保留归属和可见范围，不另编台词或补充知识。'
+            '未指定人物资料时只依原段落改写；不引入新事实。仅输出替换文本。', json.dumps(prompt, ensure_ascii=False),
+            max_tokens=6000, prepare_memory=False, usage_callback=usage.append)
+        return {'text': text, 'source_text': source, 'base_hash': base_hash, 'start': start, 'end': end,
+                'mode': 'dialogue', 'story_card_id': body.get('story_card_id'), 'scene_ref': material['scene_ref'],
+                'instructions': body.get('instructions', ''), 'dialogue_hash': self.content_hash(json.dumps(material, ensure_ascii=False, sort_keys=True)),
+                'ops': ChangeSuggestionService._ops(source[start:end], text),
+                'diff': '\n'.join(unified_diff(source[start:end].splitlines(), text.splitlines(), fromfile='原段落', tofile='对话候选', lineterm='')),
+                'candidate_kind': 'expression_only', 'usage': summarize_usage(usage)}
+
     async def revise(self, project_id: str, chapter_id: str, body: dict) -> dict:
         source = body['source_text']
         start, end = body.get('start', 0), body.get('end', len(source))
+        if body.get('mode') == 'dialogue':
+            if not 0 <= start <= end <= len(source) or body.get('allow_plot_change'):
+                raise ValueError('对话选段无效，或请求了修改情节。')
+            check_revision(self.store, project_id, f'drafts/{chapter_id}.md', body.get('base_revision', body.get('editor_revision')))
+            saved = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
+            return await self._dialogue(project_id, chapter_id, body, start, end, self.content_hash(saved))
         insertion = start == end and body.get('mode') in {'expand', 'construct'}
         if not 0 <= start <= end <= len(source) or (not insertion and not source[start:end].strip()):
             raise ValueError('请选择需要修改的正文段落。')
@@ -300,11 +426,15 @@ class AuthoringService:
             original = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
             if self.content_hash(original) != body['base_hash']:
                 raise FileExistsError('正文已经发生变化，请重新润色，避免覆盖新修改。')
+            if body.get('mode') == 'dialogue':
+                material = self._dialogue_material(project_id, chapter_id, body, start, end)
+                if self.content_hash(json.dumps(material, ensure_ascii=False, sort_keys=True)) != body.get('dialogue_hash'):
+                    raise FileExistsError('人物或场景资料已有修改。请重新生成对话候选。')
             updated = source[:start] + text + source[end:]
             from services.author_control_service import AuthorControlService
             AuthorControlService(self.store).assert_write(project_id, f'drafts/{chapter_id}.md', original, updated)
             patch_id = f'revision_{uuid.uuid4().hex[:10]}'
-            ops = [{'op_id': 'paragraph_revision', 'type': 'replace', 'target_range': {'start': 0, 'end': len(source.splitlines())}, 'before': source, 'after': updated, 'rationale': '日常润色' if body.get('mode') == 'polish' else '清晰自然改写'}]
+            ops = [{'op_id': 'paragraph_revision', 'type': 'replace', 'target_range': {'start': 0, 'end': len(source.splitlines())}, 'before': source, 'after': updated, 'rationale': {'polish': '日常润色', 'dialogue': '按人物写对话'}.get(body.get('mode'), '清晰自然改写')}]
             diff = '\n'.join(unified_diff(source.splitlines(), updated.splitlines(), fromfile='before', tofile='after', lineterm=''))
             if original != source:
                 save_snapshot(self.store, project_id, chapter_id, original, reason='before_manual_revision', patch_id=patch_id)

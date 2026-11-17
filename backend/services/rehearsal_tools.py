@@ -24,10 +24,10 @@ def appraise(desirability):
     return json.loads(run_engine('FAtiMA', ['dotnet', str(fatima_dll())], {'desirability': desirability}))
 
 
-def plan(spec, partner_loss):
+def plan(spec, partner_loss, actor_bonus=0., partner_bonus=0.):
     # Numeric author/character utilities are independent. A plan may be unreachable.
-    def gain(probability, loss):
-        return round(3 * probability - loss * (1 - probability) + 0.4, 6)
+    def gain(probability, loss, bonus):
+        return round(3 * probability - loss * (1 - probability) + 0.4 + bonus, 6)
 
     goal = {'respond': 'answered()', 'check': 'checked()'}[spec.plan_goal]
     problem = f'''
@@ -57,8 +57,8 @@ action check() {{
   observing(c : character): True;
 }};
 utility(): {goal};
-utility(First): if(offered()) {gain(spec.actor_confidence, spec.actor_loss)} else 0;
-utility(Other): if(checked()) 0.1 elseif(answered()) {gain(spec.partner_confidence, partner_loss)} else 0;
+utility(First): if(offered()) {gain(spec.actor_confidence, spec.actor_loss, actor_bonus)} else 0;
+utility(Other): if(checked()) 0.1 elseif(answered()) {gain(spec.partner_confidence, partner_loss, partner_bonus)} else 0;
 '''
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'scene.txt'

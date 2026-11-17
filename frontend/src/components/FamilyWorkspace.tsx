@@ -24,6 +24,8 @@ type Preview = {
   center_id: string
   nodes: Member[]
   edges: Edge[]
+  family_trait?: string
+  similarity?: number
   conflict_targets?: Record<string, string[]>
   conflicts: string[]
   warnings: string[]
@@ -294,6 +296,7 @@ function FamilyBuilder({
   const [mode, setMode] = useState('maternal'),
     [limit, setLimit] = useState(5),
     [generations, setGenerations] = useState(2)
+  const [familyTrait, setFamilyTrait] = useState(''), [similarity, setSimilarity] = useState(0.5)
   const [scope, setScope] = useState(inherited || {}),
     [blankNames, setBlankNames] = useState(false)
   const [showLive, setShowLive] = useState(false)
@@ -376,7 +379,7 @@ function FamilyBuilder({
         generations,
         world_context: scope,
         story_card_id: storyId,
-        blank_names: blankNames,
+        blank_names: blankNames, family_trait: familyTrait.trim(), similarity,
       })
       remember(result)
       setShowLive(false)
@@ -440,6 +443,15 @@ function FamilyBuilder({
           <Input type="number" min={1} max={5} value={generations} onChange={(e) => setGenerations(Number(e.target.value))} />
         </label>
       </div>
+      <details>
+        <summary className="cursor-pointer text-sm text-muted">家族共同倾向{draft?.family_trait ? ' · ' + draft.family_trait : ''}</summary>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <label className="text-sm">性格倾向<Input value={familyTrait} onChange={e => setFamilyTrait(e.target.value)} placeholder="按世界性格词库填写，留空自动选取" /></label>
+          <label className="text-sm">相似程度<Select value={similarity} onChange={e => setSimilarity(Number(e.target.value))}>
+            <option value={0}>独立抽取</option><option value={0.5}>轻微相似</option><option value={1}>较为相似</option>
+          </Select></label>
+        </div>
+      </details>
       <details>
         <summary className="cursor-pointer text-sm text-muted">世界与时期</summary>
         <WorldContextFields project={project} storyId={storyId} value={scope} onChange={setScope} />

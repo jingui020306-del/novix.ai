@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict, deque
 from graphlib import CycleError, TopologicalSorter
 
+from services.author_control_service import AuthorControlService
 from services.author_data_service import AuthorDataService, REGISTRY_ID, STAGES_PATH
 from services.card_operation_service import CardOperationService
 from services.change_suggestion_service import ChangeSuggestionService
@@ -19,12 +20,31 @@ from services.world_library_service import WorldLibraryService, encoded
 from services.world_scope_service import WorldScopeService, entity_id
 
 
-VERSION = "family-1"
+VERSION = "family-2"
 KINDS = {"parent": "亲生亲子", "adoptive_parent": "收养", "guardian": "监护", "spouse": "配偶", "sibling": "手足"}
 DEFAULTS = {
     "surnames": list("沈林周陈江顾苏陆"),
     "given_names": ["安宁", "听澜", "秋白", "南星", "知夏", "若川", "景行", "清和"],
     "traits": ["重诺", "谨慎", "坦率", "随和", "执着", "爱冒险"],
+    "identities": ["学徒", "信使", "来访者", "照料家人的人", "记录员", "带路人"],
+    "motivations": [
+        "想让曾经落空的承诺兑现",
+        "想靠自己做成一件事",
+        "想弄清故人离开的原因",
+        "想为家人争取选择的余地",
+    ],
+    "vulnerabilities": [
+        "怕在需要帮忙时被拒绝",
+        "一听到旧日失约便乱了分寸",
+        "很难对亲近的人说不",
+        "别人质疑其能力时容易冒进",
+    ],
+    "voices": [
+        "回答前总会停一拍",
+        "习惯用具体的小事解释自己的想法",
+        "越是紧张，句子越短",
+        "常用反问试探对方的态度",
+    ],
     "forbidden": [],
     "prefix": "",
     "name_order": "surname_first",
@@ -36,6 +56,45 @@ DEFAULTS = {
 }
 ROOT = "center"
 FIELD_NAMES = {"name", "age", "trait"}
+
+
+PROFILE_FIELDS = {
+    "identity": "identities",
+    "core_motivation": "motivations",
+    "vulnerability": "vulnerabilities",
+    "personality_traits": "traits",
+    "voice": "voices",
+}
+
+# Small, editable tendencies: missing or unrecognized descriptions are neutral.
+TRAIT_BIASES = {
+    "谨慎": (-0.12, 1),
+    "爱冒险": (0.15, -2),
+    "坦率": (0.08, 0),
+    "执着": (0.09, -1),
+    "重诺": (0.04, 0),
+    "随和": (0.0, 0),
+}
+
+
+def decision_bias(payload):
+    traits = payload.get("personality_traits") or []
+    if not isinstance(traits, list):
+        return {"confidence_delta": 0.0, "loss_delta": 0}
+    biases = [TRAIT_BIASES[t] for t in dict.fromkeys(t for t in traits if isinstance(t, str)) if t in TRAIT_BIASES]
+    if not biases:
+        return {"confidence_delta": 0.0, "loss_delta": 0}
+    return {
+        "confidence_delta": round(sum(b[0] for b in biases) / len(biases), 3),
+        "loss_delta": round(sum(b[1] for b in biases) / len(biases)),
+    }
+
+
+def preferred_traits(rules, family_trait, similarity):
+    return [
+        (trait, weight * (1 + similarity if trait == family_trait else 1))
+        for trait, weight in weighted(rules["traits"])
+    ]
 
 
 def number(value, label, low, high):
@@ -78,10 +137,10 @@ def choose(rng, items):
 def generate_field(record, node, field, count=0):
     rules = record["rules"]
     rng = random.Random(
-        token(VERSION, record["seed"], record["center_id"], record["scope"], node["slot"], field, count)
+        token(record.get("version", VERSION), record["seed"], record["center_id"], record["scope"], node["slot"], field, count)
     )
     if field == "trait":
-        return choose(rng, weighted(rules["traits"]))
+        return choose(rng, preferred_traits(rules, record.get("family_trait"), record.get("similarity", 0)))
     surnames = [(node["surname"], 1)] if node.get("surname") else weighted(rules["surnames"])
     given = weighted(rules["given_names"])
     if not given or not surnames:
@@ -160,7 +219,7 @@ class FamilyService(CardOperationService):
         number(low, "亲代最小年龄差", 0, 100000)
         number(high, "亲代最大年龄差", low, 100000)
         number(rules["max_age"], "最大年龄", 0, 1000000)
-        for key in ("surnames", "given_names", "traits"):
+        for key in ("surnames", "given_names", *PROFILE_FIELDS.values()):
             weighted(rules[key])
         if (
             not isinstance(rules["forbidden"], list)
@@ -173,6 +232,56 @@ class FamilyService(CardOperationService):
         ):
             raise ValueError("命名或关系规则格式不正确。")
         return rules, path
+
+    def profile(self, project, body):
+        center = entity_id(body.get("center_id") or "character_new")
+        path = f"cards/{center}.yaml"
+        card = self.store.read_yaml(project, path)
+        if card and card.get("type") != "character":
+            raise ValueError("请选择人物资料。")
+        payload = card.get("payload") or {}
+        scope = self._scope(
+            project, body.get("world_context") or payload.get("world_context") or {}, body.get("story_card_id")
+        )
+        rules, _ = self._rules(project, scope)
+        selected = body.get("fields", list(PROFILE_FIELDS))
+        settings = payload.get("profile_generation") or {}
+        locked = body.get("locked", settings.get("locked", []))
+        blank = body.get("blank", settings.get("blank", []))
+        counts = body.get("counts", {})
+        for keys in (selected, locked, blank):
+            if not isinstance(keys, list) or any(not isinstance(k, str) or k not in PROFILE_FIELDS for k in keys):
+                raise ValueError("人物生成字段无效。")
+        if not isinstance(counts, dict) or counts.keys() - PROFILE_FIELDS.keys():
+            raise ValueError("重抽计数无效。")
+        for count in counts.values():
+            number(count, "重抽次数", 0, 1000000)
+        protected = set(locked) | set(blank)
+        if "trait" in [*(payload.get("family_locked") or []), *(payload.get("family_blank") or [])]:
+            protected.add("personality_traits")
+        if card:
+            paths = [
+                p for lock in AuthorControlService(self.store).get(project, path)["locks"] for p in lock["paths"]
+            ]
+            for field in selected:
+                if any(
+                    p in ("/", "/payload", f"/payload/{field}") or p.startswith(f"/payload/{field}/")
+                    for p in paths
+                ):
+                    protected.add(field)
+        seed = str(body["seed"]) if body.get("seed") is not None else uuid.uuid4().hex
+        family = payload.get("family_source") or {}
+        values = {}
+        for field in dict.fromkeys(selected):
+            if field in protected:
+                continue
+            rng = random.Random(token("profile-1", seed, scope, center, field, counts.get(field, 0)))
+            if field == "personality_traits":
+                options = preferred_traits(rules, family.get("family_trait"), family.get("similarity", 0))
+                values[field] = [choose(rng, options)]
+            else:
+                values[field] = choose(rng, weighted(rules[PROFILE_FIELDS[field]]))
+        return {"seed": seed, "counts": counts, "values": values, "version": "profile-1"}
 
     def name(self, project, body):
         scope = self._scope(project, body.get("world_context") or {}, body.get("story_card_id"))
@@ -338,6 +447,23 @@ class FamilyService(CardOperationService):
                 "counts": {},
                 "generation_errors": {},
             }
+            similarity = body.get("similarity", 0.5)
+            if type(similarity) not in (int, float) or not 0 <= similarity <= 1:
+                raise ValueError("家族相似度须在 0 至 1 之间。")
+            requested_trait = body.get("family_trait") or ""
+            if not isinstance(requested_trait, str) or len(requested_trait) > 100:
+                raise ValueError("家族性格倾向须为简短文字。")
+            pool = weighted(rules["traits"])
+            if requested_trait and requested_trait not in dict(pool):
+                record["generation_errors"]["family_trait"] = "所选家族倾向不在当前世界的性格词库中。"
+            shared = requested_trait or root["trait"]
+            if shared not in dict(pool):
+                shared = (
+                    choose(random.Random(token(VERSION, seed, center, scope, "family_trait")), pool)
+                    if pool
+                    else ""
+                )
+            record.update(family_trait=shared, similarity=similarity)
             if world_path:
                 record["basis"][world_path] = revision(self.store, project, world_path)
             registry = f"cards/{REGISTRY_ID}.yaml"
@@ -412,7 +538,7 @@ class FamilyService(CardOperationService):
             else:
                 if added >= limit:
                     continue
-                identity = "character_" + token(VERSION, r["seed"], r["center_id"], r["scope"], slot)[:18]
+                identity = "character_" + token(r.get("version", VERSION), r["seed"], r["center_id"], r["scope"], slot)[:18]
                 if self.store.read_yaml(project, f"cards/{identity}.yaml"):
                     r["generation_errors"][slot] = "生成身份已存在；请核对亲属或更换种子。"
                     continue
@@ -512,7 +638,7 @@ class FamilyService(CardOperationService):
             left, right = bounds[key]
             if math.ceil(left) > math.floor(right):
                 break
-            rng = random.Random(token(VERSION, r["seed"], r["scope"], nodes[key]["slot"], "age"))
+            rng = random.Random(token(r.get("version", VERSION), r["seed"], r["scope"], nodes[key]["slot"], "age"))
             age = rng.randint(math.ceil(left), math.floor(right))
             nodes[key]["age"] = age
             bounds[key] = [age, age]
@@ -700,7 +826,13 @@ class FamilyService(CardOperationService):
                         "identity": n["role"],
                         "detail_level": "brief",
                         "world_context": r["scope"],
-                        "family_source": {"preview": r["id"], "slot": n["slot"], "generator": VERSION},
+                        "family_source": {
+                            "preview": r["id"],
+                            "slot": n["slot"],
+                            "generator": r.get("version", VERSION),
+                            "family_trait": r.get("family_trait", ""),
+                            "similarity": r.get("similarity", 0),
+                        },
                     },
                 }
             )
@@ -761,7 +893,7 @@ class FamilyService(CardOperationService):
                         "scope": e["scope"],
                         "direction": "undirected" if kind in ("sibling", "spouse") else "directed",
                         "participants": members,
-                        "sources": [{"path": self._path(r["id"]), "generator": VERSION}],
+                        "sources": [{"path": self._path(r["id"]), "generator": r.get("version", VERSION)}],
                     },
                     extra_entities={n["id"]: "character" for n in r["nodes"]},
                 )

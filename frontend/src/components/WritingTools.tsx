@@ -34,10 +34,10 @@ function selectedRevisionText(revision: any, ids: string[]) {
   return result.join('')
 }
 
-export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
+export function ManuscriptEditor({ project, chapterId, text, profileId, storyCardId, sceneDirection, sceneRef, techniques, baseRevision, onChange, onApplied, saved, saving, locked, onSave }: {
   project: string; chapterId: string; text: string; profileId?: string; storyCardId?: string;
   saved: boolean; saving: boolean; locked: boolean; onSave: () => void;
-  baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
+  sceneRef?: {owner_card_id: string; scene_id: string}; baseRevision?: string; techniques: { id: string; title: string }[]; sceneDirection?: any; onChange: (text: string) => void; onApplied: (content: string, revision: string) => void;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const [range, setRange] = useState({start: 0, end: 0})
@@ -81,7 +81,7 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
       const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise`, {
         source_text: text, base_revision: baseRevision, mode, instructions, writing_references: technique ? [technique] : [], llm_profile_id: profileId,
         allow_plot_change: false, scene_direction: { ...sceneDirection, ...(strategy ? { prose_strategy: strategy } : {}) },
-        story_card_id: storyCardId,
+        story_card_id: storyCardId, ...(mode === 'dialogue' ? {scene_ref: sceneRef} : {}),
         ...(mode !== 'polish' ? { expression_style: expressionStyle, emotional_atmosphere: emotionalAtmosphere } : {}),
         start: Array.from(text.slice(0, start)).length,
         end: Array.from(text.slice(0, end)).length,
@@ -105,7 +105,7 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
     try {
       const candidateText = manual ? manualText : selectedRevisionText(revision, all ? revision.ops.map((op: any) => op.op_id) : selectedChanges)
       if (candidateText === Array.from(String(revision.source_text)).slice(revision.start, revision.end).join('')) throw new Error('候选与原文相同，无须再次保存。')
-      const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, { source_text: revision.source_text, start: revision.start, end: revision.end, base_hash: revision.base_hash, mode: revision.mode, text: candidateText })
+      const result = await api.post(`/api/projects/${project}/chapters/${chapterId}/revise/apply`, { source_text: revision.source_text, start: revision.start, end: revision.end, base_hash: revision.base_hash, mode: revision.mode, text: candidateText, ...(revision.mode === 'dialogue' ? {scene_ref: revision.scene_ref, dialogue_hash: revision.dialogue_hash, story_card_id: revision.story_card_id, instructions: revision.instructions} : {}) })
       if (activeScope.current !== held) return
       if (result.detail) throw new Error(String(result.detail))
       const appliedRevision = result.applied_revision || result.revision
@@ -172,7 +172,7 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
       <button disabled={busy} onClick={() => {setScope(null);setRevision(null);editorRef.current?.focus()}}>关闭</button></div>
       <div className='flex flex-wrap gap-2'>
         <Select aria-label='修改方式' value={mode} onChange={e => {setMode(e.target.value);setRevision(null)}} disabled={busy}>
-          <option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
+          <option value='dialogue'>按人物写对话</option><option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
         </Select>
         <Button onClick={revise} disabled={busy || locked}>{busy ? '处理中…' : '预览候选'}</Button>
       </div>
@@ -184,7 +184,7 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
       {mode !== 'polish' && <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>{[['expression-style', '表达风格', expressionStyle, setExpressionStyle, ['清晰自然', '简洁克制', '细腻抒情', '凝练含蓄']], ['emotional-atmosphere', '情绪氛围', emotionalAtmosphere, setEmotionalAtmosphere, ['平静', '温暖', '紧张', '压抑', '悲凉']]].map(([id, label, value, change, choices]: any) => <div key={id} className='space-y-2'><label htmlFor={id} className='block text-sm'>{label}（可自定义）</label><Select aria-label={`选择${label}`} value={choices.includes(value) ? value : ''} onChange={(e) => change(e.target.value)}><option value=''>沿用原文 / 自定义</option>{choices.map((choice: string) => <option key={choice} value={choice}>{choice}</option>)}</Select><Textarea id={id} value={value} maxLength={1000} onChange={(e) => change(e.target.value)} placeholder={`可选，也可直接写希望的${label}`} /></div>)}</div>}
       <div>
         <label htmlFor='rewrite-instructions' className='text-sm text-muted'>本次要求（可选）</label>
-        <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder='例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。' />
+        <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder={mode === 'dialogue' ? '每人一行，例如：林秋：想问清来意，暂不提那封信。' : '例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。'} />
       </div>
       {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
         {ops.length > 0 ? <section className='space-y-3' aria-label='逐处核对润色与改写'><h4 className='text-sm font-medium'>核对每一处变化</h4>{ops.map((op: any, index: number) => <article key={op.op_id} className='space-y-2 border-b border-border py-3'><label className='flex items-center gap-2 text-sm'><input type='checkbox' disabled={busy || manual} checked={selectedChanges.includes(op.op_id)} onChange={(event) => setSelectedChanges((current) => event.target.checked ? [...current, op.op_id] : current.filter((id) => id !== op.op_id))} />采用第 {index + 1} 处修改</label><div className='grid grid-cols-1 gap-3 sm:grid-cols-2'><div><p className='text-xs text-muted'>原文</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.before || '此处没有原文（新增）'}</p></div><div><p className='text-xs text-muted'>建议</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.after || '删除此处文字'}</p></div></div></article>)}</section> : Array.isArray(revision.ops) && <p className='text-xs text-muted'>候选与原文一致，暂无要采用的修改；仍可自行编辑下方文字。</p>}

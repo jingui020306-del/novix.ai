@@ -10,6 +10,11 @@ def get_service(store=Depends(get_store)):
     return FamilyService(store)
 
 
+@router.post("/profile")
+def profile(project_id: str, body: dict = Body(...), svc=Depends(get_service)):
+    return _call(svc.profile, project_id, body)
+
+
 @router.post("/name")
 def name(project_id: str, body: dict = Body(...), svc=Depends(get_service)):
     return _call(svc.name, project_id, body)
