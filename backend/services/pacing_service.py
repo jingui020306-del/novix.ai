@@ -69,7 +69,7 @@ def explicit_choice(text, previous, candidates, characters, threads, viewpoint):
         return None
     subject, target, refusal = match.groups()
     complement = target or refusal or ''
-    if re.search(r'的|吗|么|谁|是否|能否|要不要|还是|或者|之后|以后|之前|以前|因为|于是|然后|如果|却|但|而|又|才|就|并', complement):
+    if re.search(r'^(?:不了|不成)|的|吗|么|谁|是否|能否|要不要|还是|或者|之后|以后|之前|以前|因为|于是|然后|如果|却|但|而|又|才|就|并', complement):
         return None
     named = [c['id'] for c in characters if c['name'] == subject]
     if (len(named) > 1 or not named and subject not in {'我', '他', '她', '我们', '他们', '她们'}

@@ -498,7 +498,7 @@ class MaterialImportService:
             kind, label = 'character', fields[1].strip()
             values = {'name': label, 'identity': fields[2].strip()}
         else:
-            title = re.fullmatch(r'(?:书名|作品名)[：:][ \t]*(?:《([^《》\r\n]{1,100})》|([^《》\r\n]{1,100}))', line)
+            title = re.fullmatch(r'(?:书名|作品名)[：:][ \t]*(?:《([^《》\r\n]{1,100})》|([^《》：:\r\n]{1,100}))', line)
             if not title or not (title[1] or title[2]).strip():
                 return None
             kind, label = 'story', (title[1] or title[2]).strip()
