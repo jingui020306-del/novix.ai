@@ -16,7 +16,8 @@ from services.planning_threads import thread_names
 from services.world_scope_service import WorldScopeService
 
 log = logging.getLogger(__name__)
-VERSION = 'pacing-4'
+VERSION = 'pacing-5'
+BLOCK_VERSION = 'pacing-4'  # Model inputs and output schema for existing block results.
 
 
 def digest(value):
@@ -53,7 +54,7 @@ class Moments(BaseModel):
     moments: list[Moment] = Field(max_length=8)
 
 
-def explicit_choice(text, previous, candidates, characters, threads, viewpoint):
+def explicit_choice(text, previous, candidates, characters, threads, viewpoint, *, without_object=False):
     """Read a standalone, affirmative decision directly attributed to a subject."""
     if candidates or viewpoint or set(threads) != {'main'} or (previous.strip() and not re.search(r'[。！？.!?]$', previous.strip())):
         return None
@@ -69,6 +70,8 @@ def explicit_choice(text, previous, candidates, characters, threads, viewpoint):
         return None
     subject, target, refusal = match.groups()
     complement = target or refusal or ''
+    if without_object and complement:
+        return None
     if re.search(r'^(?:不了|不成)|的|吗|么|谁|是否|能否|要不要|还是|或者|之后|以后|之前|以前|因为|于是|然后|如果|却|但|而|又|才|就|并', complement):
         return None
     named = [c['id'] for c in characters if c['name'] == subject]
@@ -76,6 +79,36 @@ def explicit_choice(text, previous, candidates, characters, threads, viewpoint):
             or any(c['name'] and c['name'] in complement for c in characters)):
         return None
     return Moment(kind='选择', label=clause, quote=clause, character_ids=named)
+
+
+# Observable changes with an explicit non-agent subject and no attributed action.
+_STATE_CLAUSE = re.compile(
+    r'(?:那(?:扇|盏|阵|场|面)|这(?:扇|盏|阵|场|面))?'
+    r'(?P<subject>大门|房门|院门|铁门|门|窗户|窗|电灯|路灯|灯|屏幕|铃声|钟声|雨声|风声|雨|雪|风)'
+    r'(?:忽然|突然|渐渐|已经|又)?(?:开|关|亮|灭|暗|响|停|熄灭|关闭|打开|停下)了[。.!！]?'
+)
+
+
+def state_subject(text, characters):
+    match = _STATE_CLAUSE.fullmatch(text.strip())
+    if match and not any(c['name'] and c['name'] in match['subject'] for c in characters):
+        return match['subject']
+    return ''
+
+
+def context_free_state(subject, previous, candidates, characters, threads, viewpoint):
+    if not subject or candidates or viewpoint or set(threads) != {'main'}:
+        return False
+    prior = previous.strip()
+    if not prior:
+        return True
+    # A decision with an object (e.g. handing over a key) can give the change meaning.
+    return subject not in prior and explicit_choice(prior, '', [], characters, threads, None, without_object=True) is not None
+
+
+def observation(quote):
+    return {'kind': '现场变化', 'label': quote, 'quote': quote, 'method': 'observed_state', 'audience': '未区分',
+            'character_ids': [], 'thread_ids': [], 'before': '', 'after': '', 'cause_id': '', 'cause_quote': ''}
 
 
 class PacingService:
@@ -202,7 +235,7 @@ class PacingService:
         identity = {'version': VERSION, 'model_revision': model_revision, 'scope': list(scope), 'story': scope.story,
                     'order': order, 'source': source}
         state = {**identity, 'status': 'processing', 'notice': '', 'progress': 0, 'total': len(blocks), 'block_size': block_size}
-        cache = old.get('blocks', {}) if old.get('version') == VERSION else {}
+        cache = old.get('blocks', {}) if old.get('version') in {BLOCK_VERSION, VERSION} else {}
         nodes, edges = [], []
         if not self.persist(project, chapter, content, scope, {**state, 'blocks': cache}):
             return
@@ -214,13 +247,23 @@ class PacingService:
             for start, text in blocks:
                 previous = content[max(0, start - 240):start]
                 block_characters = [c for c in characters if c['id'] == scope.pov_character_id or c['name'] in text or c['name'] in previous]
+                subject = state_subject(text, block_characters)
                 tokens = self.bigrams(text)
-                scored = [(sum((tokens & grams).values()), item) for item, grams in reversed(indexed)]
+                scored = [(sum((tokens & grams).values()) + int(bool(subject and subject in item['quote']
+                                    or item.get('observed_subject') and item['observed_subject'] in text)), item)
+                          for item, grams in reversed(indexed)]
                 candidates = [item for score, item in sorted(scored, key=lambda pair: pair[0], reverse=True)[:6] if score]
-                key = digest([VERSION, model_revision, scope, text, previous, candidates, block_characters, threads])
+                key = digest([BLOCK_VERSION, model_revision, scope, text, previous, candidates, block_characters, threads])
                 values = cache.get(key)
                 state['progress'] += 1
-                if values is None:
+                simple_state = context_free_state(subject, previous, candidates, block_characters, threads, viewpoint)
+                reused = values is not None
+                if simple_state and (not reused or not any(v.get('method') == 'observed_state' for v in values)):
+                    values = [observation(text.strip())]
+                    rule_blocks += 1
+                elif reused:
+                    cached_blocks += 1
+                else:
                     if content != self.store.read_md(project, f'drafts/{chapter}.md'):
                         return
                     choice = explicit_choice(text, previous, candidates, block_characters, threads, viewpoint)
@@ -233,12 +276,13 @@ class PacingService:
                         inference_seconds += time.perf_counter() - request_started
                         model_calls += 1
                         values = [m.model_dump() for m in moments]
-                    used[key] = values
-                    if not self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used}}):
-                        return
-                else:
-                    cached_blocks += 1
-                    used[key] = values
+                # Recheck cached model output too: a state-only quote cannot establish a choice.
+                values = [v for v in values if not (v['kind'] == '选择' and state_subject(v['quote'], block_characters))]
+                if subject and not any(v['quote'] in text for v in values):
+                    values = [observation(text.strip())]
+                used[key] = values
+                if not reused and not self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used}}):
+                    return
                 for value in values:
                     quote = value['quote']
                     pos = text.find(quote)
@@ -281,7 +325,10 @@ class PacingService:
 
     @staticmethod
     def candidate(node):
-        return {key: node[key] for key in ('id', 'quote', 'label', 'after', 'audience')}
+        candidate = {key: node[key] for key in ('id', 'quote', 'label', 'after', 'audience')}
+        if node.get('method') == 'observed_state':
+            candidate['observed_subject'] = state_subject(node['quote'], [])
+        return candidate
 
     @staticmethod
     def bigrams(text):
@@ -376,6 +423,9 @@ class PacingService:
                 nodes.append({'id': tid, 'label': thread.get('reader_prompt') or threads[tid],
                               'chapter': thread.get('setup_chapter_id') or '', 'quote': '', 'offset': 0,
                               'thread_ids': [tid], 'basis': 'planned'})
+        # Keep observations available as evidence. Show them on the pacing graph when linked.
         ids = {n['id'] for n in nodes}
-        return {'chapters': chapters, 'nodes': nodes, 'edges': [e for e in edges if e['from'] in ids and e['to'] in ids],
-                'threads': threads}
+        edges = [e for e in edges if e['from'] in ids and e['to'] in ids]
+        endpoints = {e[key] for e in edges for key in ('from', 'to')}
+        nodes = [n for n in nodes if n.get('method') != 'observed_state' or n['id'] in endpoints]
+        return {'chapters': chapters, 'nodes': nodes, 'edges': edges, 'threads': threads}
