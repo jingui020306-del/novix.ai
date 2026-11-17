@@ -69,6 +69,7 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
   const [aiCandidate, setAICandidate] = useState<any>(null)
   const aiRequest = useRef(0)
   const [extrasRequest, setExtrasRequest] = useState(0)
+  const [mapFocus, setMapFocus] = useState('')
   const form = formState?.project === project ? formState.card : null
   useEffect(() => { onActiveCardChange?.(form?.id || root?.id || '') }, [project, form?.id, root?.id])
   const draftKey = `${project}:world:${form?.id || 'new'}`
@@ -202,12 +203,19 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
   useEffect(() => { if (!navigationRequest || !Array.isArray(data)) return; if (navigationRequest.section === 'places') { open(rootDraft()); setView('地图'); setResourcesOpen(false); setExtrasRequest(navigationRequest.requestId) } else { setView(navigationRequest.section === 'stage' ? '阶段浏览' : '世界首页'); setEntryTypeFilter(''); setQuery(''); setFormState(null); setResourcesOpen(false) } }, [navigationRequest?.requestId, Boolean(data)])
   const otherTypes = [...new Set(cards.map(entryType))].filter((type) => !ENTRY_TYPES.includes(type))
   const newType = entryTypeFilter && !['world', '__legacy__'].includes(entryTypeFilter) ? entryTypeFilter : '原创设定'
-  const maps = form && <WorldMaps key={`${project}:${form.id}:maps`} openRequest={extrasRequest} project={project} cardId={form.id} worldId={formWorldId} value={payload.maps || []} onChange={(maps) => update('maps', maps)} onOpen={onOpenMaterial} profileId={profileId} lockedPaths={lockedPaths} saved={cards.some((card) => card.id === form.id)} />
+  const maps = form && <WorldMaps key={`${project}:${form.id}:maps`} openRequest={extrasRequest} focusMapId={mapFocus} project={project} cardId={form.id} worldId={formWorldId} value={payload.maps || []} onChange={(maps) => update('maps', maps)} onOpen={onOpenMaterial} profileId={profileId} lockedPaths={lockedPaths} saved={cards.some((card) => card.id === form.id)} />
   // Older projects can have standalone entries without a parent or world ID.
   const indexCards = cards.filter((card) => overviewCards.includes(card) ||
     (!card.payload?.world_context?.world_id && !card.payload?.parent_id && card.payload?.entry_type !== 'world'))
-  const coverOwner = [root, ...indexCards].find((card) => card?.payload?.maps?.[0]?.source?.batch_id)
-  const coverMap = coverOwner?.payload?.maps?.[0]
+  const mapChoices = [root, ...indexCards.filter(card => card.id !== root?.id)]
+    .flatMap(card => (card?.payload?.maps || []).filter((map: any) => map.source?.batch_id).map((map: any) => ({ owner: card, map })))
+  const cover = mapChoices.find(({ map }) => ['map', 'town'].includes(map.kind)) || mapChoices[0]
+  const coverOwner = cover?.owner
+  const coverMap = cover?.map
+  const [indexQuery, setIndexQuery] = useState('')
+  const indexResults = indexCards.filter(card => `${card.title || ''} ${card.payload?.summary || ''} ${entryType(card)}`.toLowerCase().includes(indexQuery.trim().toLowerCase()))
+  const categories = [...new Set(indexCards.filter(card => card.id !== root?.id).map(entryType))]
+  const openMap = () => { setMapFocus(coverMap?.id || ''); open(coverOwner || rootDraft()); setView('地图'); setExtrasRequest(Date.now()) }
   const coverUrl = worldMapPreviewUrl(project, coverMap)
   const [failedCoverUrl, setFailedCoverUrl] = useState('')
   const historyWorldId = eventContext?.world_id || root?.id
@@ -237,15 +245,32 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
       <Button onClick={save} disabled={busy}>{busy ? '保存中…' : '保存地图'}</Button>
     </section> : <>
       {view === '世界首页' && <>
-        {coverUrl && coverUrl !== failedCoverUrl && <button className="atlas-preview focus-ring" onClick={() => {
-          open(coverOwner); setView('地图'); setExtrasRequest(Date.now())
-        }}><img src={coverUrl} onError={() => setFailedCoverUrl(coverUrl)} alt={coverMap.title || '世界地图'} />
-          <span>{coverMap.title || '世界地图'} ↗</span></button>}
-        <section aria-label="世界条目索引">
-          <div className="flex items-baseline justify-between"><h2 className="index-heading">设定索引</h2><button className="text-xs text-brand-600 focus-ring" onClick={() => browse('')}>全部条目</button></div>
-          {indexCards.length ? <table className="index-table"><thead><tr><th scope="col">条目</th><th scope="col">类别</th></tr></thead>
-            <tbody>{indexCards.slice(0, 8).map((entry) => <tr key={entry.id}><td><button className="index-link focus-ring" onClick={() => { open(entry); setView('全部条目') }}>{entry.title || '未命名条目'}</button></td><td>{entry.id === root?.id ? '世界简介' : entryType(entry) === '__legacy__' ? '原有设定' : entryType(entry) === '人物与组织' ? '组织与阵营' : entryType(entry)}</td></tr>)}</tbody></table>
-          : <p className="text-sm text-muted">暂无世界条目</p>}
+        <section aria-label="世界地图概览" className="atlas-overview">
+          {coverUrl && coverUrl !== failedCoverUrl ? <button className="atlas-preview focus-ring" onClick={openMap}>
+            <img src={coverUrl} onError={() => setFailedCoverUrl(coverUrl)} alt={coverMap.title || '世界地图'} />
+            <span>{coverMap.title || '世界地图'} · 查看地图与地点</span>
+          </button> : <div className="atlas-empty">
+            <div><h2 className="index-heading">世界地图</h2><p>{coverUrl ? '地图暂时无法显示，可以打开原图查看。' : '上传地图，把故事中的地点连在一起。'}</p></div>
+            <Button onClick={openMap}>{coverUrl ? '查看地图' : '添加地图'}</Button>
+          </div>}
+          {root && <div className="atlas-introduction">
+            <p>{root.payload?.summary || root.payload?.[bodyKey(root)] || storyCard?.payload?.worldview || ''}</p>
+            {startMoment && <span>故事起点 · {startMoment}</span>}
+          </div>}
+        </section>
+        <section aria-label="世界条目索引" className="world-entry-index">
+          <div className="index-toolbar"><h2 className="index-heading">世界词条</h2><Input aria-label="查找世界词条" placeholder="查找地点、规则、组织…" value={indexQuery} onChange={event => setIndexQuery(event.target.value)} /></div>
+          {!!categories.length && <nav className="world-index-categories" aria-label="按类别查阅世界词条">
+            {categories.map(type => <button className="focus-ring" key={type} onClick={() => browse(type)}>{type === '__legacy__' ? '原有设定' : type === '人物与组织' ? '组织与阵营' : type}<span>{indexCards.filter(card => entryType(card) === type).length}</span></button>)}
+          </nav>}
+          {indexResults.length ? <ul className="world-entry-list">
+            {indexResults.slice(0, 8).map(entry => <li key={entry.id}><button className="world-entry-preview focus-ring" onClick={() => { open(entry); setView('全部条目') }}>
+              <span className="world-entry-name">{entry.title || '未命名条目'}</span>
+              <span className="world-entry-category">{entry.id === root?.id ? '世界简介' : entryType(entry) === '__legacy__' ? '原有设定' : entryType(entry)}</span>
+              <span className="world-entry-description">{entry.payload?.summary || entry.payload?.[bodyKey(entry)] || ''}</span>
+            </button></li>)}
+          </ul> : <p className="text-sm text-muted">{indexQuery ? '没有找到匹配的词条' : '从地点、规则或组织开始建立世界词条。'}</p>}
+          {indexResults.length > 8 && <button className="planning-link focus-ring" onClick={() => { setQuery(indexQuery); browse('') }}>查看全部 {indexResults.length} 个词条</button>}
         </section>
         <details><summary>简介与故事背景</summary>
           <section className='world-overview' aria-label='世界总览'>
