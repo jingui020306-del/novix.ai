@@ -73,6 +73,10 @@ def main() -> int:
     parser.add_argument("--no-local-model", action="store_true", help="Start the app using externally managed models")
     args = parser.parse_args()
 
+    setup = subprocess.run([sys.executable, str(BACKEND_DIR / "rehearsal_engines" / "install.py")])
+    if setup.returncode:
+        print("[backend] Local analysis setup incomplete. See installer output.", file=sys.stderr)
+
     backend_port = find_available_port(8000)
     frontend_port = find_available_port(5173)
     backend_url = f"http://127.0.0.1:{backend_port}"

@@ -44,6 +44,14 @@ conda run --no-capture-output -n novix python start.py --prod
 3. 点击 **保存模型**，在 **任务使用哪个模型** 里把配置分配给「正文写作」「正文审查」或「润色与改写」。同一个模型可以承担多项任务。
 4. 验证润色时，进入 **卷与章**，选一小段正文并预览候选。看到真实模型返回的文字即完成连通验证。「模拟预览」用于体验界面。
 
+「故事安排 → 章节编排 → 节奏编排」另用本机 Ollama 的 `qwen2.5:7b`，与默认文字创作模型分别配置。请先启动 Ollama，再运行安装命令，下载节奏模型：
+
+```bash
+conda run --no-capture-output -n novix python backend/rehearsal_engines/install.py pacing
+```
+
+也可用 `docker compose up --build` 安装包含排演环境和 Ollama 节奏模型的版本，完成后打开 `http://127.0.0.1:8000`；正文模型在设置中另行配置。首次需要联网下载依赖和节奏模型，作品仍保存在仓库的 `data` 目录。
+
 ## 使用技巧
 
 - **先有全书想法** → 在「作品总览 → 全书构想」写下来，再到「故事安排」把关键事件分到章节。

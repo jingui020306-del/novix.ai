@@ -110,8 +110,10 @@ class LLMGateway:
             "stream": True,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
+        if extra.get('format'):
+            payload['format'] = extra['format']
         timeout = float(extra.get("timeout_s", self.timeout))
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=not extra.get('local_only', False)) as client:
             async with client.stream("POST", f"{base.rstrip('/')}/api/chat", json=payload) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():

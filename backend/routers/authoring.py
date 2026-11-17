@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from services.authoring_service import AuthoringService
@@ -9,7 +9,7 @@ from services.knowledge_graph_service import KnowledgeGraphService
 from services.story_planning_service import StoryPlanningService
 from services.shared_material_service import SharedMaterialService
 from services.change_suggestion_service import ChangeSuggestionService
-from routers.cards import get_change_service
+from routers.cards import get_change_service, get_store
 
 
 def get_authoring() -> AuthoringService:
@@ -104,6 +104,37 @@ class SkeletonRequest(BaseModel):
 
 
 router = APIRouter(prefix='/api/projects/{project_id}', tags=['authoring'])
+
+class PacingRequest(BaseModel):
+    story_id: str = Field(pattern=r'^[\w-]+$')
+    chapter_id: str | None = Field(default=None, pattern=r'^[\w-]+$')
+    outline: str = ''
+
+
+@router.get('/pacing/chapters/{story_id}')
+def pacing_chapters(project_id: str, story_id: str, store=Depends(get_store)):
+    from services.pacing_analysis import story_chapters
+    from services.world_scope_service import entity_id
+    try:
+        return list(story_chapters(store, project_id, entity_id(story_id)))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post('/pacing')
+async def pacing(project_id: str, body: PacingRequest, request: Request, store=Depends(get_store)):
+    from services.pacing_analysis import analyze
+    try:
+        return await analyze(store, project_id, body.story_id, body.chapter_id, body.outline, request.is_disconnected)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
 
 
 @router.get('/writing-strategies')

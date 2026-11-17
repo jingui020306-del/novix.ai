@@ -306,10 +306,10 @@ class AuthoringService:
             speakers.append({'id': identity, 'name': name, 'voice': fields.get('voice'), 'motivation': fields.get('core_motivation'),
                              'vulnerability': fields.get('vulnerability'), 'traits': fields.get('personality_traits'),
                              'goal': role.get('goal') or spec.get('topic'), 'action': actions[0] if len(actions) == 1 else '',
-                             'visible_to': role.get('visible_to'), 'beliefs': beliefs, 'heard_or_said': utterances, 'author_notes': notes})
+                             'visible_to': role.get('visible_to'), 'beliefs': beliefs, 'heard_or_said': utterances, 'speaker_instructions': notes})
         return {'scene_ref': ref, 'confirmed_plan': confirmed_text, 'outcome': scene.get('outcome', ''), 'speakers': speakers}
 
-    async def _dialogue(self, project_id, chapter_id, body, start, end, base_hash):
+    async def _dialogue(self, project_id, chapter_id, body, start, end, base_hash, references):
         source = body['source_text']
         material = self._dialogue_material(project_id, chapter_id, body, start, end)
         if not source[start:end].strip() and not material['confirmed_plan']:
@@ -331,7 +331,8 @@ class AuthoringService:
         general = [line for line in (body.get('instructions') or '').splitlines()
                    if line.replace(':', '：', 1).partition('：')[0].strip() not in names.values()]
         prompt = {'待修改段落': source[start:end], '已采用的场景安排': material['confirmed_plan'],
-                  '已采用的结果': material['outcome'], '人物台词及听众': quoted, '作者要求':'\n'.join(general)}
+                  '已采用的结果': material['outcome'], '人物台词及听众': quoted, '作者要求':'\n'.join(general),
+                  '作者选用的写作参考': references}
         text = await self.complete(project_id, body, 'proofreader',
             '写成可直接替换选段的小说正文。保留原段落的必要叙述与已选行动，用动作、停顿或言外之意承接台词。'
             '各人只能回应自己听到的话。若给了分角色台词，保留归属和可见范围，不另编台词或补充知识。'
@@ -342,20 +343,30 @@ class AuthoringService:
                 'instructions': body.get('instructions', ''), 'dialogue_hash': self.content_hash(json.dumps(material, ensure_ascii=False, sort_keys=True)),
                 'ops': ChangeSuggestionService._ops(source[start:end], text),
                 'diff': '\n'.join(unified_diff(source[start:end].splitlines(), text.splitlines(), fromfile='原段落', tofile='对话候选', lineterm='')),
-                'candidate_kind': 'expression_only', 'usage': summarize_usage(usage)}
+                'candidate_kind': 'expression_only', 'usage': summarize_usage(usage), 'writing_reference_usage': references}
 
     async def revise(self, project_id: str, chapter_id: str, body: dict) -> dict:
         source = body['source_text']
         start, end = body.get('start', 0), body.get('end', len(source))
-        if body.get('mode') == 'dialogue':
-            if not 0 <= start <= end <= len(source) or body.get('allow_plot_change'):
-                raise ValueError('对话选段无效，或请求了修改情节。')
-            check_revision(self.store, project_id, f'drafts/{chapter_id}.md', body.get('base_revision', body.get('editor_revision')))
-            saved = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
-            return await self._dialogue(project_id, chapter_id, body, start, end, self.content_hash(saved))
-        insertion = start == end and body.get('mode') in {'expand', 'construct'}
+        insertion = start == end and body.get('mode') in {'expand', 'construct', 'dialogue'}
         if not 0 <= start <= end <= len(source) or (not insertion and not source[start:end].strip()):
             raise ValueError('请选择需要修改的正文段落。')
+        path = f'drafts/{chapter_id}.md'
+        from services.change_suggestion_service import ChangeSuggestionService
+        with ChangeSuggestionService(self.store).lock(project_id):
+            saved = self.store.read_md(project_id, path)
+            check_revision(self.store, project_id, path, body.get('base_revision'))
+            if body.get('editor_revision'):
+                check_revision(self.store, project_id, path, body['editor_revision'])
+        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'), reference_ids=body.get('writing_references') or [])
+        missing_references = set(body.get('writing_references') or []) - {item['id'] for item in references['references']}
+        if missing_references:
+            labels = [self.store.read_yaml(project_id, f'cards/{identity}.yaml').get('title') or '一项所选参考' for identity in sorted(missing_references)]
+            raise ValueError('本次选用的写作参考未能完整带入（超出范围、已不存在或类型不适用）：' + '、'.join(labels[:5]) + '。请减少参考或核对原条目后重试。')
+        if body.get('mode') == 'dialogue':
+            if body.get('allow_plot_change'):
+                raise ValueError('对话选段无效，或请求了修改情节。')
+            return await self._dialogue(project_id, chapter_id, body, start, end, self.content_hash(saved), references)
         mode = body.get('mode', 'polish')
         system = (
             '你是中文文字编辑。只输出修改后的段落，不要标题、解释、修改清单或代码围栏。'
@@ -384,16 +395,6 @@ class AuthoringService:
             system = system.replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。').replace('避免堆砌和改变原意。', '避免堆砌。')
             guidance['rules'] = guidance['rules'].replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。')
             system += '作者明确允许提出情节变化，但这只是待确认候选，不得改变既有世界规则和人物认知边界。'
-        path = f'drafts/{chapter_id}.md'
-        from services.change_suggestion_service import ChangeSuggestionService
-        with ChangeSuggestionService(self.store).lock(project_id):
-            saved = self.store.read_md(project_id, path)
-            check_revision(self.store, project_id, path, body.get('base_revision'))
-        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'), reference_ids=body.get('writing_references') or [])
-        missing_references = set(body.get('writing_references') or []) - {item['id'] for item in references['references']}
-        if missing_references:
-            labels = [self.store.read_yaml(project_id, f'cards/{identity}.yaml').get('title') or '一项所选参考' for identity in sorted(missing_references)]
-            raise ValueError('本次选用的写作参考未能完整带入（超出范围、已不存在或类型不适用）：' + '、'.join(labels[:5]) + '。请减少参考或核对原条目后重试。')
         materials = KnowledgeGraphService(self.store).materials(project_id, chapter_id, {}, max_chars=6000, include_references=False, story_card_id=body.get('story_card_id'))
         addresses = [{'id': card['id'], **{key: value for key, value in card.get('payload', {}).items() if key in {'name', 'gender', 'pronouns', 'address_notes', 'relationships'}}} for card in materials['cards'] if card.get('type') == 'character']
         text = await self.complete(project_id, body, 'proofreader', system, json.dumps({

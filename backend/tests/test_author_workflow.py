@@ -1237,7 +1237,8 @@ def test_rehearsal_composed_fact_revision_changes_materials_cache_and_confirmati
         calls.append(copy.deepcopy(context['facts']))
         return {'steps': [], 'engines': [], 'text': context['facts'][0]['value'], 'outcome': '仅验证同源缓存'}
 
-    monkeypatch.setattr(scene_module, 'availability', lambda: {'praxish': True})
+    # The fake rehearsal bypasses tools; satisfy the real pair preflight before testing its cache.
+    monkeypatch.setattr(scene_module, 'availability', lambda: {'praxish': True, 'sabre': True, 'fatima': True})
     monkeypatch.setattr(automatic, 'rehearse', local_rehearsal)
     service = SceneRehearsalService(store)
     original = service.get('p', 'story_1', 'meeting')
@@ -2699,3 +2700,331 @@ def test_short_import_resolves_names_without_sending_ten_thousand_object_catalog
         assert not store.read_jsonl('p', 'canon/facts.jsonl') and not list(store._safe_path('p', 'drafts').glob('*.md'))
 
     asyncio.run(scenario())
+
+
+def test_offline_profile_group_locks_local_reroll_and_family_tendency_keep_source_cards(store):
+    from services.family_service import FamilyService, PROFILE_FIELDS, preferred_traits, decision_bias
+
+    scope = {'world_id': 'world_profile', 'time': {'year': 1930}}
+    card(store, 'world_profile', 'world', {'name': '虚构港湾'})
+    person = card(store, 'profile_center', 'character', {'name': '林秋', 'identity': '已锁身份',
+        'initial_age': 35, 'initial_age_time': {'year': 1930}, 'voice': '作者留白前原值',
+        'personality_traits': ['谨慎'], 'world_context': scope})
+    controls = AuthorControlService(store)
+    controls.confirm('p', {'targets': [{'target': 'cards/profile_center.yaml', 'paths': ['/payload/identity'],
+        'base_revision': revision(store, 'p', 'cards/profile_center.yaml')}]})
+    before = {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    service = FamilyService(store)
+    request = {'center_id': person['id'], 'seed': 'stable-profile', 'world_context': scope,
+               'fields': list(PROFILE_FIELDS), 'blank': ['voice']}
+    result = service.profile('p', request)
+    assert result == service.profile('p', request)
+    assert set(result['values']) == {'core_motivation', 'vulnerability', 'personality_traits'}
+    reroll = service.profile('p', {**request, 'fields': ['core_motivation'], 'counts': {'core_motivation': 1}})
+    assert set(reroll['values']) == {'core_motivation'} and reroll['counts'] == {'core_motivation': 1}
+    assert service.profile('p', request) == result
+    assert before == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    assert preferred_traits({'traits': {'谨慎': 2, '坦率': 3}}, '谨慎', 0.5) == [('坦率', 3), ('谨慎', 3.0)]
+    assert decision_bias({'personality_traits': ['谨慎', '谨慎', '自由描述']}) == {'confidence_delta': -0.12, 'loss_delta': 1}
+    assert decision_bias({'personality_traits': ['自由描述']}) == {'confidence_delta': 0.0, 'loss_delta': 0}
+    draft = service.preview('p', {'center_id': person['id'], 'world_context': scope, 'mode': 'brother',
+        'seed': 'family-local', 'limit': 2, 'family_trait': '谨慎', 'similarity': 0.5})
+    assert not draft['conflicts'] and len(draft['nodes']) > 1
+    assert draft['family_trait'] == '谨慎' and draft['similarity'] == 0.5
+    member = next(row for row in draft['nodes'] if not row['existing'])
+    frozen = service.update('p', draft['id'], {'revision': draft['revision'],
+        'nodes': [{'id': member['id'], 'locked': ['name']}]})
+    stable_nodes = copy.deepcopy(frozen['nodes'])
+    with pytest.raises(ValueError):
+        service.update('p', draft['id'], {'revision': frozen['revision'], 'reroll': {'node_id': member['id'], 'field': 'name'}})
+    assert service.get('p', draft['id'])['nodes'] == stable_nodes
+    redrawn = service.update('p', draft['id'], {'revision': frozen['revision'], 'reroll': {'node_id': member['id'], 'field': 'trait'}})
+    for old, new in zip(stable_nodes, redrawn['nodes']):
+        assert {k: v for k, v in old.items() if k != 'trait'} == {k: v for k, v in new.items() if k != 'trait'}
+        if old['id'] != member['id']:
+            assert old == new
+    assert before == {path.name: path.read_bytes() for path in store._safe_path('p', 'cards').glob('*.yaml')}
+    applied = service.apply('p', draft['id'], {'revision': redrawn['revision']})
+    assert applied['status'] == 'applied'
+    generated = store.read_yaml('p', f"cards/{member['id']}.yaml")
+    assert generated['payload']['family_source']['family_trait'] == '谨慎'
+    assert generated['payload']['family_source']['similarity'] == 0.5
+    assert any({p['entity_id'] for p in row['participants']} == {person['id'], member['id']}
+               for row in AuthorDataService(store).relationships('p'))
+    service.undo('p', draft['id'], {'revision': applied['revision']})
+    assert not store.read_yaml('p', f"cards/{member['id']}.yaml")
+    assert store.read_yaml('p', 'cards/profile_center.yaml')['payload'] == person['payload']
+
+
+def test_dialogue_captures_current_knowledge_private_audience_reference_and_safe_partial_undo(store, monkeypatch):
+    from routers import authoring as authoring_router
+    from services import scene_rehearsal_service as scene_module
+
+    monkeypatch.setattr(scene_module, 'candidate', lambda *args, **kwargs: {'status': 'waiting'})
+    scope = {'world_id': 'world_dialogue', 'time': {'year': 1930}}
+    card(store, 'world_dialogue', 'world', {'name': '虚构旧港'})
+    for identity, name in [('a', '林秋'), ('b', '沈舟'), ('c', '顾安')]:
+        card(store, 'dialogue_' + identity, 'character', {'name': name, 'identity': '港口居民', 'voice': '初始口吻',
+            'world_context': {'world_id': 'world_dialogue'}, 'detail_sections': [
+                {'id': 'private', 'title': '作者备忘', 'content': 'AUTHOR_PRIVATE_SENTINEL', 'usage': 'author_only'}]})
+    card(store, 'dialogue_story', 'story', {'world_context': scope, 'important_scenes': [
+        {'id': 'meeting', 'scene': '码头相遇', 'chapter': 'chapter_dialogue', 'characters': ['dialogue_a', 'dialogue_b', 'dialogue_c']}]})
+    selected = '林秋🙂站在门口。\n共同原文一。\n沈舟望向旧灯。\n共同原文二。\n顾安没有作声。'
+    proposed = '林秋🙂停在门口。\n共同原文一。\n沈舟望向新灯。\n共同原文二。\n顾安终于应声。'
+    source = '前文保持。\n' + selected + '\n尾声保持。'
+    start, end = len('前文保持。\n'), len('前文保持。\n') + len(selected)
+    store.write_md('p', 'drafts/chapter_dialogue.md', source)
+    store.write_md('p', 'drafts/.chapter_order', 'chapter_dialogue')
+    store.write_json('p', 'drafts/chapter_dialogue.meta.json', {'story_card_id': 'dialogue_story', 'world_context': scope})
+    authors = AuthorDataService(store)
+    authors.add_stage('p', 'character', 'dialogue_b', {'status': 'confirmed', 'scope': {'time': {'year': 1940}},
+        'changes': {'voice': 'FUTURE_VOICE_SENTINEL'}, 'source': {'kind': 'author'}})
+    information = InformationService(store)
+    information.save('p', {'id': 'dialogue_info', 'label': '钥匙', 'truth_status': 'undecided', 'scope': {'world_id': 'world_dialogue'}})
+    for actor, state, value in [('dialogue_a', 'knows', '钥匙藏在林秋袖中'), ('dialogue_b', 'believes', '钥匙还在桥头')]:
+        information.add_record('p', 'dialogue_info', {'record_type': 'awareness', 'status': 'confirmed', 'scope': scope,
+            'source': {'kind': 'author'}, 'data': {'character_id': actor, 'state': state, 'value': value, 'basis': '作者明确设定'}})
+    technique = card(store, 'dialogue_method', 'technique', {'apply_steps': ['最新完整写法：只用听见的台词回应，不解释秘密。']})
+    unsupported = card(store, 'dialogue_not_technique', 'world', {'content': '不能将世界卡伪称技法'})
+    authors.add_stage('p', 'character', 'dialogue_a', {'status': 'confirmed', 'scope': {'time': {'year': 1920}},
+        'changes': {'voice': '当期说话先停一拍'}, 'source': {'kind': 'author'}})
+    scene_service = SceneRehearsalService(store)
+    snapshot = scene_service.get('p', 'dialogue_story', 'meeting')
+    draft = {**snapshot['draft'], 'text': '林秋选择暂缓。沈舟选择等候。顾安选择旁观。', 'outcome': '各人仍在码头。',
+        'local_simulation': {'mode': 'ensemble', 'participants': [
+            {'actor_id': 'dialogue_a', 'act': '说明', 'hold': '暂缓', 'visible_to': ['dialogue_b']},
+            {'actor_id': 'dialogue_b', 'act': '回答', 'hold': '等候'}, {'actor_id': 'dialogue_c', 'act': '询问', 'hold': '旁观'}]}}
+    scene_service.confirm('p', 'dialogue_story', 'meeting', {**snapshot, 'draft': draft})
+    calls = []
+
+    class Capture:
+        async def chat_complete(self, messages, *args, **kwargs):
+            calls.append(copy.deepcopy(messages))
+            return {'text': ['A_PRIVATE_TURN', 'B_PUBLIC_TURN', 'C_PUBLIC_TURN', proposed][(len(calls) - 1) % 4],
+                    'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}}
+
+    manager = SimpleNamespace(store=store, llm_gateway=Capture(), _resolve_profile=lambda *args: (
+        'isolated', {'provider': 'ollama', 'model': 'fake', 'base_url': 'http://not-called.invalid'}, None))
+    service = AuthoringService(manager)
+    app = FastAPI()
+    app.include_router(authoring_router.router)
+    app.dependency_overrides[authoring_router.get_authoring] = lambda: service
+    url = '/api/projects/p/chapters/chapter_dialogue/revise'
+    body = {'source_text': source, 'base_revision': revision(store, 'p', 'drafts/chapter_dialogue.md'),
+        'editor_revision': revision(store, 'p', 'drafts/chapter_dialogue.md'), 'mode': 'dialogue', 'start': start, 'end': end,
+        'story_card_id': 'dialogue_story', 'scene_ref': {'owner_card_id': 'dialogue_story', 'scene_id': 'meeting'},
+        'instructions': '林秋：只试探来意，不说出袖中钥匙。', 'writing_references': ['dialogue_method']}
+
+    def files():
+        return {str(p.relative_to(store._project_dir('p'))): p.read_bytes() for p in store._project_dir('p').rglob('*') if p.is_file()}
+
+    with TestClient(app) as client:
+        before = files()
+        assert client.post(url, json={**body, 'writing_references': [unsupported['id']]}).status_code == 400
+        assert not calls and files() == before
+        response = client.post(url, json=body)
+        assert response.status_code == 200, response.text
+        candidate = response.json()
+        assert files() == before and len(calls) == 4
+        a, b, c, final = [json.loads(row[-1]['content']) for row in calls]
+        assert a['本人资料']['speaker_instructions'] == ['只试探来意，不说出袖中钥匙。']
+        assert a['本人资料']['voice'] == '当期说话先停一拍'
+        assert {'state': 'knows', 'value': '钥匙藏在林秋袖中'} in a['本人资料']['beliefs']
+        assert {'state': 'believes', 'value': '钥匙还在桥头'} in b['本人资料']['beliefs']
+        assert '钥匙藏在林秋袖中' not in json.dumps(b, ensure_ascii=False)
+        assert b['之前听到的台词'] == ['A_PRIVATE_TURN'] and c['之前听到的台词'] == ['B_PUBLIC_TURN']
+        assert 'FUTURE_VOICE_SENTINEL' not in json.dumps(calls) and 'AUTHOR_PRIVATE_SENTINEL' not in json.dumps(calls)
+        assert final['作者选用的写作参考']['references'][0]['payload'] == technique['payload']
+        assert candidate['diff'] and len(candidate['ops']) == 3
+        first = candidate['ops'][0]
+        assert selected[first['start']:first['end']] == first['before']
+        partial = selected[:first['start']] + first['after'] + selected[first['end']:]
+        assert '停在门口' in partial and '望向旧灯' in partial and '没有作声' in partial
+        wrong = client.post(url + '/apply', json={**candidate, 'text': partial, 'instructions': '林秋：说出全部秘密。'})
+        assert wrong.status_code == 409 and files() == before
+        applied = client.post(url + '/apply', json={**candidate, 'text': partial})
+        assert applied.status_code == 200, applied.text
+        receipt = applied.json()
+        assert receipt['content'] == source[:start] + partial + source[end:]
+        undo = client.post(url + '/apply', json={'source_text': receipt['content'], 'text': source, 'start': 0,
+            'end': len(receipt['content']), 'mode': 'polish', 'base_hash': receipt['applied_revision']})
+        assert undo.status_code == 200 and undo.json()['content'] == source
+        authors.add_stage('p', 'character', 'dialogue_a', {'status': 'confirmed', 'scope': {'time': {'year': 1920}},
+            'changes': {'voice': '本场口吻已经改变'}, 'source': {'kind': 'author'}})
+        stale = files()
+        rejected = client.post(url + '/apply', json={**candidate, 'text': partial})
+        assert rejected.status_code in {400, 409} and files() == stale
+        assert len(calls) == 4
+
+
+def test_local_pacing_keeps_story_source_exact_offsets_and_rejects_unlocated_marks(store, monkeypatch):
+    import httpx
+    from services import pacing_analysis as pacing
+    from rehearsal_engines.pacing_model import OLLAMA_URL, PACING_MODEL
+
+    full_outline = '总纲唯一原句：船将靠岸。'
+    card(store, 'pacing_story', 'story', {'full_outline': full_outline, 'summary': '不是正式全文的短摘要'})
+    card(store, 'other_story', 'story', {'full_outline': 'OTHER_STORY_OUTLINE_SENTINEL'})
+    text = '旧灯仍在桥头。\n风声。门开了。🙂信落地。\n又说起信落地。'
+    store.write_md('p', 'drafts/pacing_chapter.md', text)
+    store.write_json('p', 'drafts/pacing_chapter.meta.json', {'story_card_id': 'pacing_story'})
+    store.write_md('p', 'drafts/other_chapter.md', 'OTHER_STORY_PROSE_SENTINEL')
+    store.write_json('p', 'drafts/other_chapter.meta.json', {'story_card_id': 'other_story'})
+    store.write_md('p', 'drafts/.chapter_order', 'pacing_chapter\nother_chapter')
+    assert list(pacing.source_blocks(store, 'p', 'pacing_story', None, '')) == [('总纲', full_outline), ('pacing_chapter', text)]
+    assert list(pacing.source_blocks(store, 'p', 'pacing_story', 'pacing_chapter', '不应混入单章')) == [('pacing_chapter', text)]
+    with pytest.raises(FileNotFoundError):
+        list(pacing.source_blocks(store, 'p', 'pacing_story', 'other_chapter', ''))
+    captures = []
+
+    class LocalCapture:
+        async def chat_complete(self, messages, model, temperature, max_tokens, extra):
+            current = json.loads(messages[-1]['content'])
+            captures.append((copy.deepcopy(messages), model, copy.deepcopy(extra)))
+            body = current['本段']
+            if body == '旧灯仍在桥头。':
+                marks = [{'kind': '铺垫', 'quote': body}]
+            elif body == '风声。门开了。🙂信落地。':
+                marks = [{'kind': '推进', 'quote': '门开了。'}, {'kind': '揭示', 'quote': '信落地。'},
+                         {'kind': '转折', 'quote': '原文里没有的句子'}, {'kind': '再次提及', 'quote': '风声。', 'prior_quote': '伪造前文'}]
+            elif body == '又说起信落地。':
+                marks = [{'kind': '再次提及', 'quote': body, 'prior_quote': '信落地。'}]
+            else:
+                marks = []
+            return {'text': json.dumps({'marks': marks}, ensure_ascii=False)}
+
+    monkeypatch.setattr(pacing, 'LLMGateway', LocalCapture)
+    from collections import OrderedDict
+    monkeypatch.setattr(pacing, '_cache', OrderedDict())
+    before = {str(p.relative_to(store._project_dir('p'))): p.read_bytes() for p in store._project_dir('p').rglob('*') if p.is_file()}
+
+    async def connected():
+        return False
+
+    result = asyncio.run(pacing.analyze(store, 'p', 'pacing_story', None, '', connected))
+    assert result['model'] == PACING_MODEL == 'qwen2.5:7b' and result['blocks'] == 4
+    assert len(result['marks']) == 4
+    for mark in result['marks']:
+        origin = full_outline if mark['source'] == '总纲' else text
+        assert origin[mark['offset']:mark['offset'] + len(mark['quote'])] == mark['quote']
+    assert [(row['kind'], row['quote']) for row in result['marks']] == [
+        ('铺垫', '旧灯仍在桥头。'), ('推进', '门开了。'), ('揭示', '信落地。'), ('再次提及', '又说起信落地。')]
+    assert result['marks'][-1]['prior_quote'] == '信落地。'
+    assert all(model == PACING_MODEL and extra['provider'] == 'ollama' and extra['base_url'] == OLLAMA_URL
+               and extra['local_only'] is True and extra['format'] for _, model, extra in captures)
+    assert 'OTHER_STORY' not in json.dumps(captures)
+    count = len(captures)
+    assert asyncio.run(pacing.analyze(store, 'p', 'pacing_story', None, '', connected)) == result and len(captures) == count
+    async def interrupted():
+        return True
+    assert asyncio.run(pacing.analyze(store, 'p', 'pacing_story', None, '', interrupted))['blocks'] == 0
+    # Neither repeated/ambiguous quotes nor a made-up prior quote become accepted evidence.
+    async def invalid_complete(self, *args, **kwargs):
+        return {'text': json.dumps({'marks': [{'kind': '推进', 'quote': '重复'},
+            {'kind': '再次提及', 'quote': '尾句', 'prior_quote': '不存在的前文'}]}, ensure_ascii=False)}
+    monkeypatch.setattr(LocalCapture, 'chat_complete', invalid_complete)
+    assert asyncio.run(pacing.annotate(('p', 'ambiguity'), '', '重复、重复、尾句')) == []
+    async def unavailable(self, *args, **kwargs):
+        raise httpx.ConnectError('local offline')
+    monkeypatch.setattr(LocalCapture, 'chat_complete', unavailable)
+    with pytest.raises(RuntimeError, match='本地节奏模型.*不可用'):
+        asyncio.run(pacing.annotate(('p', 'unavailable'), '', '未读的新段落'))
+    assert before == {str(p.relative_to(store._project_dir('p'))): p.read_bytes() for p in store._project_dir('p').rglob('*') if p.is_file()}
+
+
+def test_pair_requires_all_tools_without_losing_character_stakes_or_solo_ensemble_paths(monkeypatch, tmp_path):
+    from services import local_rehearsal as local
+    from services import automatic_rehearsal as automatic
+
+    choices = {'act': '递信', 'hold': '收信', 'effect': '对方收到信', 'respond': '回话', 'check': '查看封口'}
+    base = {'actor_id': 'a', 'partner_id': 'b', 'topic': '传信', 'available': True, 'actor_confidence': 0.7,
+        'partner_confidence': 0.8, 'choices': choices, 'actor_stakes': {'goal_fit': 1, 'stance': 1},
+        'partner_stakes': {'exposes_weakness': True}}
+    spec = local.LocalRehearsal(**base, engines=['praxish'])
+    assert spec.engines == list(local.PAIR_ENGINES) == ['praxish', 'sabre', 'fatima']
+    assert local.LocalRehearsal(**base, engines=[]).engines == spec.engines
+    context = {'scene': {'values': {'characters': ['a', 'b']}}, 'intersections': [], 'storylines': [], 'characters': [
+        {'id': 'a', 'label': '甲', 'payload': {'name': '甲', 'personality_traits': ['爱冒险']}},
+        {'id': 'b', 'label': '乙', 'payload': {'name': '乙', 'personality_traits': ['谨慎'], 'vulnerability': '怕被拒绝'}}]}
+    calls = []
+    def decide(available, confidence, loss, act, hold, payload, stakes):
+        calls.append(('decide', copy.deepcopy(payload), stakes.model_dump()))
+        return {'acts': available, 'chosen': act if available else hold, 'alternatives': [act, hold]}
+    monkeypatch.setattr(local, '_decide', decide)
+    monkeypatch.setattr(local.rehearsal_tools, 'availability', lambda: dict.fromkeys(['psychsim', *local.PAIR_ENGINES], True))
+    monkeypatch.setattr(local.rehearsal_tools, 'social_actions', lambda available: {'first': ['act'], 'after': {'act': ['respond'], 'hold': []}})
+    monkeypatch.setattr(local.rehearsal_tools, 'appraise', lambda desirability: {'mood': -2})
+    def plan(specification, loss, actor_bonus, partner_bonus):
+        calls.append(('plan', specification, loss, actor_bonus, partner_bonus))
+        return {'available': True, 'path': []}
+    monkeypatch.setattr(local.rehearsal_tools, 'plan', plan)
+    result = local.rehearse(context, spec)
+    assert len(result['steps']) == 2 and set(result['engines']) == set(local.PAIR_ENGINES)
+    actor, partner, planned = calls
+    assert actor[1] == context['characters'][0]['payload'] and actor[2]['goal_fit'] == 1
+    assert partner[1] == context['characters'][1]['payload'] and partner[2]['exposes_weakness'] is True
+    assert planned[1].actor_confidence == pytest.approx(0.85) and planned[1].actor_loss == 3
+    assert planned[2:] == (7, 2.0, -1.5)
+    monkeypatch.setattr(local.rehearsal_tools, 'availability', lambda: {'psychsim': True, 'praxish': True, 'sabre': False, 'fatima': True})
+    with pytest.raises(ValueError, match='sabre.*尚未安装'):
+        local.rehearse(context, spec)
+    saved = {'owner_card_id': 'story', 'scene_id': 'meeting', 'base_hash': 'fake', 'context': context,
+        'saved': None, 'stale': False, 'draft': {'local_simulation': {**base, 'engines': ['praxish']}}}
+    candidate = automatic.candidate('isolated', saved, {'praxish': True, 'sabre': False, 'fatima': True}, compute=False)
+    assert candidate['status'] == 'unavailable' and 'sabre' in candidate['notice']
+    assert candidate['settings']['engines'] == list(local.PAIR_ENGINES)
+    # Single and ensemble turns must not invoke pair-only tools when those tools are absent.
+    def forbidden(*args, **kwargs):
+        raise AssertionError('pair-only tool called for solo/ensemble')
+    monkeypatch.setattr(local.rehearsal_tools, 'social_actions', forbidden)
+    monkeypatch.setattr(local.rehearsal_tools, 'appraise', forbidden)
+    monkeypatch.setattr(local.rehearsal_tools, 'plan', forbidden)
+    monkeypatch.setattr(local.rehearsal_tools, 'availability', lambda: {'psychsim': True})
+    for mode, count in [('solo', 1), ('ensemble', 3)]:
+        people = [{'id': f'p{i}', 'label': f'人物{i}', 'payload': {'name': f'人物{i}'}} for i in range(count)]
+        cast = local.CastRehearsal(mode=mode, participants=[{'actor_id': row['id'], 'act': '发言', 'hold': '等待'} for row in people])
+        report = local.rehearse({**context, 'scene': {'values': {'characters': [r['id'] for r in people]}}, 'characters': people}, cast)
+        assert len(report['steps']) == count and report['engines'] == {}
+
+    # Missing SDK exits before creating a cache, downloading files or spawning Git/build tools.
+    import runpy
+    import shutil
+    import subprocess
+    import urllib.request
+    installer = Path(__file__).resolve().parents[1] / 'rehearsal_engines' / 'install.py'
+    with monkeypatch.context() as guard:
+        guard.syspath_prepend(str(installer.parent))
+        guard.setitem(sys.modules, 'runtime', SimpleNamespace(FATIMA=None, HERE=installer.parent, SABRE=None,
+            engine_dir=forbidden, fatima_dll=forbidden, sabre_jar=forbidden, availability=forbidden))
+        guard.setattr(shutil, 'which', lambda executable: None if executable == 'dotnet' else '/unused')
+        guard.setattr(subprocess, 'run', forbidden)
+        guard.setattr(urllib.request, 'urlopen', forbidden)
+        guard.setattr(urllib.request, 'build_opener', forbidden)
+        for choice in ['all', 'fatima']:
+            guard.setattr(sys, 'argv', [str(installer), choice])
+            with pytest.raises(SystemExit, match=r'\.NET 8 SDK'):
+                runpy.run_path(str(installer), run_name='__main__')
+        assert not list(tmp_path.iterdir())
+
+    # Conda prepares application engines without assuming its environment contains an Ollama service.
+    setup_path = Path(__file__).resolve().parents[2] / 'scripts' / 'setup_env.py'
+    setup = runpy.run_path(str(setup_path), run_name='novix_setup_test')
+    prepare = setup['prepare_app']
+    prepared = []
+    with monkeypatch.context() as guard:
+        app_root = tmp_path / 'isolated-app'
+        guard.setitem(prepare.__globals__, 'ROOT', app_root)
+        guard.setitem(prepare.__globals__, 'install_word_reader', lambda: prepared.append('word-reader'))
+        guard.setitem(prepare.__globals__, 'urlopen', forbidden)
+        guard.setattr(shutil, 'which', lambda executable: '/fake/npm')
+        guard.setattr(subprocess, 'run', lambda command, **kwargs: prepared.append((command, kwargs)))
+        prepare()
+    commands = [item for item in prepared if isinstance(item, tuple)]
+    assert [row[0][-1] for row in commands[-2:]] == ['sabre', 'fatima']
+    assert all(str(row[0][1]) == str(app_root / 'backend/rehearsal_engines/install.py')
+               and row[1] == {'cwd': app_root, 'check': True} for row in commands[-2:])
+    assert [row[0][1:] for row in commands[:2]] == [['install', '--no-audit', '--no-fund'], ['run', 'build:static']]
+    assert commands[2] == ([sys.executable, app_root / 'scripts/setup_local_model.py'], {'cwd': app_root, 'check': True})
+    assert prepared[3] == 'word-reader' and len(commands) == 5
+    assert not any(value in {'all', 'pacing'} for command, _ in commands for value in map(str, command))
+    assert not list(tmp_path.iterdir())

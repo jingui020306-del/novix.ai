@@ -18,7 +18,7 @@ _cache_lock = Lock()
 _workers = [Lock() for _ in range(32)]
 
 
-def initial_spec(snapshot, engines):
+def initial_spec(snapshot):
     context = snapshot['context']
     cast = scene_cast(context)
     if not cast:
@@ -33,7 +33,7 @@ def initial_spec(snapshot, engines):
         if isinstance(previous, CastRehearsal) and {p.actor_id for p in previous.participants} == set(cast):
             return previous
         if isinstance(previous, LocalRehearsal) and {previous.actor_id, previous.partner_id} == set(cast):
-            return previous.model_copy(update={'engines': [k for k in previous.engines if engines.get(k)]})
+            return previous
     scene = context['scene']['values']
     # Use the order of an authored interaction when it identifies both participants.
     exchange = next((r['values'] for r in context['intersections']
@@ -57,8 +57,7 @@ def initial_spec(snapshot, engines):
     topic = next((v.strip() for v in (exchange.get('goal'), goal, cast[first]['payload'].get('core_motivation'), scene.get('scene'), scene.get('purpose'),
                                       scene.get('plot')) if isinstance(v, str) and v.strip()), '本场人物的意图')
     return LocalRehearsal(actor_id=first, partner_id=other, topic=topic[:120], available=True,
-                          actor_confidence=0.7, partner_confidence=0.7, choices=choices,
-                          engines=[key for key, ready in engines.items() if ready])
+                          actor_confidence=0.7, partner_confidence=0.7, choices=choices)
 
 
 def cast_spec(context, cast, ordered, previous):
@@ -115,12 +114,17 @@ def cast_spec(context, cast, ordered, previous):
 
 
 def candidate(namespace, snapshot, engines, *, compute):
-    spec = initial_spec(snapshot, engines)
+    spec = initial_spec(snapshot)
     if spec is None:
         return {'status': 'waiting', 'notice': '本场关联人物后即可排演。'}
     settings = spec.model_dump(mode='json')
     if snapshot['saved'] and not snapshot['stale']:
         return {'status': 'confirmed', 'settings': settings}
+    if isinstance(spec, LocalRehearsal):
+        missing = [name for name in spec.engines if not engines.get(name)]
+        if missing:
+            return {'status': 'unavailable', 'settings': settings,
+                    'notice': '双人排演缺少必需引擎：' + '、'.join(missing) + '。请在后端运行安装程序。'}
     if isinstance(spec, CastRehearsal) and not any(p.act or p.hold for p in spec.participants):
         return {'status': 'waiting', 'notice': '可在排演假设中填写人物的行动，也可以补充人物目标。', 'settings': settings}
     source = [namespace, snapshot['owner_card_id'], snapshot['scene_id'], snapshot['base_hash'], settings]

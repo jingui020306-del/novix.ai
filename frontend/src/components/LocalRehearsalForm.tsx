@@ -8,9 +8,6 @@ type Person = { id: string; label: string; payload?: { name?: string } }
 const choiceLabels: Record<keyof LocalChoices, string> = {
   act: '主动行动', hold: '保留选择', effect: '对方能观察到的后果', respond: '对方主动回应', check: '对方审慎回应',
 }
-const engineLabels: Record<Engine, string> = {
-  praxish: 'Praxish · 情境允许的行动', sabre: 'Sabre · 通往指定结果的路径', fatima: 'FAtiMA · 对方对事件的情绪评价',
-}
 type FormProps = {
   options: Options; people: Person[]; initial: LocalSimulation; busy: boolean;
   onChange: (spec: LocalSimulation | null) => void;
@@ -115,10 +112,8 @@ function PairForm({ options, people, initial, busy, onChange }: FormProps & {ini
     const valid = next.actor_id !== next.partner_id && [next.actor_id, next.partner_id].every(id => cast.some(p => p.id === id))
       && next.topic.trim() && Object.values(next.choices).every(v => v.trim())
       && next.choices.act !== next.choices.hold && next.choices.respond !== next.choices.check
-      && next.engines.every(k => options.engines[k])
     onChange(valid ? next : null)
   }
-  const selected = (key: Engine) => form.engines.includes(key)
   const idsValid = [form.actor_id, form.partner_id].every(id => cast.some(p => p.id === id)) && form.actor_id !== form.partner_id
   return <details className='border-y border-border py-4'>
     <summary className='cursor-pointer font-medium'>调整本场排演假设</summary>
@@ -139,11 +134,10 @@ function PairForm({ options, people, initial, busy, onChange }: FormProps & {ini
         <option disabled value=''>自定义动作</option>{presets.map(k => <option key={k}>{k}</option>)}</Select></label>
       <details><summary className='cursor-pointer'>编辑候选动作与后果</summary><div className='mt-2 grid gap-2 sm:grid-cols-2'>{(Object.keys(choiceLabels) as (keyof LocalChoices)[]).map(k => <label key={k}>{choiceLabels[k]}<Input className='w-full' maxLength={120} value={form.choices[k]} onChange={e => change({ choices: { ...form.choices, [k]: e.target.value } })} /></label>)}</div></details>
       <label className='block'><input type='checkbox' checked={form.available} onChange={e => change({ available: e.target.checked })} /> 本场具备“{form.choices.act}”的前提</label>
-      <div className='space-y-1'>{(Object.keys(engineLabels) as Engine[]).map(k => <label key={k} className='block'><input type='checkbox' disabled={!options.engines[k] && !selected(k)} checked={selected(k)} onChange={e => change({ engines: e.target.checked ? [...form.engines, k] : form.engines.filter(v => v !== k) })} /> {engineLabels[k]}{!options.engines[k] && '（后端未就绪）'}</label>)}</div>
-      {selected('fatima') && <label className='block'>对方如何看待这个后果（−10 不利，+10 有利）：{form.desirability}
-        <input className='w-full' type='range' min={-10} max={10} value={form.desirability} onChange={e => change({ desirability: Number(e.target.value) })} /></label>}
-      {selected('sabre') && <label className='block'>希望比较的路径终点<Select className='w-full' value={form.plan_goal} onChange={e => change({ plan_goal: e.target.value as PairSimulation['plan_goal'] })}>
-        <option value='respond'>{form.choices.respond}</option><option value='check'>{form.choices.check}</option></Select></label>}
+      <label className='block'>对方如何看待这个后果（−10 不利，+10 有利）：{form.desirability}
+        <input className='w-full' type='range' min={-10} max={10} value={form.desirability} onChange={e => change({ desirability: Number(e.target.value) })} /></label>
+      <label className='block'>希望比较的路径终点<Select className='w-full' value={form.plan_goal} onChange={e => change({ plan_goal: e.target.value as PairSimulation['plan_goal'] })}>
+        <option value='respond'>{form.choices.respond}</option><option value='check'>{form.choices.check}</option></Select></label>
       {Object.values(options.engines).some(v => !v) && <details><summary className='cursor-pointer'>安装本地引擎</summary><p>后端主机使用 Node 20、Java 21 或更高版本、.NET 8 SDK 和 Git。在项目根目录运行 <code>python backend/rehearsal_engines/install.py</code>，完成后刷新页面。</p></details>}
       {!idsValid && <p role='status'>请选择两位不同的本场人物。</p>}
     </fieldset>}
