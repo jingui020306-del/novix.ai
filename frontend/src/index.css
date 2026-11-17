@@ -293,9 +293,9 @@ html[data-editor-size='large'] .editor-text { font-size: 16px; }
 .revision-controls { display: grid; gap: 12px; padding: 1rem 0; border-top: 1px solid rgb(var(--c-border)); }
 .revision-mode-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .revision-mode-row select { width: auto; max-width: 100%; }
-#chapter-manuscript-editor { display:block; width:100%; min-height:60vh; max-width:40em; resize:vertical; font-size:1.25rem; line-height:1.95; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; border:0; }
-html[data-editor-size='small'] #chapter-manuscript-editor { font-size:1.1rem; }
-html[data-editor-size='large'] #chapter-manuscript-editor { font-size:1.45rem; }
+#chapter-manuscript-editor { display:block; width:100%; min-height:60vh; max-width:40em; resize:vertical; font-size:1.125rem; line-height:1.95; font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif; border:0; }
+html[data-editor-size='small'] #chapter-manuscript-editor { font-size:1rem; }
+html[data-editor-size='large'] #chapter-manuscript-editor { font-size:1.25rem; }
 @media (max-width:599px) { .book-overview { grid-template-columns:1fr; gap:1rem; } }
 
 .people-overview { display: grid; gap: 2rem; align-items: start; }
