@@ -10,7 +10,6 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
@@ -33,16 +32,24 @@ def find_available_port(start_port: int) -> int:
         port += 1
 
 
+LOCAL_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def is_ready(url: str, timeout: float) -> bool:
+    try:
+        with LOCAL_HTTP.open(url, timeout=timeout) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
 def poll_backend_ready(base_url: str, timeout_seconds: int = 60) -> bool:
     deadline = time.time() + timeout_seconds
     health_url = f"{base_url}/api/health"
     while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(health_url, timeout=2) as response:
-                if response.status == 200:
-                    return True
-        except (urllib.error.URLError, TimeoutError):
-            time.sleep(0.5)
+        if is_ready(health_url, timeout=2):
+            return True
+        time.sleep(0.5)
     return False
 
 
@@ -53,14 +60,6 @@ class ManagedModel:
     log: Path
     command: list[str]
     process: subprocess.Popen | None = None
-
-
-def model_ready(port: int) -> bool:
-    try:
-        with urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=0.5) as response:
-            return response.status == 200
-    except (OSError, TimeoutError):
-        return False
 
 
 def terminate_process(process: subprocess.Popen) -> None:
@@ -182,7 +181,7 @@ def main() -> int:
                     model.process = None
                     if model is loading:
                         loading = None
-                elif model is loading and model_ready(model.port):
+                elif model is loading and is_ready(f'http://127.0.0.1:{model.port}/health', timeout=0.5):
                     print(f'[launcher] {model.name} 已就绪。', flush=True)
                     loading = None
             if backend_proc.poll() is not None:

@@ -39,7 +39,9 @@ conda run --no-capture-output -n novix python start.py --prod
 
 默认本地模型可直接用于文字创作，无需密钥。「模型设置 → 本地模型」可查看加载状态和权重位置。轻量模型适合起步，长篇复杂写作可在此接入更强模型；图片识别需要另配视觉模型。
 
-安装器允许 Conda 根据驱动选择兼容的 llama.cpp 构建。启动器依次加载两个模型，由运行时按可用显存分配 GPU 层；CPU 推理默认最多使用 8 个可用线程。进入 `novix` 环境后运行 `llama-server --list-devices` 可检查 CUDA、Metal 或 Vulkan 设备。已有 NVIDIA 环境如仍使用 CPU 构建，可执行 `conda install -n novix -c conda-forge "llama.cpp=12418=cuda*"`。需要固定 CPU 线程或关闭 GPU 卸载时，分别设置环境变量 `LLAMA_ARG_THREADS` 或 `LLAMA_ARG_DEVICE=none`。
+安装器允许 Conda 根据驱动选择兼容的 llama.cpp 构建。启动器依次加载两个模型，由运行时按可用显存分配 GPU 层。CPU 推理默认最多使用 8 个可用线程。进入 `novix` 环境后运行 `llama-server --list-devices` 可检查 CUDA、Metal 或 Vulkan 设备。已有 NVIDIA 环境如仍使用 CPU 构建，可执行 `conda install -n novix -c conda-forge "llama.cpp=12418=cuda*"`。需要固定 CPU 线程或关闭 GPU 卸载时，分别设置环境变量 `LLAMA_ARG_THREADS` 或 `LLAMA_ARG_DEVICE=none`。
+
+多个写作任务同时使用 1.7B 时，启动前设置 `NOVIX_LOCAL_SLOTS=2` 可启用两个并发请求槽。默认 1 槽，每槽保持 16,384 tokens。双槽会为上下文缓存预留更多内存或显存。7B 节奏任务保持单槽。
 
 1. 打开左侧 **作品工具 → 模型设置 → 添加与管理模型**。纯手动写作可以直接开始。
 2. 选择服务商，填写自定义的「配置名称」和服务商提供的「模型名称」。云端 API 通常可沿用预设服务地址，再填自己的 API 密钥。使用本地 Ollama 时，先启动服务并下载模型，地址填 `http://127.0.0.1:11434`，模型名称照抄 `ollama list` 的结果。

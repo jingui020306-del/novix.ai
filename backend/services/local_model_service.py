@@ -85,6 +85,9 @@ def runtime_command(port, name="default"):
     executable = shutil.which('llama-server')
     if not executable:
         raise RuntimeError('本地模型运行时尚未安装，请重新运行环境安装命令。')
+    slots = os.getenv('NOVIX_LOCAL_SLOTS', '1') if name == 'default' else '1'
+    if slots not in ('1', '2'):
+        raise ValueError('NOVIX_LOCAL_SLOTS 支持 1 或 2。')
     directory = model_directory()
     for part in spec.get('files', [spec]):
         file = directory / part['file']
@@ -95,7 +98,7 @@ def runtime_command(port, name="default"):
     path = directory / spec['file']
     return [executable, '--model', str(path), '--alias', spec['id'],
             '--host', '127.0.0.1', '--port', str(port),
-            '--ctx-size', str(spec['context_window']), '--parallel', '1',
+            '--ctx-size', str(spec['context_window'] * int(slots)), '--parallel', slots,
             '--threads', threads,
             '--jinja', '--reasoning', 'off', '--reasoning-format', 'deepseek',
             '--chat-template-kwargs', '{"enable_thinking":false}', '--no-warmup']
