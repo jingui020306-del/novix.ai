@@ -115,6 +115,7 @@ class PacingService:
     def __init__(self, store):
         self.store = store
         self.retry = {}
+        self.last_extraction = None
 
     def chapters(self, project):
         return [key for key in self.store.read_md(project, 'drafts/.chapter_order').splitlines()
@@ -187,6 +188,33 @@ class PacingService:
         reply = await LLMGateway().chat_complete(messages, profile['model'], 0, 1800, {**profile, 'format': schema})
         return Moments.model_validate_json(reply['text']).moments
 
+    async def extract_current(self, path, prefix, full_block, text, *inputs):
+        # Appending a new paragraph leaves the active block usable. Extending its
+        # last line changes the prompt unless the block already reached its limit.
+        stamp = None
+        request = asyncio.create_task(self.extract(text, *inputs))
+        try:
+            while True:
+                done, _ = await asyncio.wait({request}, timeout=2)
+                if done:
+                    return request.result()
+                try:
+                    stat = path.stat()
+                    latest = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+                    if latest == stamp:
+                        continue
+                    stamp = latest
+                    current = path.read_text(encoding='utf-8')
+                except FileNotFoundError:
+                    return None
+                end = len(prefix)
+                if not current.startswith(prefix) or (not full_block and current[end:end + 1] not in ('', '\n', '\r')):
+                    return None
+        finally:
+            if not request.done():
+                request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+
     def persist(self, project, chapter, content, scope, record, *, inputs_stamp=None):
         from services.change_suggestion_service import ChangeSuggestionService
         with ChangeSuggestionService(self.store).lock(project):
@@ -255,6 +283,9 @@ class PacingService:
                 candidates = [item for score, item in sorted(scored, key=lambda pair: pair[0], reverse=True)[:6] if score]
                 key = digest([BLOCK_VERSION, model_revision, scope, text, previous, candidates, block_characters, threads])
                 values = cache.get(key)
+                extraction_key = (project, chapter, key)
+                if values is None and self.last_extraction and self.last_extraction[0] == extraction_key:
+                    values = self.last_extraction[1]
                 state['progress'] += 1
                 simple_state = context_free_state(subject, previous, candidates, block_characters, threads, viewpoint)
                 reused = values is not None
@@ -272,10 +303,16 @@ class PacingService:
                         rule_blocks += 1
                     else:
                         request_started = time.perf_counter()
-                        moments = await self.extract(text, previous, candidates, block_characters, threads, viewpoint)
+                        path = self.store._safe_path(project, f'drafts/{chapter}.md')
+                        moments = await self.extract_current(
+                            path, content[:start + len(text)], len(text) == block_size,
+                            text, previous, candidates, block_characters, threads, viewpoint)
+                        if moments is None:
+                            return
                         inference_seconds += time.perf_counter() - request_started
                         model_calls += 1
                         values = [m.model_dump() for m in moments]
+                        self.last_extraction = (extraction_key, values)
                 # Recheck cached model output too: a state-only quote cannot establish a choice.
                 values = [v for v in values if not (v['kind'] == '选择' and state_subject(v['quote'], block_characters))]
                 if subject and not any(v['quote'] in text for v in values):
