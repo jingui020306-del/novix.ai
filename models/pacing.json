@@ -20,5 +20,6 @@
       "sha256": "539cf93f78e887edea1c04e2d7d8cdaca9d01dae9c9025bcb8accbe29df3d72a",
       "size": 689872288
     }
-  ]
+  ],
+  "threads": 2
 }
