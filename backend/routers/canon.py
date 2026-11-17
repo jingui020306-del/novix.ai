@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import hashlib
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -55,10 +57,27 @@ def _compose_facts_with_revisions(s: FSStore, project_id: str) -> list[dict]:
     return out
 
 
+def _fact_versions(s: FSStore, project_id: str) -> dict[str, str]:
+    originals, revisions = {}, {}
+    for row in s.read_jsonl(project_id, 'canon/facts.jsonl'):
+        originals.setdefault(str(row.get('id', '')), []).append(row)
+    for row in s.read_jsonl(project_id, 'canon/revisions.jsonl'):
+        revisions.setdefault(str(row.get('target_fact_id', '')), []).append(row)
+    return {identity: hashlib.sha256(json.dumps([rows, revisions.get(identity, [])], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            for identity, rows in originals.items()}
+
+
+def _fact_revision(s: FSStore, project_id: str, fact_id: str) -> str:
+    return _fact_versions(s, project_id).get(fact_id, '')
+
+
 @router.get('/facts')
 def facts(project_id: str, include_revisions: bool = False, s: FSStore = Depends(get_store)):
     if include_revisions:
-        return _compose_facts_with_revisions(s, project_id)
+        from services.change_suggestion_service import ChangeSuggestionService
+        with ChangeSuggestionService(s).lock(project_id):
+            versions = _fact_versions(s, project_id)
+            return [{**row, '_revision': versions.get(str(row.get('_original', row).get('id', '')), '')} for row in _compose_facts_with_revisions(s, project_id)]
     return s.read_jsonl(project_id, 'canon/facts.jsonl')
 
 
@@ -101,23 +120,35 @@ def revise_fact(project_id: str, fact_id: str, body: dict, s: FSStore = Depends(
     patch = body.get('patch')
     reason = str(body.get('reason', '')).strip()
     if not isinstance(patch, dict) or not patch:
-        raise HTTPException(status_code=400, detail='patch(dict) required')
+        raise HTTPException(status_code=400, detail='请填写需要修订的事实字段。')
     if not reason:
-        raise HTTPException(status_code=400, detail='reason required')
+        raise HTTPException(status_code=400, detail='请填写本次修订原因。')
 
-    facts_rows = s.read_jsonl(project_id, 'canon/facts.jsonl')
-    if not any(str(x.get('id', '')) == fact_id for x in facts_rows):
-        raise HTTPException(status_code=404, detail='fact not found')
-
-    rec = {
-        'target_fact_id': fact_id,
-        'patch': patch,
-        'reason': reason,
-        'ts': body.get('ts') or datetime.now(timezone.utc).isoformat(),
-    }
-    s.append_jsonl(project_id, 'canon/revisions.jsonl', rec)
-    s.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'CANON_FACT_REVISED', 'data': {'fact_id': fact_id, 'reason': reason}})
-    return {'ok': True, 'revision': rec}
+    from services.change_suggestion_service import ChangeSuggestionService
+    from services.incremental_memory_service import IncrementalMemoryService
+    with ChangeSuggestionService(s).lock(project_id):
+        if not any(str(row.get('id', '')) == fact_id for row in s.read_jsonl(project_id, 'canon/facts.jsonl')):
+            raise HTTPException(status_code=404, detail='这条作品事实已不存在，请重新读取。')
+        if body.get('base_revision') != _fact_revision(s, project_id, fact_id):
+            raise HTTPException(status_code=409, detail='事实或它的修订记录已经更新，请重新读取后再修改。')
+        if 'id' in patch and patch['id'] != fact_id:
+            raise HTTPException(status_code=400, detail='事实编号保持不变，请只修订事实内容。')
+        current = next(row for row in _compose_facts_with_revisions(s, project_id) if str(row.get('_original', row).get('id', '')) == fact_id)
+        pending = current.get('status') in {'pending', 'planned', 'unverified'} or current.get('confirmation_status') in {'pending_author_review', 'pending'}
+        if pending and (patch.get('status') == 'confirmed' or patch.get('confirmation_status') == 'confirmed'):
+            verification = EvidenceService(s).verify_fact_evidence(project_id, _apply_patch(current, patch))
+            if verification.get('support_level') != 'supported':
+                raise HTTPException(400, '这条事实的依据尚不能在已保存正文中定位。请先修正事实内容和依据原句，再确认；没有依据的说法不能标成已核实事实。')
+            patch = {**patch, 'evidence_verification': verification}
+        rec = {'target_fact_id': fact_id, 'patch': patch, 'reason': reason,
+               'ts': body.get('ts') or datetime.now(timezone.utc).isoformat()}
+        try:
+            s.append_jsonl(project_id, 'canon/revisions.jsonl', rec)
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        s.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'CANON_FACT_REVISED', 'data': {'fact_id': fact_id, 'reason': reason}})
+        IncrementalMemoryService(s).mark(project_id, 'canon/revisions.jsonl')
+        return {'ok': True, 'revision': rec, '_revision': _fact_revision(s, project_id, fact_id)}
 
 @router.post('/proposals/{proposal_id}/accept')
 def accept_proposal(project_id: str, proposal_id: str, body: dict | None = None, s: FSStore = Depends(get_store)):

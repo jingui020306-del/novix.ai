@@ -92,7 +92,8 @@ class InformationService:
         if provenance not in PROVENANCE:
             raise ValueError('请选择原材料、人物说法、推断、AI补全或作者修改。')
         return {'id': item_id, 'label': label.strip(), 'truth_status': status, 'truth_value': value,
-                'fact_ref': fact_ref, 'scope': scope, 'sources': copy.deepcopy(sources), 'provenance': provenance}
+                'fact_ref': fact_ref, 'scope': scope, 'sources': copy.deepcopy(sources), 'provenance': provenance,
+                **({'import_source_keys': copy.deepcopy(previous['import_source_keys'])} if previous.get('import_source_keys') else {})}
 
     def save(self, project_id, body, information_id=None):
         with self._lock(project_id):

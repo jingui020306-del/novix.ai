@@ -274,6 +274,8 @@ class CardOperationService:
             return self.get(project_id, identity)
 
     def _execute(self, project_id, record, *, undo=False):
+        if undo:
+            SharedMaterialService(self.store).assert_card_deletions(project_id, record['undo_operations'])
         WorldLibraryService(self.store).apply_operations(project_id, record['undo_operations' if undo else 'operations'])
         record['status'] = 'undone' if undo else 'applied'
         self.store.write_json(project_id, self._path(record['id']), record)
@@ -313,6 +315,7 @@ class CardOperationService:
                     raise FileExistsError('整理后已有新编辑，撤销已暂停；不会覆盖后来内容。')
                 operations.append({'path': path, 'kind': 'replace', 'before': actual, 'after': operation['before'], 'after_value': operation['before_value']})
             WorldLibraryService(self.store)._check_operations(project_id, operations)
+            SharedMaterialService(self.store).assert_card_deletions(project_id, operations)
             record.update(status='undoing', undo_operations=operations)
             self.store.write_json(project_id, self._path(identity), record)
             return self._execute(project_id, record, undo=True)

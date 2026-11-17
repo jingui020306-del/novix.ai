@@ -182,7 +182,13 @@ def test_provider_fallback_to_mock_and_canon_append(tmp_path: Path):
     wd = [e for e in events if e["event"] == "WRITER_DRAFT"][0]["data"]
     assert wd["provider"] == "mock"
     assert s.read_jsonl("p1", "canon/facts.jsonl")
-    assert s.read_jsonl("p1", "canon/proposals.jsonl")
+    # A fallback can contain no new names; proposals must never invent a placeholder city.
+    actual_text = s.read_md('p1', 'drafts/chapter_001.md')
+    assert all(row.get('name') and row['name'] in actual_text for row in s.read_jsonl('p1', 'canon/proposals.jsonl'))
+    coverage = s.read_json('p1', 'drafts/chapter_001.meta.json')['canon_extraction_coverage']
+    assert coverage['mode'] == 'model' and not coverage['complete']
+    assert not coverage['read_ranges'] and coverage['unread_ranges'][0]['start'] == 0
+    assert coverage['unread_ranges'][0]['end'] == len(actual_text)
 
 
 def test_character_schema_exposes_role_importance_age(tmp_path: Path):
@@ -1013,7 +1019,8 @@ def test_jobs_api_lists_persisted_lifecycle(tmp_path: Path):
         assert any(row['label'] == 'AI 生成前' and row['tone'] == 'warn' for row in version_rows)
         assert any(row['label'] == '应用 Patch 前' and row['tone'] == 'warn' for row in version_rows)
         rollback_version_id = version_rows[0]['version_id']
-        rollback = client.post('/api/projects/p1/drafts/chapter_001/rollback', json={'version_id': rollback_version_id})
+        rollback_revision = client.get('/api/projects/p1/drafts/chapter_001').json()['revision']
+        rollback = client.post('/api/projects/p1/drafts/chapter_001/rollback', json={'version_id': rollback_version_id, 'base_revision': rollback_revision})
         assert rollback.status_code == 200
         after_rollback_rows = client.get('/api/projects/p1/drafts/chapter_001/versions').json()['versions']
         assert any(row['label'] == '回滚前备份' for row in after_rollback_rows)
@@ -1133,6 +1140,12 @@ def test_analyze_endpoint_appends_facts_proposals_and_session_events(tmp_path: P
     body = res.json()
     assert body['new_facts_count'] >= 1
     assert body['new_proposals_count'] >= 1
+    import hashlib
+    coverage = body['extraction_coverage']
+    assert coverage['mode'] == 'local' and coverage['complete'] is False
+    assert not coverage['unread_ranges']
+    assert coverage['source_revision'] == hashlib.sha256(s.read_md('p1', 'drafts/chapter_001.md').encode()).hexdigest()
+    assert s.read_json('p1', 'drafts/chapter_001.meta.json')['canon_extraction_coverage'] == coverage
 
     facts_after = s.read_jsonl('p1', 'canon/facts.jsonl')
     proposals_after = s.read_jsonl('p1', 'canon/proposals.jsonl')
@@ -1140,6 +1153,12 @@ def test_analyze_endpoint_appends_facts_proposals_and_session_events(tmp_path: P
     assert len(proposals_after) >= len(proposals_before)
     assert facts_after[:len(facts_before)] == facts_before
     assert proposals_after[:len(proposals_before)] == proposals_before
+
+    repeat = client.post('/api/projects/p1/analyze/chapter_001', json={'reason': 'recheck'})
+    assert repeat.status_code == 200
+    assert repeat.json()['new_facts_count'] == repeat.json()['new_proposals_count'] == 0
+    assert s.read_jsonl('p1', 'canon/facts.jsonl') == facts_after
+    assert s.read_jsonl('p1', 'canon/proposals.jsonl') == proposals_after
 
     sess = s.read_jsonl('p1', 'sessions/session_001.jsonl')
     events = [x.get('event') for x in sess]
@@ -1168,9 +1187,11 @@ def test_canon_fact_revise_and_composed_view(tmp_path: Path):
     before = s.read_jsonl('p1', 'canon/facts.jsonl')
 
     client = TestClient(app_main.app)
+    version = next(row for row in client.get('/api/projects/p1/canon/facts?include_revisions=true').json() if row.get('id') == 'fact_test_001')['_revision']
     rv = client.post('/api/projects/p1/canon/facts/fact_test_001/revise', json={
         'patch': {'value': '解除封锁', 'confidence': 0.9},
-        'reason': '剧情推进后状态变化',
+        'reason': '更正原设定中的笔误',
+        'base_revision': version,
     })
     assert rv.status_code == 200
 
@@ -1187,6 +1208,79 @@ def test_canon_fact_revise_and_composed_view(tmp_path: Path):
     assert row['value'] == '解除封锁'
     assert row['_revised'] is True
     assert row['_original']['value'] == '封锁中'
+    stale = client.post('/api/projects/p1/canon/facts/fact_test_001/revise', json={
+        'patch': {'value': '旧标签页写入'}, 'reason': '核对旧标签页', 'base_revision': version,
+    })
+    assert stale.status_code == 409
+    assert len(s.read_jsonl('p1', 'canon/revisions.jsonl')) == len(rev_rows)
+
+
+def test_canon_extraction_covers_tail_and_keeps_failed_ranges_and_cancellation_explicit():
+    import asyncio
+    import pytest
+    from services.canon_extractor_service import CanonExtractorService
+
+    class Capture:
+        def __init__(self, fail_at=None, cancel=False):
+            self.messages, self.fail_at, self.cancel = [], fail_at, cancel
+
+        async def chat_complete(self, messages, *args, **kwargs):
+            self.messages.append(messages)
+            if len(self.messages) == self.fail_at:
+                if self.cancel:
+                    raise asyncio.CancelledError()
+                raise OSError('fictional gateway interruption')
+            body = messages[-1]['content'].split('\ntext=', 1)[1]
+            quote = body[-min(18, len(body)):]
+            return {'text': json.dumps({'facts': [{'scope': 'world_state', 'key': 'rule', 'value': quote, 'evidence': {'quote': quote}}],
+                'issues': [], 'new_entity_proposals': [{'name': '原文不存在的城市', 'entity_type': 'location'}]}, ensure_ascii=False)}
+
+    source = ('城门旁的雨水流过石阶。\n' * 550) + '末尾规则：救援船在冬至也可以通行。'
+    capture = Capture()
+    result = asyncio.run(CanonExtractorService(capture).extract('chapter_full', source, {}, {'provider': 'capture', 'model': 'fictional'}))
+    sent = ''.join(messages[-1]['content'].split('\ntext=', 1)[1] for messages in capture.messages)
+    assert len(capture.messages) > 1 and sent == source
+    assert result['extraction_coverage']['complete'] and not result['extraction_coverage']['unread_ranges']
+    assert result['extraction_coverage']['read_ranges'][-1]['end'] == len(source)
+    import hashlib
+    assert result['extraction_coverage']['source_revision'] == hashlib.sha256(source.encode()).hexdigest()
+    assert all(fact['status'] == 'pending' and fact['confirmation_status'] == 'pending_author_review' for fact in result['facts'])
+    assert any('救援船' in fact['value'] for fact in result['facts'])
+    assert not result['new_entity_proposals']
+
+    failed = Capture(fail_at=2)
+    partial = asyncio.run(CanonExtractorService(failed).extract('chapter_full', source, {}, {'provider': 'capture', 'model': 'fictional'}))
+    coverage = partial['extraction_coverage']
+    assert not coverage['complete'] and coverage['unread_ranges'][0]['start'] > 0
+    assert coverage['unread_ranges'][0]['end'] == len(source) and partial['facts']
+    assert len(failed.messages) == 2
+
+    tiny = Capture()
+    blocked = asyncio.run(CanonExtractorService(tiny).extract('chapter_full', source, {}, {'provider': 'capture', 'model': 'fictional', 'context_window': 500}))
+    assert not tiny.messages and blocked['extraction_coverage']['unread_ranges'][0]['start'] == 0
+    cancelled = Capture(fail_at=2, cancel=True)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(CanonExtractorService(cancelled).extract('chapter_full', source, {}, {'provider': 'capture', 'model': 'fictional'}))
+
+
+def test_canon_local_excerpts_do_not_invent_places_or_shorten_rule_exceptions():
+    import asyncio
+    from services.canon_extractor_service import CanonExtractorService
+    service = CanonExtractorService(LLMGateway())
+    empty_names = asyncio.run(service.extract('chapter_local', '雨停了。', {}, {'provider': 'mock'}))
+    assert not empty_names['new_entity_proposals']
+    assert empty_names['extraction_coverage']['mode'] == 'local' and not empty_names['extraction_coverage']['complete']
+    multiline = '苏遥收起钥匙。\n\n闻舟没有再问。'
+    excerpt = asyncio.run(service.extract('chapter_local', multiline, {}, {'provider': 'mock'}))['facts'][0]
+    assert excerpt['evidence']['quote'] in multiline and excerpt['evidence']['start_line'] == 1
+    assert excerpt.get('status') != 'unverified'
+    rule = '世界规则：' + '渡船必须避让撤离居民，' * 350 + '例外：紧急救援凭灯塔通行证可在夜间通过。'
+    result = asyncio.run(service.extract('chapter_local', rule, {}, {'provider': 'mock'}))
+    world_fact = next(fact for fact in result['facts'] if fact['scope'] == 'world_state')
+    assert world_fact['value'] == rule and world_fact['evidence']['quote'] == rule
+    assert world_fact['status'] == 'pending'
+    again = asyncio.run(service.extract('chapter_local', rule, {}, {'provider': 'mock'}))
+    assert [fact['id'] for fact in result['facts']] == [fact['id'] for fact in again['facts']]
 
 
 def test_fsstore_rejects_project_id_outside_data_root(tmp_path: Path):

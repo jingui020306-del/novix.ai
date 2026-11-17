@@ -10,6 +10,7 @@ from difflib import unified_diff
 from typing import Any
 
 from services.build_draft_service import BuildDraftService
+from services.edit_version_service import check_revision, revision
 from services.editing_service import save_snapshot
 from services.incremental_memory_service import IncrementalMemoryService
 from services.writing_reference_service import WritingReferenceService
@@ -313,6 +314,7 @@ class AuthoringService:
         material = self._dialogue_material(project_id, chapter_id, body, start, end)
         if not source[start:end].strip() and not material['confirmed_plan']:
             raise ValueError('可选择已有正文，或先为本章确认一场安排，再起草对话。')
+        from services.change_suggestion_service import ChangeSuggestionService
         turns, usage = [], []
         for person in material['speakers']:
             heard = [t['text'] for t in turns if t['audience'] is None or person['id'] in t['audience']]
@@ -338,6 +340,8 @@ class AuthoringService:
         return {'text': text, 'source_text': source, 'base_hash': base_hash, 'start': start, 'end': end,
                 'mode': 'dialogue', 'story_card_id': body.get('story_card_id'), 'scene_ref': material['scene_ref'],
                 'instructions': body.get('instructions', ''), 'dialogue_hash': self.content_hash(json.dumps(material, ensure_ascii=False, sort_keys=True)),
+                'ops': ChangeSuggestionService._ops(source[start:end], text),
+                'diff': '\n'.join(unified_diff(source[start:end].splitlines(), text.splitlines(), fromfile='原段落', tofile='对话候选', lineterm='')),
                 'candidate_kind': 'expression_only', 'usage': summarize_usage(usage)}
 
     async def revise(self, project_id: str, chapter_id: str, body: dict) -> dict:
@@ -346,12 +350,11 @@ class AuthoringService:
         if body.get('mode') == 'dialogue':
             if not 0 <= start <= end <= len(source) or body.get('allow_plot_change'):
                 raise ValueError('对话选段无效，或请求了修改情节。')
-            from services.edit_version_service import check_revision
-            if body.get('editor_revision'):
-                check_revision(self.store, project_id, f'drafts/{chapter_id}.md', body['editor_revision'])
+            check_revision(self.store, project_id, f'drafts/{chapter_id}.md', body.get('base_revision', body.get('editor_revision')))
             saved = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
             return await self._dialogue(project_id, chapter_id, body, start, end, self.content_hash(saved))
-        if not 0 <= start < end <= len(source) or not source[start:end].strip():
+        insertion = start == end and body.get('mode') in {'expand', 'construct'}
+        if not 0 <= start <= end <= len(source) or (not insertion and not source[start:end].strip()):
             raise ValueError('请选择需要修改的正文段落。')
         mode = body.get('mode', 'polish')
         system = (
@@ -362,7 +365,11 @@ class AuthoringService:
         if body.get('allow_plot_change'):
             system = system.replace('保留原有语义、事实、人物关系、叙述视角和原有语气；不新增情节或设定。',
                 '保留已确认事实、世界规则、人物关系和视角；仅在作者明确请求的范围提出情节变化候选，不擅自新增设定。')
-        if mode == 'polish':
+        if mode == 'expand':
+            system += '在选段内补足细节，返回可替换整个选段的文字。若选段为空，只输出在光标处插入的新增文字。'
+        elif mode == 'construct':
+            system += '按作者提供的构想和已确认材料展开为完整段落。选段为空时只输出光标处的新增文字。'
+        elif mode == 'polish':
             system += '仅修正不通顺的语句、搭配、错别字和标点，检查主语是否缺失、上下文指代是否清楚。尽量少改。'
         else:
             system += '改写得清晰、自然，遵循作者指定的使用场景与修辞要求；只在合适处使用比喻等修辞，避免堆砌和改变原意。'
@@ -377,14 +384,24 @@ class AuthoringService:
             system = system.replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。').replace('避免堆砌和改变原意。', '避免堆砌。')
             guidance['rules'] = guidance['rules'].replace('不得借描写新增剧情或提前披露秘密。', '情节调整仅限作者明确允许的候选，仍不得提前披露秘密。')
             system += '作者明确允许提出情节变化，但这只是待确认候选，不得改变既有世界规则和人物认知边界。'
-        saved = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
-        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'))
+        path = f'drafts/{chapter_id}.md'
+        from services.change_suggestion_service import ChangeSuggestionService
+        with ChangeSuggestionService(self.store).lock(project_id):
+            saved = self.store.read_md(project_id, path)
+            check_revision(self.store, project_id, path, body.get('base_revision'))
+        references = WritingReferenceService(self.store).collect(project_id, chapter_id=chapter_id, story_card_id=body.get('story_card_id'), reference_ids=body.get('writing_references') or [])
+        missing_references = set(body.get('writing_references') or []) - {item['id'] for item in references['references']}
+        if missing_references:
+            labels = [self.store.read_yaml(project_id, f'cards/{identity}.yaml').get('title') or '一项所选参考' for identity in sorted(missing_references)]
+            raise ValueError('本次选用的写作参考未能完整带入（超出范围、已不存在或类型不适用）：' + '、'.join(labels[:5]) + '。请减少参考或核对原条目后重试。')
         materials = KnowledgeGraphService(self.store).materials(project_id, chapter_id, {}, max_chars=6000, include_references=False, story_card_id=body.get('story_card_id'))
         addresses = [{'id': card['id'], **{key: value for key, value in card.get('payload', {}).items() if key in {'name', 'gender', 'pronouns', 'address_notes', 'relationships'}}} for card in materials['cards'] if card.get('type') == 'character']
         text = await self.complete(project_id, body, 'proofreader', system, json.dumps({
             '前文（只作参考）': source[max(0, start - 1500):start],
             '待修改段落': source[start:end], '后文（只作参考）': source[end:end + 1500],
-            '作者要求': body.get('instructions', '') if mode != 'polish' else '',
+            '作者要求': body.get('instructions', ''),
+            '文字风格': body.get('expression_style', '') if mode != 'polish' else '',
+            '情绪氛围': body.get('emotional_atmosphere', '') if mode != 'polish' else '',
             '小说观察顺序参考': guidance if mode == 'cinematic' else {},
             '人物表现参考（倾向不是每次必演动作）': [card for card in materials['cards'] if card.get('type') == 'character'] if mode == 'cinematic' else [],
             '作者选用的写作参考': references,
@@ -393,7 +410,10 @@ class AuthoringService:
             '本章关联人物称谓（address_as表示此人称呼target，不反用）': addresses,
             '关联情节规划（只作作者规划参考，不改原文事实）': StoryPlanningService(self.store).chapter_materials(project_id, chapter_id, story_card_id=body.get('story_card_id'), max_chars=4500),
         }, ensure_ascii=False), max_tokens=6000)
+        ops = ChangeSuggestionService._ops(source[start:end], text)
+        diff = '\n'.join(unified_diff(source[start:end].splitlines(), text.splitlines(), fromfile='原段落', tofile='修改候选', lineterm=''))
         return {'text': text, 'source_text': source, 'base_hash': self.content_hash(saved), 'start': start, 'end': end, 'mode': mode, 'writing_reference_usage': references,
+                'ops': ops, 'diff': diff,
                 'candidate_kind': 'plot_change' if body.get('allow_plot_change') else 'expression_only'}
 
     def apply_revision(self, project_id: str, chapter_id: str, body: dict) -> dict:
@@ -401,7 +421,7 @@ class AuthoringService:
         with ChangeSuggestionService(self.store).lock(project_id):
             source, text = body['source_text'], body['text']
             start, end = body['start'], body['end']
-            if not 0 <= start <= end <= len(source) or not text.strip():
+            if not 0 <= start <= end <= len(source) or not text.strip() and not (text == '' and start < end):
                 raise ValueError('修改内容或范围无效。')
             original = self.store.read_md(project_id, f'drafts/{chapter_id}.md')
             if self.content_hash(original) != body['base_hash']:
@@ -423,4 +443,5 @@ class AuthoringService:
             IncrementalMemoryService(self.store).mark(project_id, f'drafts/{chapter_id}.md')
             self.store.append_jsonl(project_id, f'drafts/{chapter_id}.patch.jsonl', {'patch_id': patch_id, 'patch_ops': ops, 'accepted_op_ids': ['paragraph_revision'], 'diff': diff})
             self.store.append_jsonl(project_id, 'sessions/session_001.jsonl', {'event': 'AUTHOR_REVISION', 'data': {'chapter_id': chapter_id, 'patch_id': patch_id}})
-            return {'content': updated, 'diff': diff}
+            return {'content': updated, 'diff': diff, 'applied_revision': self.content_hash(updated),
+                    'revision': revision(self.store, project_id, f'drafts/{chapter_id}.md')}

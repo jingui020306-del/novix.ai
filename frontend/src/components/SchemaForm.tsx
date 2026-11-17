@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   detail_level: '人物资料深度', initial_age: '初始年龄', initial_age_time: '初始年龄对应时间', birth_date: '出生日期', initial_pov: '默认人物视角', world_context: '世界与发生时间', time: '发生时间', year: '年份',
   notes: '备注', plot: '发生的事', outcome: '本场结果', next_question: '留给下一场的问题', placement: '使用位置', reason: '原因', effect: '希望达到的效果', information_ids: '关联的关键信息', truth_status: '作者是否确定真相', truth_value: '作者确定的真相',
   maps: '地图与插图', hotspots: '图中标记', detail_sections: '补充人物细节', usage: '写作使用方式', situation: '适用处境', prose_strategy: '描写顺序', payload: '设定内容', title: '名称', tags: '标签', name: '姓名', identity: '身份', appearance: '基础外貌',
-  vulnerability: '软肋', core_motivation: '最想得到什么', personality_traits: '性格', family_background: '成长经历',
+  vulnerability: '软肋', name_change: '阶段名称变化', beliefs: '信念与看法', core_motivation: '最想得到什么', personality_traits: '性格', family_background: '成长经历',
   voice: '表达习惯', boundaries: '不能突破的底线', relationships: '人物关系', arc: '成长变化',
   target: '关联人物', type: '关系', beat: '发生在何处', goal: '目标', role: '人物角色',
   importance: '重要程度', age: '年龄', description: '说明', aliases: '别称',
@@ -103,7 +103,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
   }
   const locked = (path: string, children = false) => { let at = value; const keys = path.split('.').slice(1); const stable = keys.map((key) => { const next = Array.isArray(at) && at[Number(key)]?.id ? `@${at[Number(key)].id}` : key; at = at?.[key]; return next }); const pointers = [`/${stable.join('/')}`, `/${keys.join('/')}`]; return lockedPaths.some((item) => pointers.some((pointer) => item === '/' || pointer === item || pointer.startsWith(`${item}/`) || children && item.startsWith(`${pointer}/`))) }
   const fieldHints: Record<string, string> = { appearance: '只写相对稳定的长相与初印象。衣着、神态和情绪会随剧情变化，不必在这里填写当前状态。', voice: '可写常用措辞、语速、停顿或表达方式；面对不同人、不同处境时也会改变。', family_background: '可写影响此人的几段经历，以及由此形成的信念与顾虑；不必写满生平。' }
-  const generateButton = (path: string, label: string) => projectId && path === 'card.payload.name' && value?.type === 'character' ? <Button className='text-xs' disabled={Boolean(generating) || locked(path) || value.payload?.family_locked?.includes('name') || value.payload?.family_blank?.includes('name')} onClick={() => generate(path)}>{generating === path ? '取名中…' : '随机姓名'}</Button> : projectId && !['active_style_sample_asset_ids', 'injection_policy', 'max_examples', 'max_chars_per_example', 'initial_age', 'birth_date', 'initial_age_time'].some((field) => path.split('.').includes(field)) && !IDENTITY_FIELDS[path.split('.').slice(-1)[0] || ''] ? <Button className='text-xs' disabled={Boolean(generating) || locked(path, true)} aria-label={`AI 生成${label}`} onClick={() => generate(path)}>{generating === path ? '生成中…' : 'AI 生成'}</Button> : null
+  const generateButton = (path: string, label: string) => projectId && path === 'card.payload.name' && value?.type === 'character' ? <Button className='text-xs' disabled={Boolean(generating) || locked(path) || value.payload?.family_locked?.includes('name') || value.payload?.family_blank?.includes('name')} onClick={() => generate(path)}>{generating === path ? '取名中…' : '随机姓名'}</Button> : projectId && !['active_style_sample_asset_ids', 'injection_policy', 'max_examples', 'max_chars_per_example', 'entry_type', 'direction', 'creation_status', 'setting_status', 'canon_status', 'parent_id', 'initial_age', 'birth_date', 'initial_age_time'].some((field) => path.split('.').includes(field)) && !IDENTITY_FIELDS[path.split('.').slice(-1)[0] || ''] ? <Button className='field-ai text-xs' disabled={Boolean(generating) || locked(path, true)} aria-label={`AI 生成${label}`} onClick={() => generate(path)}>{generating === path ? '生成中…' : 'AI 生成'}</Button> : null
   const renderFields = (properties: any, data: any, change: (next: any) => void, path: string) => (
     <div className={path === 'card.payload' ? 'schema-fields-grid' : 'space-y-5'}>
       {Object.entries(properties || {}).map(([key, spec]: any) => {
@@ -120,14 +120,14 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
         const current = data?.[key]
         const update = (next: any) => { if (!locked(id)) change({ ...data, [key]: next }) }
         if (spec.type === 'object') return (
-          <fieldset key={key} className='rounded-ui border border-border p-3'>
+          <fieldset key={key} className='field-ai-group rounded-ui border border-border p-3'>
             <legend className='px-1 text-sm'>{label}</legend>
             <div className='mb-2 flex justify-end'>{generateButton(id, label)}</div>
             {renderFields(spec.properties, current || {}, update, id)}
           </fieldset>
         )
         if (spec.type === 'array' && spec.items?.type === 'object') return (
-          <fieldset key={key} className='space-y-2 rounded-ui border border-border p-3'>
+          <fieldset key={key} className='field-ai-group space-y-2 rounded-ui border border-border p-3'>
             <legend className='px-1 text-sm'>{label}</legend>
             <div className='mb-2 flex justify-end'>{generateButton(id, label)}</div>
             {(Array.isArray(current) ? current : []).map((item: any, index: number) => (
@@ -140,7 +140,7 @@ export function SchemaForm({ schema, value, onChange, projectId, profileId, refe
           </fieldset>
         )
         return (
-          <div key={key} className={`space-y-2 ${spec.type === 'array' ? 'card-field-wide' : ''}`}>
+          <div key={key} className={`field-ai-group space-y-2 ${spec.type === 'array' ? 'card-field-wide' : ''}`}>
             <div className='flex items-center justify-between gap-3'><label htmlFor={id} className='text-sm text-muted'>{label}{locked(id) ? '（已确认锁定）' : ''}</label>{generateButton(id, label)}</div>
             {key === 'target' && references.length ? (
               <Select disabled={locked(id)} id={id} value={current || ''} onChange={(e) => update(e.target.value)}>

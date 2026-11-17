@@ -1,3 +1,4 @@
+import { WORLD_ENTRY_TYPES as ENTRY_TYPES, WORLD_ENTRY_LABELS as ENTRY_LABELS } from '../lib/materialScope'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import useSWR, { mutate as mutateCache } from 'swr'
 import { api } from '../api/client'
@@ -23,16 +24,14 @@ const DIRECTIONS = [['geography', '地理'], ['biology', '生物'], ['physics_ma
 const SETTING: Record<string, string> = { unset: '未设置', not_applicable: '不适用', set: '已采用' }
 const CANON: Record<string, string> = { canon: '已确定', hypothesis: '推定', inspiration: '灵感' }
 const CREATION: Record<string, string> = { new: '待起笔', draft: '草案', complete: '已完善' }
-const ENTRY_TYPES = ['地点', '生物与族群', '人物与组织', '规则与能力', '历史事件', '科技', '文化', '原创设定']
 const worldType = (card: any) => ['world', 'world_rule', 'lore', 'worldview'].includes(card.type)
-const ENTRY_LABELS: Record<string, string> = { place: '地点', region: '地点', location: '地点', organization: '人物与组织', faction: '人物与组织', rule: '规则与能力', ability: '规则与能力', period: '历史事件', history: '历史事件', reference: '参考资料' }
 const entryType = (card: any) => ENTRY_LABELS[card.payload?.entry_type] || card.payload?.entry_type || (card.type === 'world_rule' ? '规则与能力' : '__legacy__')
 const bodyKey = (card: any) => ['content', 'description', 'rule', 'text', 'setting'].find((key) => typeof card.payload?.[key] === 'string') || 'content'
 const timestamp = (card: any) => Date.parse(card.updated_at || card.payload?.updated_at || '') || 0
 
-export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenMaterial, focusRequest, referenceRequest, legacyEditor, profileId, onOpenSettings, navigationRequest, storyCard }: {
+export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenMaterial, focusRequest, referenceRequest, legacyEditor, profileId, onOpenSettings, navigationRequest, storyCard, onActiveCardChange, eventContext, onOpenEvent }: {
   project: string; projectTitle: string; draftCache: { current: Record<string, any> }; onOpenMaterial: OpenMaterial;
-  chapters: any[]; storyCard?: any;
+  chapters: any[]; storyCard?: any; onActiveCardChange?: (id: string) => void; eventContext?: any; onOpenEvent?: (owner: string, scene: string) => void;
   focusRequest?: { id: string; requestId: number; editPath?: string[]; stage_id?: string } | null;
   referenceRequest?: { type: string; cardId: string; referenceId: string; requestId: number } | null;
   legacyEditor: ReactNode;
@@ -71,6 +70,7 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
   const aiRequest = useRef(0)
   const [extrasRequest, setExtrasRequest] = useState(0)
   const form = formState?.project === project ? formState.card : null
+  useEffect(() => { onActiveCardChange?.(form?.id || root?.id || '') }, [project, form?.id, root?.id])
   const draftKey = `${project}:world:${form?.id || 'new'}`
   const localDraft = useDraftRecovery(draftKey, form, JSON.stringify(cards.find((card) => card.id === form?.id) || {}), (card) => setFormState({ project, card }))
   const latest = useRef(form)
@@ -199,17 +199,33 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
   const browse = (type: string) => {
     setEntryTypeFilter(type); setView('全部条目'); setFormState(null); setDirectoryOpen(true); setMessage('')
   }
-  useEffect(() => { if (!navigationRequest || !Array.isArray(data)) return; if (navigationRequest.section === 'places') { open(rootDraft()); setView('全部条目'); setEntryTypeFilter('地点'); setExtrasRequest(navigationRequest.requestId) } else { setView(navigationRequest.section === 'stage' ? '阶段浏览' : '世界首页'); setEntryTypeFilter(''); setQuery(''); setFormState(null); setResourcesOpen(false) } }, [navigationRequest?.requestId, Boolean(data)])
+  useEffect(() => { if (!navigationRequest || !Array.isArray(data)) return; if (navigationRequest.section === 'places') { open(rootDraft()); setView('地图'); setResourcesOpen(false); setExtrasRequest(navigationRequest.requestId) } else { setView(navigationRequest.section === 'stage' ? '阶段浏览' : '世界首页'); setEntryTypeFilter(''); setQuery(''); setFormState(null); setResourcesOpen(false) } }, [navigationRequest?.requestId, Boolean(data)])
   const otherTypes = [...new Set(cards.map(entryType))].filter((type) => !ENTRY_TYPES.includes(type))
   const newType = entryTypeFilter && !['world', '__legacy__'].includes(entryTypeFilter) ? entryTypeFilter : '原创设定'
+  const maps = form && <WorldMaps key={`${project}:${form.id}:maps`} openRequest={extrasRequest} project={project} cardId={form.id} worldId={formWorldId} value={payload.maps || []} onChange={(maps) => update('maps', maps)} onOpen={onOpenMaterial} profileId={profileId} lockedPaths={lockedPaths} saved={cards.some((card) => card.id === form.id)} />
+  const historyWorldId = eventContext?.world_id || root?.id
   const showTree = ['世界首页', '全部条目'].includes(view) && !query && !entryTypeFilter
   return <div className='world-wiki space-y-6'>
-    <header className='world-heading'><div><h1>世界资料</h1></div><div className='flex flex-wrap gap-2'><Button aria-pressed={resourcesOpen} onClick={() => setResourcesOpen((current) => !current)}>{resourcesOpen ? '返回当前世界' : '世界资料库'}</Button><Button aria-pressed={view === '阶段浏览'} onClick={() => { setResourcesOpen(false); setView('阶段浏览'); setFormState(null) }}>浏览当前阶段的世界</Button>{view !== '世界首页' && <Button onClick={() => { setView('世界首页'); setEntryTypeFilter(''); setQuery(''); setFormState(null) }}>世界总览</Button>}<Button onClick={() => { open(rootDraft()); setView('全部条目'); setExtrasRequest(Date.now()) }}>地图与地点</Button><Button variant='primary' onClick={() => create(newType)}>新建{entryTypeFilter && newType === entryTypeFilter ? newType : '条目'}</Button></div></header>
+    <header className='world-heading'><h1>世界</h1><div className='flex gap-2'><Button onClick={() => setResourcesOpen(!resourcesOpen)}>{resourcesOpen ? '返回当前世界' : '世界资料库'}</Button><Button onClick={() => create(newType)}>新建条目</Button></div></header>
+    <nav className='story-task-nav' aria-label='世界详情'><button aria-current={view === '世界首页' ? 'page' : undefined} onClick={() => {setResourcesOpen(false);setView('世界首页');setFormState(null);setEntryTypeFilter('');setQuery('')}}>概况</button><button aria-current={view === '地图' ? 'page' : undefined} onClick={() => {
+        setResourcesOpen(false)
+        open(rootDraft())
+        setView('地图')
+        setExtrasRequest(Date.now())
+      }}>地图</button><button aria-current={view === '阶段浏览' ? 'page' : undefined} onClick={() => {setResourcesOpen(false);setView('阶段浏览');setFormState(null)}}>沿革</button></nav>
     {readError && <div className='space-y-2'><p role='alert' className='text-sm text-muted'>世界资料暂时未能读取，已有草稿仍保留。</p><Button onClick={() => { void mutate().catch(() => undefined) }}>重新读取世界资料</Button></div>}
     {localDraft.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>找到此条目的本地未保存稿。</p><div className='flex gap-2'><Button onClick={localDraft.restore}>恢复草稿</Button><Button variant='ghost' onClick={localDraft.dismiss}>保留保存版</Button></div></div>}
     {resourcesOpen && <WorldLibrary expanded project={project} worldId={root?.id} worldRevision={root?._revision} dirty={Boolean(root && draftCache.current[`${project}:${root.type}:${root.id}`] && JSON.stringify(draftCache.current[`${project}:${root.type}:${root.id}`]) !== JSON.stringify(root))} onChanged={() => { void mutate() }} onOpenWorld={(id) => { const card = cards.find((row) => row.id === id); if (card) { open(card); setView('全部条目') } else { void mutate().then((rows: any) => { const incoming = rows?.find?.((row: any) => row.id === id); if (incoming && latestProject.current === project) { open(incoming); setView('全部条目') } }) } }} />}
-    {!resourcesOpen && <details className='py-3'><summary className='cursor-pointer text-sm font-medium'>导入世界材料：文字、文件、图片或链接</summary><div className='mt-4'><MaterialImportWorkspace project={project} purpose='world' isTargetDirty={(id) => { const saved = cards.find((card) => card.id === id); const local = draftCache.current[`${project}:world:${id}`]; return Boolean(saved && local && JSON.stringify(saved) !== JSON.stringify(local)) }} profileId={profileId} onApplied={() => { void mutate() }} /></div></details>}
-    {data?.detail ? <p role='alert' className='text-sm text-muted'>世界资料读取失败，请刷新后重试。</p> : !data ? <p role='status' className='text-sm text-muted'>正在读取世界资料…</p> : !resourcesOpen ? view === '阶段浏览' ? <WorldStageBrowser key={`${project}:${storyCard?.id || ''}`} project={project} storyCard={storyCard} worldId={root?.id} onOpen={onOpenMaterial} /> : <>
+    {!resourcesOpen && view === '世界首页' && <details className='py-3'><summary className='cursor-pointer text-sm font-medium'>导入世界材料：文字、文件、图片或链接</summary><div className='mt-4'><MaterialImportWorkspace project={project} purpose='world' isTargetDirty={(id) => { const saved = cards.find((card) => card.id === id); const local = draftCache.current[`${project}:world:${id}`]; return Boolean(saved && local && JSON.stringify(saved) !== JSON.stringify(local)) }} profileId={profileId} onApplied={() => { void mutate() }} /></div></details>}
+    {data?.detail ? <p role='alert' className='text-sm text-muted'>世界资料读取失败，请刷新后重试。</p> : !data ? <p role='status' className='text-sm text-muted'>正在读取世界资料…</p> : !resourcesOpen ? view === '阶段浏览' ? <>
+      {historyWorldId && <AuthorStatePanel onOpenEvent={onOpenEvent} key={historyWorldId} project={project} entityId={historyWorldId} type='world' storyId={storyCard?.id} eventRef={eventContext?.time?.event_ref ? `${eventContext.time.event_ref.owner_card_id}:important_scenes:${eventContext.time.event_ref.scene_id}` : undefined} />}
+      <details open={Boolean(eventContext)}><summary>按故事时点查看世界</summary>
+        <WorldStageBrowser project={project} storyCard={storyCard} initialContext={eventContext} worldId={historyWorldId} onOpen={onOpenMaterial} />
+      </details>
+    </> : view === '地图' && form ? <section className='space-y-4' aria-label='世界地图'>
+      {maps}
+      <Button onClick={save} disabled={busy}>{busy ? '保存中…' : '保存地图'}</Button>
+    </section> : <>
       {view === '世界首页' && <section className='world-overview' aria-label='世界总览'>
         <div><div className='flex flex-wrap items-baseline justify-between gap-3'><h2>这个世界</h2><button className='text-xs text-brand-600 hover:underline focus-ring' onClick={() => { open(rootDraft()); setView('全部条目') }}>编辑世界简介</button></div><p className='mt-4 whitespace-pre-wrap text-sm leading-8'>{root?.payload?.summary || root?.payload?.[bodyKey(root)] || '还没有写下世界简介。也可以先在下方整理已有的地点、族群与规则。'}</p>{Array.isArray(root?.payload?.rules) && root.payload.rules.some(Boolean) && <ul className='mt-4 space-y-2 text-sm leading-7 text-muted'>{root.payload.rules.filter(Boolean).map((rule: string, index: number) => <li key={index}>{rule}</li>)}</ul>}</div>
         <div className='world-overview-important'><h2>重要设定</h2>{overviewCards.some((card) => card.payload?.core) ? <ul className='mt-3 space-y-3'>{overviewCards.filter((card) => card.payload?.core).slice(0, 5).map((card) => <li key={card.id}><button className='text-left text-sm text-brand-600 hover:underline focus-ring' onClick={() => { open(card); setView('全部条目') }}>{card.title || '未命名条目'}</button></li>)}</ul> : <p className='mt-3 text-xs leading-7 text-muted'>条目中标为重要的设定会出现在这里，方便随时回看。</p>}</div>
@@ -241,7 +257,7 @@ export function WorldWiki({ project, projectTitle, chapters, draftCache, onOpenM
             {(form.id === root?.id || payload.entry_type === 'world' || Array.isArray(payload.rules) && payload.rules.some((rule: string) => rule.trim())) && <details className='border-t border-border py-4'><summary className='cursor-pointer text-sm font-medium'>世界规则</summary><div className='mt-4 space-y-4'><div><label className='text-sm text-muted' htmlFor='world-root-rules'>核心原则，每行一条</label><Textarea id='world-root-rules' value={(payload.rules || []).join('\n')} onChange={(event) => update('rules', event.target.value.split('\n'))} /></div><div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>{DIRECTIONS.map(([key, label]) => <div key={key}><label className='text-xs text-muted' htmlFor={`domain-${key}`}>{label}</label><Select id={`domain-${key}`} value={payload.domain_status?.[key] || 'unset'} onChange={(event) => update('domain_status', { ...payload.domain_status, [key]: event.target.value })}>{Object.entries(SETTING).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</Select></div>)}</div></div></details>}
             {worldType(form) && cards.some((card) => card.id === form.id) && <details className='border-t border-border py-4'><summary className='cursor-pointer text-sm font-medium'>世界阶段与认知边界</summary><div className='mt-4'><AuthorStatePanel key={`${project}:${form.id}`} focusRequest={focusRequest?.id === form.id ? focusRequest : null} project={project} entityId={form.id} type='world' /></div></details>}
             {form.id === formWorldId && <FamilyRules key={`${project}:${form.id}:family-rules`} project={project} value={payload.family_rules || []} onChange={rules => update('family_rules', rules)} disabled={pointerLocked(lockedPaths, '/payload/family_rules', true)} />}
-            <WorldMaps key={`${project}:${form.id}:maps`} openRequest={extrasRequest} project={project} cardId={form.id} worldId={formWorldId} value={payload.maps || []} onChange={(maps) => update('maps', maps)} onOpen={onOpenMaterial} profileId={profileId} lockedPaths={lockedPaths} saved={cards.some((card) => card.id === form.id)} />
+            {maps}
             <WorldExtras section='map' key={`${project}:${form.id}:map`} value={payload.extra_context} onChange={(extra) => update('extra_context', extra)} saveLabel='保存条目' />
             <WorldExtras section='general' key={`${project}:${form.id}:general`} value={payload.extra_context} onChange={(extra) => update('extra_context', extra)} saveLabel='保存条目' />
             <div className='border-y border-border py-4'><div className='flex items-center justify-between gap-3'><h3 className='text-sm font-medium'>下级条目</h3><Button className='text-xs' disabled={!cards.some((card) => card.id === form.id)} title={cards.some((card) => card.id === form.id) ? '新建下级条目' : '请先保存当前条目'} onClick={() => create('原创设定', form.id, payload.direction || '')}>新建子项</Button></div><ul className='mt-2 space-y-2'>{cards.filter((card) => card.payload?.parent_id === form.id).map((card) => <li key={card.id}><button className='text-sm text-brand-600 hover:underline focus-ring' onClick={() => open(card)}>{card.title || '未命名条目'}</button></li>)}</ul>{!cards.some((card) => card.payload?.parent_id === form.id) && <p className='mt-2 text-xs text-muted'>还没有下级条目，不需要拆分时可以留空。</p>}</div>

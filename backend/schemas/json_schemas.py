@@ -116,6 +116,8 @@ CARD_TYPE_SCHEMAS = {
             "payload": {
                 "type": "object",
                 "properties": {
+                    "overview_picture": {"type": "string"},
+                    "full_outline": {"type": "string"},
                     "logline": {"type": "string"},
                     "theme": {"type": "string"},
                     "genre": {"type": "string"},

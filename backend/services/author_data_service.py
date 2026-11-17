@@ -289,6 +289,11 @@ class AuthorDataService:
             raise ValueError('状态变化为对象，人物已知为含value文字的列表；两者不可混作人物初始设定。')
         if 'knowledge' in changes or 'known_by' in changes:
             raise ValueError('人物认知请写入单独knowledge，不混入状态字段。')
+        if entity_type in {'character', 'world'}:
+            from schemas.json_schemas import CARD_TYPE_SCHEMAS
+            from services.material_import_service import _validate_fields
+            properties = CARD_TYPE_SCHEMAS[entity_type]['properties']['payload'].get('properties', {})
+            _validate_fields(changes, {'type': 'object', 'properties': {key: properties[key] for key in changes if key in properties and key != 'detail_sections'}}, '阶段变化')
         if 'detail_sections' in changes:
             if entity_type != 'character':
                 raise ValueError('人物补充阶段须追加到同一人物，不写入世界或关系。')
@@ -515,6 +520,30 @@ class AuthorDataService:
         if not item:
             raise FileNotFoundError('世界资料不存在或不适用于当前时间分支。')
         return {**item, 'scope': snapshot['scope'], 'inherited_from': snapshot['inherited_from'], 'uncertainties': [*snapshot['warnings'], *item['uncertainties']]}
+
+    def character_snapshot(self, project_id, character_id, body):
+        if not isinstance(body, dict) or not isinstance(body.get('world_context', {}), dict):
+            raise ValueError('请选择要查看的世界与故事时间。')
+        card = self.store.read_yaml(project_id, f'cards/{entity_id(character_id, "人物")}.yaml')
+        if card.get('type') != 'character':
+            raise FileNotFoundError('人物资料不存在。')
+        args = {key: body[key] for key in ['story_card_id', 'chapter_id', 'event_ref', 'branch_id'] if body.get(key)}
+        context = copy.deepcopy(body.get('world_context') or {})
+        if 'world_context' in body:
+            inherited = self.world.resolve(project_id, **args)['scope']
+            context.setdefault('world_id', inherited.get('world_id') or (card.get('payload', {}).get('world_context') or {}).get('world_id'))
+            if not context.get('world_id'):
+                context.pop('world_id', None)
+            for key in ['story_card_id', 'chapter_id']:
+                if args.get(key):
+                    value = args.pop(key)
+                    if key != 'story_card_id' or not context.get('world_id') or self.store.read_yaml(project_id, f'cards/{value}.yaml').get('payload', {}).get('world_context', {}).get('world_id') == context['world_id']:
+                        context[key] = value
+        args['world_context'] = context
+        scope = self.world.resolve(project_id, **args)['scope']
+        if not self.world.card_visible(project_id, card, scope):
+            raise ValueError('此人物不属于当前查看的世界或分支，请重新选择范围。')
+        return self.character_state(project_id, character_id, **args)
 
     def world_snapshot(self, project_id, world_id, body):
         entity_id(world_id, '世界')

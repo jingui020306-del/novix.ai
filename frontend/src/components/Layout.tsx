@@ -3,7 +3,17 @@ import { useEffect, useState } from 'react'
 
 export default function Layout({ left, center, right, header, surface = '', navigationKey, inspectorTitle = '材料与检查' }: { left: any; center: any; right: any; header?: any; surface?: string; navigationKey?: string; inspectorTitle?: string }) {
   const [hideLeft, setHideLeft] = useState(() => window.innerWidth < 900)
-  const [hideRight, setHideRight] = useState(true)
+  const writing = surface === 'chapter' && inspectorTitle === '本章技法'
+  const [toolsHidden, setToolsHidden] = useState(true)
+  const [techniquesHidden, setTechniquesHidden] = useState(() => {
+    const saved = localStorage.getItem('novix.writing.hideTechniques')
+    return saved === null ? window.innerWidth < 900 : saved === 'true'
+  })
+  const hideRight = writing ? techniquesHidden : toolsHidden
+  const setHideRight = (hidden: boolean) => {
+    if (writing) {setTechniquesHidden(hidden);localStorage.setItem('novix.writing.hideTechniques', String(hidden))}
+    else setToolsHidden(hidden)
+  }
   useEffect(() => {
     const media = window.matchMedia('(max-width: 899px)')
     const resize = () => setHideLeft(media.matches)
@@ -30,7 +40,7 @@ export default function Layout({ left, center, right, header, surface = '', navi
         <div className='workspace-page'>{center}</div>
       </main>
       {!hideRight && <aside className='workspace-inspector' aria-label={inspectorTitle}>
-        <div className='inspector-heading'><strong>{inspectorTitle}</strong><button className='icon-control' onClick={() => setHideRight(true)} aria-label='收起材料与检查'><PanelRightClose size={17} /></button></div>
+        <div className='inspector-heading'><strong>{inspectorTitle}</strong><button className='icon-control' onClick={() => setHideRight(true)} aria-label={`收起${inspectorTitle}`}><PanelRightClose size={17} /></button></div>
         <div className='inspector-content'>{right}</div>
       </aside>}
     </div>

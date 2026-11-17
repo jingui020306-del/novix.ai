@@ -103,6 +103,8 @@ class SceneRehearsalService:
                 scope = service.resolve(project_id, event_ref={'owner_card_id': owner_id, 'scene_id': scene_id})['scope']
                 voids = {sid for record in facts if record.get('kind') == 'void' for sid in record.get('voids', [])}
                 return _hash([fact for fact in facts if fact.get('id') not in voids and fact.get('status') == 'confirmed' and service.applies(project_id, fact.get('scope'), scope, dynamic=True)[0]])
+            from services.author_control_service import AuthorControlService
+            facts = AuthorControlService(self.store).read(project_id, 'canon/facts.jsonl')
             prior_refs = {f'{owner_id}:important_scenes:{row.get("id") or i}' for i, row in enumerate(rows[:index]) if isinstance(row, dict)}
             return _hash([fact for i, fact in enumerate(facts) if KnowledgeGraphService._event_ref(fact.get('event_ref') or fact.get('evidence', {}).get('event_ref')) in prior_refs or fact.get('evidence', {}).get('chapter_id') in visible or f"fact:{fact.get('id') or i}:{i}" in explicit and (scene.get('chapter') not in order or fact.get('evidence', {}).get('chapter_id') not in set(order) - visible)])
         target = self.store._safe_path(project_id, path)
