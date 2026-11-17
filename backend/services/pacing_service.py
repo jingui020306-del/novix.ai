@@ -126,27 +126,28 @@ class PacingService:
         characters = [c for c in characters if c['name'] and c['name'] in content]
         earlier = self.context(project, chapter, story) if story else []
         order = digest(self.chapters(project))
-        basis = digest([VERSION, model_spec('pacing')['revision'], content, story, order, characters, threads, earlier])
         old = self.record(project, chapter)
+        block_size = old.get('block_size', 1000)
+        basis = digest([VERSION, model_spec('pacing')['revision'], content, story, order, block_size, characters, threads, earlier])
         if old.get('basis') == basis and old.get('status') == 'ready':
             return
         if self.retry.get((project, chapter), 0) > time.monotonic():
             return
         source = digest(content)
         total = sum(1 for block in re.finditer(r'[^\r\n]+', content)
-                    for offset in range(block.start(), block.end(), 1000)
-                    if content[offset:min(offset + 1000, block.end())].strip())
-        state = {**old, 'status': 'processing', 'notice': '', 'target': source, 'progress': 0, 'total': total}
+                    for offset in range(block.start(), block.end(), block_size)
+                    if content[offset:min(offset + block_size, block.end())].strip())
+        state = {**old, 'status': 'processing', 'notice': '', 'target': source, 'progress': 0, 'total': total, 'block_size': block_size}
         if not self.persist(project, chapter, content, story, state):
             return
         cache, nodes, edges = old.get('blocks', {}), [], []
         used = {}
         try:
             for block in re.finditer(r'[^\r\n]+', content):
-                for start in range(block.start(), block.end(), 1000):
+                for start in range(block.start(), block.end(), block_size):
                     if content != self.store.read_md(project, f'drafts/{chapter}.md'):
                         return
-                    text = content[start:min(start + 1000, block.end())]
+                    text = content[start:min(start + block_size, block.end())]
                     if not text.strip():
                         continue
                     # Retrieve a small set of earlier moments sharing text features.
@@ -187,10 +188,12 @@ class PacingService:
                     return
                 self.store.write_json(project, f'meta/pacing/{chapter}.json', {
                     'version': VERSION, 'basis': basis, 'source': source, 'story': story, 'order': order,
-                    'status': 'ready', 'nodes': nodes, 'edges': edges, 'blocks': used})
+                    'status': 'ready', 'block_size': block_size, 'nodes': nodes, 'edges': edges, 'blocks': used})
             self.retry.pop((project, chapter), None)
         except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
             log.warning('Pacing analysis deferred: %s', type(exc).__name__)
+            if isinstance(exc, httpx.ReadTimeout):
+                state['block_size'] = max(120, block_size // 2)
             self.retry[project, chapter] = time.monotonic() + 30
             self.persist(project, chapter, content, story, {**state, 'blocks': {**cache, **used},
                 'status': 'unavailable', 'notice': '本机节奏模型尚未就绪，后台将自动重试。'})
