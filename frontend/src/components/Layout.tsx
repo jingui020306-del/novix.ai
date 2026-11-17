@@ -1,7 +1,17 @@
 import { BookOpen, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export default function Layout({ left, center, right, header, surface = '', navigationKey, inspectorTitle = '材料与检查' }: { left: any; center: any; right: any; header?: any; surface?: string; navigationKey?: string; inspectorTitle?: string }) {
+  const mainRef = useRef<HTMLElement>(null)
+  const pagePositions = useRef(new Map<string, number>())
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main || !navigationKey) return
+    const position = pagePositions.current.get(navigationKey) || 0
+    main.scrollTop = position
+    const frame = requestAnimationFrame(() => { main.scrollTop = position })
+    return () => cancelAnimationFrame(frame)
+  }, [navigationKey])
   const [hideLeft, setHideLeft] = useState(() => window.innerWidth < 900)
   const writing = surface === 'chapter' && inspectorTitle === '本章技法'
   const [toolsHidden, setToolsHidden] = useState(true)
@@ -34,7 +44,7 @@ export default function Layout({ left, center, right, header, surface = '', navi
           }}>{left}</div>
         </aside>
       </>}
-      <main className='workspace-main'>
+      <main ref={mainRef} className='workspace-main' onScroll={event => { if (navigationKey) pagePositions.current.set(navigationKey, event.currentTarget.scrollTop) }}>
         <div className='workspace-topbar'>
           <div className='workspace-location'>{hideLeft && <button className='toolbar-control' onClick={() => setHideLeft(false)}><PanelLeftOpen size={16} /><span>目录</span></button>}{header}</div>
           <button className='toolbar-control workspace-inspector-toggle' onClick={() => setHideRight(!hideRight)} aria-expanded={!hideRight} aria-label={inspectorTitle}>{hideRight ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}<span>{inspectorTitle}</span></button>
