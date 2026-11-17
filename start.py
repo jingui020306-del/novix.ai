@@ -97,6 +97,12 @@ def main() -> int:
     model_proc: subprocess.Popen | None = None
     model_log = None
 
+    def handle_signal(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
     try:
         if not args.no_local_model and model_path().exists():
             port = find_available_port(model_spec()['port'])
@@ -127,12 +133,6 @@ def main() -> int:
 
         if not args.no_browser:
             webbrowser.open(target_url)
-
-        def handle_signal(_signum: int, _frame: object) -> None:
-            raise KeyboardInterrupt
-
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
 
         model_ready = False
         model_failed = False
