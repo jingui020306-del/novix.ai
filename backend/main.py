@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 import sys
 
@@ -55,7 +57,21 @@ allowed_origins = [
     'http://localhost:5173',
 ]
 
-app = FastAPI(title='AI Longform Novel Workbench API')
+from services.pacing_service import PacingService
+from routers import pacing
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(PacingService(store).run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+app = FastAPI(title='AI Longform Novel Workbench API', lifespan=lifespan)
+app.include_router(pacing.router)
 
 
 @app.exception_handler(FileExistsError)

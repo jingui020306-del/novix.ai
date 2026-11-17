@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { NarrativePacing } from './NarrativePacing'
 import useSWR from 'swr'
 import { api } from '../api/client'
 import { canonicalEvents } from '../lib/materialScope'
@@ -55,6 +56,7 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
   const [hasSaved, setHasSaved] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [section, setSection] = useState('时间线')
+  const [pacingView, setPacingView] = useState(true)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -396,6 +398,8 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
     {pendingRehearsal && <section id='planning-rehearsal-open' className='space-y-3 border-y border-border py-4' aria-label='保存工作表后打开推演'><p className='text-sm leading-7'>当前工作表有未保存内容。推演会联动保存版，请先保存后打开，或留在表内继续编辑。</p><div className='flex flex-wrap gap-2'><Button variant='primary' disabled={Boolean(busy)} onClick={saveAndOpenRehearsal}>{busy === 'save' ? '保存中…' : '保存并打开这一场'}</Button><Button disabled={Boolean(busy)} onClick={() => setPendingRehearsal(null)}>继续编辑工作表</Button></div></section>}
     {localDraft.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>找到这份工作表的本地草稿，恢复后可继续核对。</p><div className='flex gap-2'><Button onClick={localDraft.restore}>恢复草稿</Button><Button variant='ghost' onClick={localDraft.dismiss}>保留保存版</Button></div></div>}
     <nav className='story-task-nav' aria-label='故事安排'>{['时间线','故事线','章节编排'].map(label => <button key={label} aria-current={section === label ? 'page' : undefined} onClick={() => {setSection(label);setActiveTab(label === '章节编排' ? 5 : label === '故事线' ? 2 : 0)}}>{label}</button>)}</nav>
+    {section === '章节编排' && <><div className='flex gap-2'><Button aria-pressed={pacingView} onClick={() => setPacingView(true)}>线路与正文</Button><Button aria-pressed={!pacingView} onClick={() => setPacingView(false)}>章节与线索表</Button></div>{pacingView && <NarrativePacing key={scope} project={project} story={storyCard.id} draftCache={draftCache} />}</>}
+    <div hidden={section === '章节编排' && pacingView}>
     <details className='border-y border-border py-4'><summary className='cursor-pointer text-sm font-medium'>材料、灵感与故事骨架（按需展开）</summary><div className='mt-4'>
     <section className='planning-starter space-y-4 border-y border-border py-5' aria-label='从故事整理骨架'>
       <div><h2 className='text-xl font-semibold'>先说说你的故事</h2><p className='mt-2 max-w-prose text-sm leading-7 text-muted'>先写一段想法，或从已有故事开始。把事件顺序看清楚，再把确定的内容分配到下面的详细表，不必逐格重填。</p></div>
@@ -473,5 +477,6 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
     {hasSaved && <MaterialBacklinks project={project} targetId={form.id} onOpen={onOpenMaterial} />}
     {busy && !['save', 'export'].includes(busy) && <p role='status' className='text-sm text-muted'>正在整理候选，原表内容仍可编辑…</p>}
     {message && <p role='status' className='text-sm leading-6 text-muted'>{message}</p>}
+    </div>
   </div>
 }

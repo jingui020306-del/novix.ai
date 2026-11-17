@@ -7,3 +7,4 @@ from services.local_model_service import install_model
 
 if __name__ == '__main__':
     install_model()
+    install_model("pacing")

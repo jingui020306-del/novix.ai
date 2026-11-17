@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'models/default.json'
+      - 'models/pacing.json'
       - 'scripts/setup_local_model.py'
       - 'scripts/setup_env.py'
       - 'backend/services/local_model_service.py'
@@ -41,7 +42,7 @@ jobs:
           mkdir -p release/novix
           git archive HEAD | tar -x -C release/novix
           cp -r backend/static_dist release/novix/backend/
-          cp models/*.gguf models/MODEL-LICENSE release/novix/models/
+          cp models/*.gguf models/*LICENSE release/novix/models/
           cd release
           zip -0qr novix-local.zip novix
       - uses: actions/upload-artifact@v4

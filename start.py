@@ -96,6 +96,8 @@ def main() -> int:
     frontend_proc: subprocess.Popen | None = None
     model_proc: subprocess.Popen | None = None
     model_log = None
+    pacing_proc = None
+    pacing_log = None
 
     def handle_signal(_signum: int, _frame: object) -> None:
         raise KeyboardInterrupt
@@ -113,6 +115,15 @@ def main() -> int:
                 model_proc = subprocess.Popen(command, stdout=model_log, stderr=subprocess.STDOUT)
                 provision_profile(env['NOVIX_LOCAL_MODEL_URL'])
                 print('[launcher] 正在加载本地模型…', flush=True)
+            except (OSError, ValueError, RuntimeError) as error:
+                print(f'[launcher] {error}', file=sys.stderr, flush=True)
+        if not args.no_local_model and model_path('pacing').exists():
+            try:
+                port = find_available_port(model_spec('pacing')['port'])
+                env['NOVIX_PACING_MODEL_URL'] = f'http://127.0.0.1:{port}'
+                pacing_log = (model_path('pacing').parent / 'pacing-server.log').open('w', encoding='utf-8')
+                pacing_proc = subprocess.Popen(runtime_command(port, 'pacing'), stdout=pacing_log, stderr=subprocess.STDOUT)
+                print('[launcher] 正在加载节奏分析模型…', flush=True)
             except (OSError, ValueError, RuntimeError) as error:
                 print(f'[launcher] {error}', file=sys.stderr, flush=True)
         backend_proc = subprocess.Popen(backend_cmd, cwd=BACKEND_DIR, env=env)
@@ -165,6 +176,10 @@ def main() -> int:
             terminate_process(model_proc)
         if model_log:
             model_log.close()
+        if pacing_proc:
+            terminate_process(pacing_proc)
+        if pacing_log:
+            pacing_log.close()
 
 
 if __name__ == "__main__":
