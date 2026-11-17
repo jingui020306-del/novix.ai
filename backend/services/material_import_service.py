@@ -499,29 +499,34 @@ class MaterialImportService:
             values = {'name': label, 'identity': fields[2].strip()}
         else:
             title = re.fullmatch(r'(?:书名|作品名)[：:][ \t]*(?:《([^《》\r\n]{1,100})》|([^《》：:\r\n]{1,100}))', line)
-            if not title or not (title[1] or title[2]).strip():
-                return None
-            kind, label = 'story', (title[1] or title[2]).strip()
-            values = {'title': label}
+            if title and (title[1] or title[2]).strip():
+                kind, label = 'story', (title[1] or title[2]).strip()
+                values = {'title': label}
+            else:
+                labels = {'故事摘要': ('story', 'logline'), '核心冲突': ('story', 'main_conflict'), '主题': ('story', 'theme'),
+                          '时代': ('world', 'era'), '基础规则': ('world', 'rules')}
+                field = re.fullmatch(r'([^：:\r\n]{1,12})[：:][ \t]*([^\s][^\r\n]*)', line)
+                if not field or field[1] not in labels:
+                    return None
+                label = field[1]
+                kind, key = labels[label]
+                values = {key: [field[2]] if key == 'rules' else field[2]}
         return {'kind': kind, 'label': label, 'values': values, 'evidence': [{'quote': line}]}
 
     @staticmethod
     def _local_candidates(record):
         text = record['cleaned_text']
         direct = MaterialImportService.labeled_card(text)
-        if direct:
-            if not any(text.strip() in source.get('original_text', '') for source in MaterialImportService._sources(record)):
-                direct.update(provenance='author_edit', evidence=[])
-            return [direct]
-        labels = {'故事摘要': ('story', 'logline'), '核心冲突': ('story', 'main_conflict'), '主题': ('story', 'theme'), '时代': ('world', 'era'), '基础规则': ('world', 'rules')}
-        candidates = []
-        for line in text.splitlines():
-            match = re.match(r'^\s*([^：:]{1,12})[：:]\s*(.+)$', line)
-            if not match or match[1] not in labels:
-                continue
-            kind, field = labels[match[1]]
-            authored = not any(line in source.get('original_text', '') for source in MaterialImportService._sources(record))
-            candidates.append({'kind': kind, 'label': match[1], 'target_id': record.get('story_card_id') if kind == 'story' else None, 'values': {field: [match[2]] if field == 'rules' else match[2]}, 'provenance': 'author_edit' if authored else 'material_fact', 'evidence': [] if authored else [{'quote': line}]})
+        candidates = [direct] if direct else [row for line in text.splitlines() if (row := MaterialImportService.labeled_card(line))]
+        sources = MaterialImportService._sources(record)
+        for row in candidates:
+            quote = row['evidence'][0]['quote']
+            if not any(quote in source.get('original_text', '') for source in sources):
+                row.update(provenance='author_edit', evidence=[])
+            else:
+                row['provenance'] = 'material_fact'
+            if row['kind'] == 'story' and record.get('story_card_id'):
+                row['target_id'] = record['story_card_id']
         return candidates
 
     async def _visual_text(self, project_id, record, body, calls):
