@@ -7,6 +7,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.parse
@@ -134,7 +135,9 @@ def read_file(raw, filename, *, allow_long=False):
         except (zipfile.BadZipFile, KeyError, ET.ParseError, IndexError, TypeError) as exc:
             raise ValueError('Excel文件无法可靠读取，请使用有效的XLSX或另存CSV。') from exc
     elif extension in {'.pdf', '.doc'}:
-        command = pdf_tool('pdftotext') if extension == '.pdf' else shutil.which('libreoffice')
+        word_jar = Path(sys.prefix) / 'share' / 'novix' / 'tika-app.jar'
+        use_tika = extension == '.doc' and word_jar.is_file()
+        command = pdf_tool('pdftotext') if extension == '.pdf' else shutil.which('java' if use_tika else 'libreoffice')
         if not command:
             raise ValueError('本机尚无此格式的文字提取工具，请导出为TXT或DOCX；原材料不会被修改。')
         with tempfile.TemporaryDirectory(prefix='novix-material-') as temporary:
@@ -144,11 +147,13 @@ def read_file(raw, filename, *, allow_long=False):
                 if not raw.startswith(b'%PDF-'):
                     raise ValueError('文件不是有效PDF。')
                 arguments = [command, '-layout', str(source), '-']
+            elif use_tika:
+                arguments = [command, '-jar', str(word_jar), '--text', str(source)]
             else:
                 arguments = [command, '-env:UserInstallation=' + (Path(temporary) / 'profile').as_uri(), '--headless', '--convert-to', 'txt:Text', '--outdir', temporary, str(source)]
             try:
                 output = subprocess.run(arguments, capture_output=True, timeout=25, check=True)
-                text = decode_text(output.stdout) if extension == '.pdf' else decode_text((Path(temporary) / 'source.txt').read_bytes())
+                text = decode_text(output.stdout) if extension == '.pdf' or use_tika else decode_text((Path(temporary) / 'source.txt').read_bytes())
                 if extension == '.pdf':
                     pages = text.rstrip('\f\n').split('\f') if text.strip() else []
                     count = len(pages)
