@@ -1,0 +1,12 @@
+{
+  "id": "novix_local",
+  "name": "Qwen3-1.7B · 本地",
+  "repository": "Qwen/Qwen3-1.7B-GGUF",
+  "revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+  "file": "Qwen3-1.7B-Q8_0.gguf",
+  "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+  "size": 1834426016,
+  "license": "apache-2.0",
+  "context_window": 16384,
+  "port": 18080
+}

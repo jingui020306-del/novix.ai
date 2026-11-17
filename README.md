@@ -8,6 +8,8 @@ Novix 是一款本地小说写作工作台。你可以先安排故事、人物�
 
 ## 环境配置
 
+完整包可从 [Releases](https://github.com/jingui020306-del/novix.ai/releases) 下载，其中预装了权重；首次安装仍需联网配置环境。
+
 先安装 [Miniforge 或 Miniconda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)，在本仓库点 **Code → Download ZIP** 并解压。在包含 `start.py` 的目录打开终端。Windows 可使用 Miniforge Prompt 或 Anaconda Prompt。
 
 **首次安装**只需一条命令。请保持联网，等待终端显示「Novix 已就绪」。
@@ -16,9 +18,9 @@ Novix 是一款本地小说写作工作台。你可以先安排故事、人物�
 conda run --no-capture-output -n base python scripts/setup_env.py
 ```
 
-它会创建独立的 `novix` 环境，安装 Python、Node.js、PDF 和旧版 Word 读取工具，以及本地场景推演所用的 Java、.NET 和引擎，然后构建前端。更新源码后，可再次运行同一条命令。
+它会创建独立的 `novix` 环境，安装应用和场景推演所需依赖、构建前端，并下载校验默认模型 Qwen3-1.7B Q8（约 1.83 GB）。权重保存在仓库的 `models/` 下。更新源码后，可再次运行同一条命令。
 
-**日常启动**也在仓库根目录执行。浏览器会自动打开本机地址，按 `Ctrl+C` 退出。
+**日常启动**也在仓库根目录执行。默认模型服务会随 App 一起启动，文字任务已经分配好。浏览器会自动打开本机地址，按 `Ctrl+C` 退出。
 
 ```bash
 conda run --no-capture-output -n novix python start.py --prod
@@ -28,12 +30,14 @@ conda run --no-capture-output -n novix python start.py --prod
 
 | 使用方式 | 建议配置 |
 | --- | --- |
-| 本地写作、场景推演、调用云端 API | 64 位 Windows、macOS 或 Linux，4 核 CPU、8 GB 内存，预留 8 GB 磁盘空间。使用普通浏览器即可，无需独立显卡。 |
-| 在本机运行语言模型 | 另给模型权重预留磁盘空间。内存或显存按所选模型、量化方式和上下文长度配置。 |
+| 本地写作、场景推演、调用云端 API | 64 位 Windows、macOS 或 Linux，4 核 CPU、8 GB 内存，预留 12 GB 磁盘空间。使用普通浏览器即可，无需独立显卡。 |
+| 在本机运行语言模型 | 默认轻量模型可使用 CPU，建议 16 GB 内存。更大模型按其权重和上下文长度准备内存或显存。 |
 
 表中数值是安装和日常使用的建议。大量导入图片、地图或 PDF 时，请另外预留作品空间。
 
 ## 模型配置指南
+
+默认本地模型可直接用于文字创作，无需密钥。「模型设置 → 本地模型」可查看加载状态和权重位置。轻量模型适合起步，长篇复杂写作可在此接入更强模型；图片识别需要另配视觉模型。
 
 1. 打开左侧 **作品工具 → 模型设置 → 添加与管理模型**。纯手动写作可以直接开始。
 2. 选择服务商，填写自定义的「配置名称」和服务商提供的「模型名称」。云端 API 通常可沿用预设服务地址，再填自己的 API 密钥。使用本地 Ollama 时，先启动服务并下载模型，地址填 `http://127.0.0.1:11434`，模型名称照抄 `ollama list` 的结果。
