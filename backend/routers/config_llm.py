@@ -132,3 +132,34 @@ def get_status(cfg: LLMConfigService = Depends(get_cfg)):
         "missing_count": sum(1 for row in modules if row["missing_fields"] or row["profile_missing"]),
         "profile_missing_count": sum(1 for row in profile_rows if row["missing_fields"]),
     }
+
+
+@router.get("/local-model")
+async def local_model_status(cfg: LLMConfigService = Depends(get_cfg)):
+    import os
+    import httpx
+    from services.local_model_service import model_spec, model_path
+    spec = model_spec()
+    path = model_path()
+    profile = cfg.read_profiles().get(spec['id'], {})
+    url = os.environ.get('NOVIX_LOCAL_MODEL_URL') or profile.get('base_url')
+    status = {
+        'name': spec['name'], 'path': str(path), 'size': spec['size'],
+        'installed': path.is_file() and path.stat().st_size == spec['size'],
+        'state': 'stopped', 'ready': False,
+    }
+    if not status['installed']:
+        status['state'] = 'missing'
+        return status
+    if not url:
+        return status
+    try:
+        async with httpx.AsyncClient(timeout=1, trust_env=False) as client:
+            response = await client.get(url.rstrip('/') + '/v1/models')
+        if response.status_code == 503:
+            status['state'] = 'loading'
+        elif response.status_code == 200 and any(row.get('id') == spec['id'] for row in response.json().get('data', [])):
+            status.update(state='ready', ready=True)
+    except (httpx.HTTPError, ValueError):
+        pass
+    return status

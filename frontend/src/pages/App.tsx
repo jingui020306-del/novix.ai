@@ -57,7 +57,7 @@ import { Input, Select, Textarea } from '../components/ui/Fields'
 import { Tabs } from '../components/ui/Tabs'
 import { Skeleton } from '../components/ui/Skeleton'
 import { useToast } from '../components/ui/Toast'
-import { AppSettings, applySettingsToDom, DEFAULT_SETTINGS, loadSettings, saveSettings } from '../lib/settings'
+import { AppSettings, applySettingsToDom, DEFAULT_SETTINGS, SETTINGS_KEY, loadSettings, saveSettings } from '../lib/settings'
 import { CommandPalette } from '../components/CommandPalette/CommandPalette'
 import { baseHelpCommands, CommandItem, iconForKind } from '../components/CommandPalette/commandIndex'
 import { createHelpText, isCreateMode, parseCreateInput, ParsedCreate } from '../components/CommandPalette/cliParser'
@@ -314,6 +314,7 @@ export default function App() {
 
   const { data: projects, mutate: mutateProjects } = useSWR('/api/projects', api.get)
   const { data: projectInfo } = useSWR(project ? `/api/projects/${project}` : null, api.get)
+  const { data: localModelStatus } = useSWR(view === 'settings' ? '/api/config/llm/local-model' : null, api.get, { refreshInterval: 5000 })
   const { data: storySchema } = useSWR('/api/schema/cards/story', api.get)
   const { data: charSchema } = useSWR('/api/schema/cards/character', api.get)
   const { data: styleSchema } = useSWR('/api/schema/cards/style', api.get)
@@ -336,6 +337,12 @@ export default function App() {
   const { data: techniqueCategories, mutate: mutateTechniqueCategories } = useSWR(project ? `/api/projects/${project}/cards?type=technique_category` : null, api.get)
   const { data: toolSkillCards, mutate: mutateToolSkillCards } = useSWR(project ? `/api/projects/${project}/cards?type=tool_skill` : null, api.get)
   const { data: globalProfiles, mutate: mutateGlobalProfiles } = useSWR('/api/config/llm/profiles', api.get)
+  useEffect(() => {
+    if (!globalProfiles?.profiles?.novix_local || localStorage.getItem(SETTINGS_KEY)) return
+    setSettings(current => ({ ...current, defaultLlmProfileId: 'novix_local' }))
+    setLlmProfileId('novix_local')
+  }, [Boolean(globalProfiles?.profiles?.novix_local)])
+
   const { data: globalAssignments, mutate: mutateGlobalAssignments } = useSWR('/api/config/llm/assignments', api.get)
   const { data: providersMeta } = useSWR('/api/config/llm/providers_meta', api.get)
   const { data: llmStatus, mutate: mutateLlmStatus } = useSWR('/api/config/llm/status', api.get)
@@ -4582,6 +4589,21 @@ export default function App() {
       }
       return (
         <div className='space-y-3 density-space'>
+          {localModelStatus && <Card title='本地模型'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <span>{localModelStatus.name}</span>
+              <Badge tone={localModelStatus.ready ? 'success' : 'warn'}>
+                {({ ready: '可用', loading: '正在加载', missing: '尚未下载', stopped: '未运行' } as Record<string, string>)[localModelStatus.state]}
+              </Badge>
+            </div>
+            {['missing', 'stopped'].includes(localModelStatus.state) && <p className='mt-2 text-sm text-muted'>
+              {localModelStatus.state === 'missing' ? '在仓库目录重新运行安装命令，完成模型下载。' : '使用 start.py 启动 App 时会同时启动本地模型。'}
+            </p>}
+            <details className='mt-3'><summary className='cursor-pointer text-xs text-muted'>权重位置</summary>
+              <p className='mt-2 break-all text-xs'>{localModelStatus.path}</p>
+              <p className='text-xs text-muted'>{(localModelStatus.size / 1e9).toFixed(2)} GB</p>
+            </details>
+          </Card>}
           <Card title='模型连接状态' extra={<Badge tone={llmStatus?.all_mock || llmStatus?.missing_count ? 'warn' : 'success'}>{!llmStatus ? '正在读取' : llmStatus.all_mock ? '尚未连接 AI' : llmStatus.missing_count ? '部分任务待配置' : '已配置'}</Badge>}>
             <p className='text-sm text-muted'>{llmStatus?.all_mock ? '当前只能模拟预览。请在下方添加模型和密钥，再选择哪些任务使用它。' : '在下方为人物设定、正文写作和校对选择模型。配置检查通过不代表已经连通服务。'}</p>
             <details className='mt-3 text-xs text-muted'>
@@ -4944,7 +4966,7 @@ export default function App() {
     alignmentConfirmed,
     alignmentDiscussionInput,
     alignmentMessages,
-    storyPlanningTab, overviewEvents, chapterPane, personPane, eventOrigin,
+    localModelStatus, storyPlanningTab, overviewEvents, chapterPane, personPane, eventOrigin,
     evidenceMarkRows,
     trustReport,
     selectedMarkId,

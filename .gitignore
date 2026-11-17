@@ -57,3 +57,10 @@ coverage/
 # Local FAtiMA bridge build products
 /backend/rehearsal_engines/fatima/bin/
 /backend/rehearsal_engines/fatima/obj/
+
+# Local model assets are verified by models/default.json and included in release archives.
+/models/*.gguf
+/models/MODEL-LICENSE
+/models/*.log
+/models/.novix-model-*
+/data/_global/local_model.json
