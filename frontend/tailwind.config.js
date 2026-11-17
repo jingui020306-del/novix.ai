@@ -3,6 +3,15 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontSize: {
+        xs: ['0.875rem', '1.5'],
+        sm: ['0.9375rem', '1.6'],
+        base: ['1rem', '1.65'],
+        lg: ['1.125rem', '1.5'],
+        xl: ['1.25rem', '1.4'],
+        '2xl': ['1.5rem', '1.4'],
+        '3xl': ['1.5rem', '1.4'],
+      },
       colors: {
         brand: {
           500: 'rgb(var(--c-accent) / <alpha-value>)',

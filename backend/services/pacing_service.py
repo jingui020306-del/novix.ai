@@ -53,6 +53,26 @@ class Moments(BaseModel):
     moments: list[Moment] = Field(max_length=8)
 
 
+def explicit_choice(text, previous, candidates, characters, threads, viewpoint):
+    """Read a standalone, affirmative decision directly attributed to a subject."""
+    if candidates or viewpoint or set(threads) != {'main'} or (previous.strip() and not re.search(r'[。！？.!?]$', previous.strip())):
+        return None
+    clause = text.strip()
+    if len(clause) > 32:
+        return None
+    # A closed set of complete action phrases excludes nominal uses such as “决定胜负”
+    # and leaves qualifications, questions and compound actions to the model.
+    match = re.fullmatch(r'([\w·]{1,16}?)(?:决定|决意|下定决心)(?:不再|不)?'
+                         r'(?:留下|离开|放弃|退出|拒绝|接受|返回|出发|公开|辞职|道歉|投案|承认|隐瞒|交出)[。！.!]?', clause)
+    if not match:
+        return None
+    subject = match[1]
+    named = [c['id'] for c in characters if c['name'] == subject]
+    if len(named) > 1 or not named and subject not in {'我', '他', '她', '我们', '他们', '她们'}:
+        return None
+    return Moment(kind='选择', label=clause, quote=clause, character_ids=named)
+
+
 class PacingService:
     def __init__(self, store):
         self.store = store
@@ -109,6 +129,34 @@ class PacingService:
 
     async def extract(self, text, previous, prior, characters, threads, viewpoint=None):
         profile = pacing_profile()
+        # A short clause already supplies the quote and label. Richer passages use the full extractor below.
+        clause = text.strip()
+        if (not prior and re.fullmatch(r'[\w· ]{2,20}[。！？.!?]?', clause)
+                and not re.search(r'但是|然而|却|因为|所以|于是|然后|随后|先.+再|一边.+一边|从.+变|才知道', clause)):
+            context = {'前文': previous, '末句': clause, '故事线': threads}
+            if characters:
+                context['候选人物'] = characters
+            if viewpoint:
+                context['叙述视角'] = viewpoint
+            messages = [
+                {'role': 'system', 'content': '判断末句本身产生的叙事节拍。普通动作或背景、证据不足选“无”。'
+                 '前文只供理解，不能用时间相邻推断后果。仅在明确获知信息时填audience。'
+                 '只有明确属于所列人物或故事线才填对应ID，其他可选字段省略。只输出JSON。'},
+                {'role': 'user', 'content': json.dumps(context, ensure_ascii=False)}]
+            properties = {'kind': {'type': 'string', 'enum': ['选择', '后果', '揭示', '情绪变化', '铺垫', '余波', '无']},
+                          'audience': {'type': 'string', 'enum': ['读者', '人物']}}
+            for field, ids in [('character_ids', [c['id'] for c in characters]), ('thread_ids', list(threads))]:
+                if ids:
+                    properties[field] = {'type': 'array', 'maxItems': min(len(ids), 10),
+                                         'items': {'type': 'string', 'enum': ids}}
+            schema = {'type': 'object', 'properties': properties, 'required': ['kind'], 'additionalProperties': False}
+            reply = await LLMGateway().chat_complete(messages, profile['model'], 0, 320, {**profile, 'format': schema})
+            result = json.loads(reply['text'])
+            if not isinstance(result, dict):
+                raise ValueError('节拍分类结果格式有误。')
+            if result.get('kind') == '无':
+                return []
+            return [Moment.model_validate({**result, 'label': clause, 'quote': clause})]
         prompt = ('从本段原文提取明确的选择、后果、揭示、情绪变化、铺垫或余波。'
                   'quote 必须逐字复制本段连续文字，label 简洁且只描述本段。before/after 仅可逐字复制本段原句，不能复制前因描述。'
                   'audience 区分读者获知与人物获知，读者已经知道的信息仍可能是人物首次获知。'
@@ -181,7 +229,7 @@ class PacingService:
         if not self.persist(project, chapter, content, scope, {**state, 'blocks': cache}):
             return
         used, occurrences = {}, Counter()
-        model_calls = 0
+        model_calls = rule_blocks = cached_blocks = 0
         inference_seconds = 0.0
         indexed = [(item, self.bigrams(item['quote'])) for item in prior]
         try:
@@ -197,15 +245,21 @@ class PacingService:
                 if values is None:
                     if content != self.store.read_md(project, f'drafts/{chapter}.md'):
                         return
-                    request_started = time.perf_counter()
-                    moments = await self.extract(text, previous, candidates, block_characters, threads, viewpoint)
-                    inference_seconds += time.perf_counter() - request_started
-                    model_calls += 1
-                    values = [m.model_dump() for m in moments]
+                    choice = explicit_choice(text, previous, candidates, block_characters, threads, viewpoint)
+                    if choice:
+                        values = [{**choice.model_dump(), 'method': 'explicit_choice'}]
+                        rule_blocks += 1
+                    else:
+                        request_started = time.perf_counter()
+                        moments = await self.extract(text, previous, candidates, block_characters, threads, viewpoint)
+                        inference_seconds += time.perf_counter() - request_started
+                        model_calls += 1
+                        values = [m.model_dump() for m in moments]
                     used[key] = values
                     if not self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used}}):
                         return
                 else:
+                    cached_blocks += 1
                     used[key] = values
                 for value in values:
                     quote = value['quote']
@@ -232,7 +286,7 @@ class PacingService:
                 'nodes': nodes, 'edges': edges, 'blocks': used,
                 'timing': {'analysis_ms': round(1000 * (time.perf_counter() - started)),
                            'inference_ms': round(1000 * inference_seconds),
-                           'model_calls': model_calls, 'cached_blocks': len(blocks) - model_calls}},
+                           'model_calls': model_calls, 'rule_blocks': rule_blocks, 'cached_blocks': cached_blocks}},
                 inputs_stamp=inputs_stamp):
                 return
             self.retry.pop((project, chapter), None)

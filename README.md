@@ -39,7 +39,7 @@ conda run --no-capture-output -n novix python start.py --prod
 
 默认本地模型可直接用于文字创作，无需密钥。「模型设置 → 本地模型」可查看加载状态和权重位置。轻量模型适合起步，长篇复杂写作可在此接入更强模型；图片识别需要另配视觉模型。
 
-安装器允许 Conda 根据驱动选择兼容的 llama.cpp 构建。启动器依次加载两个模型，由运行时按可用显存分配 GPU 层。CPU 推理默认最多使用 8 个可用线程。进入 `novix` 环境后运行 `llama-server --list-devices` 可检查 CUDA、Metal 或 Vulkan 设备。已有 NVIDIA 环境如仍使用 CPU 构建，可执行 `conda install -n novix -c conda-forge "llama.cpp=12418=cuda*"`。需要固定 CPU 线程或关闭 GPU 卸载时，分别设置环境变量 `LLAMA_ARG_THREADS` 或 `LLAMA_ARG_DEVICE=none`。
+安装器允许 Conda 根据驱动选择兼容的 llama.cpp 构建。启动器依次加载两个模型，由运行时按可用显存分配 GPU 层。纯 CPU 也可运行两份模型。默认最多使用 8 个 CPU 线程，实际取当前可用数量。进入 `novix` 环境后运行 `llama-server --list-devices` 可检查 CUDA、Metal 或 Vulkan 设备。已有 NVIDIA 环境如仍使用 CPU 构建，可执行 `conda install -n novix -c conda-forge "llama.cpp=12418=cuda*"`。需要固定 CPU 线程或关闭 GPU 卸载时，分别设置环境变量 `LLAMA_ARG_THREADS` 或 `LLAMA_ARG_DEVICE=none`。
 
 多个写作任务同时使用 1.7B 时，启动前设置 `NOVIX_LOCAL_SLOTS=2` 可启用两个并发请求槽。默认 1 槽，每槽保持 16,384 tokens。双槽会为上下文缓存预留更多内存或显存。7B 节奏任务保持单槽。
 
@@ -66,4 +66,4 @@ conda run --no-capture-output -n novix python backend/rehearsal_engines/install.
 
 正文保存后，后台自动拆解章内选择、后果和信息变化。在「故事安排 → 章节编排 → 线路与正文」切换全书、本幕和本章，点节点定位原句。实线沿用作者已填写的因果，虚线表示带原文的待核对承接。两套本地模型随启动器分别启动，首次分析可能需要等待加载。
 
-每章最近一次完成拆解的耗时保存在 `data/<项目>/meta/pacing/<章节>.json` 的 `timing` 字段。可在自己的 CPU 或 GPU 上查看后台处理毫秒数、模型请求毫秒数、调用次数和命中缓存的段数。后台计时从开始处理该章算起。
+每章最近一次完成拆解的耗时保存在 `data/<项目>/meta/pacing/<章节>.json` 的 `timing` 字段。可在自己的 CPU 或 GPU 上查看后台处理毫秒数、模型请求毫秒数、模型调用次数（`model_calls`）、由代码直接识别的明确决定（`rule_blocks`）和复用缓存的段数（`cached_blocks`）。后台计时从开始处理该章算起。

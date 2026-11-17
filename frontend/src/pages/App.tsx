@@ -5643,7 +5643,7 @@ export default function App() {
 
   return (
     <>
-      <Layout left={left} header={header} surface={view} navigationKey={`${view}:${selectedChapter}`}
+      <Layout left={left} header={header} surface={view} navigationKey={`${project}:${view}:${selectedChapter}`}
         inspectorTitle={writingManuscript ? '本章技法' : view === 'settings' ? '模型说明' : ['chapter', 'scene-rehearsal'].includes(view) ? '本次生成材料' : ({ world: '世界资料', characters: '人物资料', style: '文风资料' } as Record<string, string>)[view] || '当前故事资料'}
         right={writingManuscript ? chapterTechniques : view === 'settings' ? <p className='text-sm leading-7 text-muted'>模型按任务分工；密钥只在本机保存。连接状态与配置在当前页面查看。</p> : ['chapter', 'scene-rehearsal'].includes(view) ? right : scopedMaterialPanel}
         center={<>

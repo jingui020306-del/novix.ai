@@ -85,8 +85,8 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
     {error ? <p role='alert' className='text-sm text-muted'>关系暂时无法读取，可点击更新关系重试；不影响继续写作。</p> : data?.detail ? <p role='alert' className='text-sm text-red-700 dark:text-red-300'>{typeof data.detail === 'string' ? data.detail : '关系暂时无法读取，请重试。'}</p> : !data ? <p className='text-sm text-muted'>正在整理关系…</p> : overview && layer === 'relationships' && !edges.length ? <p className='relation-empty'>尚未记录人物关系</p> : !nodes.length ? <p className='text-sm text-muted'>保存人物、故事和章节后，这里会显示它们的联系。</p> : <>
       {nodes.length > 13 && <p className='text-xs text-muted'>图中展示当前局部，其他资料可通过上方名称选择查看；没有删除或合并同名资料。</p>}
 
-      <div className='overflow-x-auto rounded-ui border border-border bg-surface'>
-        <svg viewBox={currentEdge ? '0 145 600 160' : '0 0 600 420'} className='w-full min-w-[400px]' role='img' aria-label='当前资料的关系图'>
+      <div className='overflow-x-auto rounded-ui border border-border bg-surface' role='region' tabIndex={0} aria-label={`${title}，图内可横向滚动`}>
+        <svg viewBox={currentEdge ? '0 145 600 160' : '0 0 600 420'} className='relationship-diagram' role='img' aria-label='当前资料的关系图'>
           <defs><marker id={`${graphId}-arrow`} viewBox='0 0 10 10' refX='64' refY='5' markerWidth='6' markerHeight='6' orient='auto-start-reverse'><path d='M 0 0 L 10 5 L 0 10 z' fill='currentColor' /></marker></defs>
           {(currentEdge ? [currentEdge] : adjacent).map((edge: any) => {
             const a = positions.get(edge.source), b = positions.get(edge.target)
@@ -100,12 +100,12 @@ export function KnowledgeGraph({ project, chapterId, onOpen, focusId, title = '�
             const path = `M ${a.x} ${a.y} Q ${control.x} ${control.y} ${b.x} ${b.y}`
             const label = String(edge.label || '相关')
             const labelY = (a.y + 2 * control.y + b.y) / 4 - 5 + lane * 18 * (1 - Math.abs(b.x - a.x) / length) * ((b.x - a.x) * orientation < 0 ? -1 : 1)
-            return <g key={edgeId(edge)} role='button' tabIndex={0} aria-label={`查看关系：${name(edge.source)}对${name(edge.target)}，${label}`} className='graph-node cursor-pointer text-muted' onClick={() => setSelectedEdge(edgeId(edge))} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEdge(edgeId(edge)) } }}><title>{label}</title><path d={path} fill='none' stroke='transparent' strokeWidth='18' /><path d={path} fill='none' stroke='currentColor' strokeWidth='1' markerEnd={`url(#${graphId}-arrow)`} /><text x={(a.x + 2 * control.x + b.x) / 4} y={labelY} textAnchor='middle' fill='currentColor' fontSize='11'>{currentEdge || label.length <= 14 ? label : `${label.slice(0, 14)}…`}</text></g>
+            return <g key={edgeId(edge)} role='button' tabIndex={0} aria-label={`查看关系：${name(edge.source)}对${name(edge.target)}，${label}`} className='graph-node cursor-pointer text-muted' onClick={() => setSelectedEdge(edgeId(edge))} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEdge(edgeId(edge)) } }}><title>{label}</title><path d={path} fill='none' stroke='transparent' strokeWidth='18' /><path d={path} fill='none' stroke='currentColor' strokeWidth='1' markerEnd={`url(#${graphId}-arrow)`} /><text x={(a.x + 2 * control.x + b.x) / 4} y={labelY} textAnchor='middle' fill='currentColor' fontSize='14'>{currentEdge || label.length <= 14 ? label : `${label.slice(0, 14)}…`}</text></g>
           })}
           {visible.map((node: any) => { const point = positions.get(node.id)!; return <g key={node.id} role='button' tabIndex={0} aria-label={`查看${node.label}`} className='graph-node cursor-pointer text-text' onPointerDown={(e) => { if (currentEdge) return; drag.current = { id: node.id, x: e.clientX, y: e.clientY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId) }} onPointerMove={(e) => moveNode(e, node.id)} onPointerUp={() => { skipOpen.current = Boolean(drag.current?.moved); drag.current = null }} onClick={() => { if (skipOpen.current) { skipOpen.current = false; return }; onOpen(node) }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(node) } }}>
             <circle cx={point.x} cy={point.y} r={node.id === focus?.id ? 31 : 25} className={node.id === focus?.id ? 'fill-surface-2 stroke-brand-500' : 'fill-panel stroke-border'} strokeWidth='1.5' />
-            <text x={point.x} y={point.y + 4} textAnchor='middle' fill='currentColor' fontSize={overview ? 15 : 12}>{String(node.label || '资料').slice(0, 7)}</text>
-            {(!overview || node.type !== 'character') && <text x={point.x} y={point.y + 46} textAnchor='middle' fill='currentColor' fontSize='11'>{TYPES[node.type] || '资料'}</text>}
+            <text x={point.x} y={point.y + 4} textAnchor='middle' fill='currentColor' fontSize='16'>{String(node.label || '资料').slice(0, 7)}</text>
+            {(!overview || node.type !== 'character') && <text x={point.x} y={point.y + 46} textAnchor='middle' fill='currentColor' fontSize='14'>{TYPES[node.type] || '资料'}</text>}
           </g> })}
         </svg>
       </div>
