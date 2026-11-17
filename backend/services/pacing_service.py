@@ -154,6 +154,7 @@ class PacingService:
         return characters, threads, viewpoint, order, prior
 
     async def process(self, project, chapter):
+        started = time.perf_counter()
         content = self.store.read_md(project, f'drafts/{chapter}.md')
         scope = self.scope(project, chapter)
         model_revision = model_identity()
@@ -180,6 +181,8 @@ class PacingService:
         if not self.persist(project, chapter, content, scope, {**state, 'blocks': cache}):
             return
         used, occurrences = {}, Counter()
+        model_calls = 0
+        inference_seconds = 0.0
         indexed = [(item, self.bigrams(item['quote'])) for item in prior]
         try:
             for start, text in blocks:
@@ -194,7 +197,11 @@ class PacingService:
                 if values is None:
                     if content != self.store.read_md(project, f'drafts/{chapter}.md'):
                         return
-                    values = [m.model_dump() for m in await self.extract(text, previous, candidates, block_characters, threads, viewpoint)]
+                    request_started = time.perf_counter()
+                    moments = await self.extract(text, previous, candidates, block_characters, threads, viewpoint)
+                    inference_seconds += time.perf_counter() - request_started
+                    model_calls += 1
+                    values = [m.model_dump() for m in moments]
                     used[key] = values
                     if not self.persist(project, chapter, content, scope, {**state, 'blocks': {**cache, **used}}):
                         return
@@ -222,7 +229,11 @@ class PacingService:
                         indexed.append((self.candidate(node), self.bigrams(quote)))
             if not self.persist(project, chapter, content, scope, {
                 **identity, 'basis': basis, 'status': 'ready', 'block_size': block_size,
-                'nodes': nodes, 'edges': edges, 'blocks': used}, inputs_stamp=inputs_stamp):
+                'nodes': nodes, 'edges': edges, 'blocks': used,
+                'timing': {'analysis_ms': round(1000 * (time.perf_counter() - started)),
+                           'inference_ms': round(1000 * inference_seconds),
+                           'model_calls': model_calls, 'cached_blocks': len(blocks) - model_calls}},
+                inputs_stamp=inputs_stamp):
                 return
             self.retry.pop((project, chapter), None)
         except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
