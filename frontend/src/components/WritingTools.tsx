@@ -149,7 +149,7 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
         <button disabled={locked || busy || !text.trim() || Boolean(scope)} onClick={() => {setScope('chapter'); setRevision(null); setError('')}}>处理本章</button>
       </div>
       <div className='relative'>
-      <textarea id='chapter-manuscript-editor' aria-label='章节正文' className='editor-text' ref={editorRef} readOnly={locked} value={text} placeholder='开始写这一章…'
+      <textarea id='chapter-manuscript-editor' aria-label='章节正文' className='editor-text' ref={editorRef} readOnly={locked} value={text} placeholder='章节正文…'
         onChange={e => {onChange(e.target.value); setScope(null); setRevision(null); requestNumber.current++; setBusy(false)}}
         onFocus={() => setFocused(true)}
         onKeyDown={() => setAnchor(null)}
@@ -165,12 +165,12 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
         onSelect={e => {
           if (!scope) setRange({ start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd })
         }} />
-      {focused && !scope && !locked && <button className='toolbar-control selection-action' style={anchor && range.start !== range.end ? {position: 'absolute', ...anchor} : undefined} onMouseDown={e => e.preventDefault()} onClick={() => {setMode(range.start === range.end ? 'expand' : 'polish'); setScope('selection'); setError('')}}>{range.start === range.end ? '在光标处补写' : 'AI · 处理选文'}</button>}
+      {focused && !scope && !locked && <button className='toolbar-control selection-action' style={anchor && range.start !== range.end ? {position: 'absolute', ...anchor} : undefined} onMouseDown={e => e.preventDefault()} onClick={() => {setMode(range.start === range.end ? 'expand' : 'polish'); setScope('selection'); setError('')}}>{range.start === range.end ? '光标处补写' : 'AI 编辑选文'}</button>}
       </div>
       {scope && <div ref={controlsRef} className='revision-controls'>
       <div className='manuscript-actions'><strong>{scope === 'chapter' ? '本章全文' : range.start === range.end ? '光标位置' : `已选 ${Array.from(text.slice(range.start,range.end)).length} 字`}</strong>
       <button disabled={busy} onClick={() => {setScope(null);setRevision(null);editorRef.current?.focus()}}>关闭</button></div>
-      <div className='flex flex-wrap gap-2'>
+      <div className='revision-mode-row'>
         <Select aria-label='修改方式' value={mode} onChange={e => {setMode(e.target.value);setRevision(null)}} disabled={busy}>
           <option value='dialogue'>按人物写对话</option><option value='polish' disabled={scope === 'selection' && range.start === range.end}>润色</option><option value='expand'>补充</option><option value='construct'>构建</option><option value='rewrite' disabled={scope === 'selection' && range.start === range.end}>改写</option><option value='cinematic' disabled={scope === 'selection' && range.start === range.end}>调整画面承接</option>
         </Select>
@@ -186,9 +186,9 @@ export function ManuscriptEditor({ project, chapterId, text, profileId, storyCar
         <label htmlFor='rewrite-instructions' className='text-sm text-muted'>本次要求（可选）</label>
         <Textarea id='rewrite-instructions' value={instructions} disabled={busy} onChange={e => { setInstructions(e.target.value); setRevision(null) }} maxLength={3500} placeholder={mode === 'dialogue' ? '每人一行，例如：林秋：想问清来意，暂不提那封信。' : '例如：对话更自然；场景描写加入少量贴切的比喻，保留原意。'} />
       </div>
-      {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>这一候选涉及剧情变化，请先逐项核对事件与人物意图；不是单纯语言润色。</p>}
-        {ops.length > 0 ? <section className='space-y-3' aria-label='逐处核对润色与改写'><h4 className='text-sm font-medium'>核对每一处变化</h4>{ops.map((op: any, index: number) => <article key={op.op_id} className='space-y-2 border-b border-border py-3'><label className='flex items-center gap-2 text-sm'><input type='checkbox' disabled={busy || manual} checked={selectedChanges.includes(op.op_id)} onChange={(event) => setSelectedChanges((current) => event.target.checked ? [...current, op.op_id] : current.filter((id) => id !== op.op_id))} />采用第 {index + 1} 处修改</label><div className='grid grid-cols-1 gap-3 sm:grid-cols-2'><div><p className='text-xs text-muted'>原文</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.before || '此处没有原文（新增）'}</p></div><div><p className='text-xs text-muted'>建议</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.after || '删除此处文字'}</p></div></div></article>)}</section> : Array.isArray(revision.ops) && <p className='text-xs text-muted'>候选与原文一致，暂无要采用的修改；仍可自行编辑下方文字。</p>}
-        <div className='space-y-2'><label htmlFor='revision-result' className='text-sm font-medium'>{manual ? '自行编辑的候选' : '所选修改的结果预览（可手改）'}</label>
+      {revision && <div className='space-y-2'>{revision.candidate_kind === 'plot_change' && <p role='alert' className='text-sm leading-7 text-muted'>此修改涉及剧情，请核对事件与人物意图。</p>}
+        {ops.length > 0 ? <section className='space-y-3' aria-label='逐处核对润色与改写'><h4 className='text-sm font-medium'>逐处核对</h4>{ops.map((op: any, index: number) => <article key={op.op_id} className='space-y-2 border-b border-border py-3'><label className='flex items-center gap-2 text-sm'><input type='checkbox' disabled={busy || manual} checked={selectedChanges.includes(op.op_id)} onChange={(event) => setSelectedChanges((current) => event.target.checked ? [...current, op.op_id] : current.filter((id) => id !== op.op_id))} />采用第 {index + 1} 处修改</label><div className='grid grid-cols-1 gap-3 sm:grid-cols-2'><div><p className='text-xs text-muted'>原文</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.before || '此处没有原文（新增）'}</p></div><div><p className='text-xs text-muted'>建议</p><p className='whitespace-pre-wrap text-sm leading-7'>{op.after || '删除此处文字'}</p></div></div></article>)}</section> : Array.isArray(revision.ops) && <p className='text-xs text-muted'>候选与原文一致，暂无要采用的修改；仍可自行编辑下方文字。</p>}
+        <div className='space-y-2'><label htmlFor='revision-result' className='text-sm font-medium'>{manual ? '自行编辑的候选' : '修改预览（可编辑）'}</label>
         <Textarea id='revision-result' disabled={busy} className='min-h-40 font-serif leading-7' value={previewText} onChange={(event) => { setManual(true); setManualText(event.target.value) }} />
         {manual ? <p className='text-xs leading-6 text-muted'>采用时以这份手改稿为准，不同时叠加上方勾选。{ops.length > 0 && <button className='ml-2 text-brand-600 underline focus-ring' disabled={busy} onClick={() => setManual(false)}>改回按处勾选</button>}</p> : manualText !== revision.text && <button className='text-xs text-brand-600 underline focus-ring' disabled={busy} onClick={() => setManual(true)}>恢复我的手改稿</button>}
         {selectionError && <p role='alert' className='text-xs text-red-700 dark:text-red-300'>{selectionError}</p>}</div>
