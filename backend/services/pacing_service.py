@@ -461,6 +461,11 @@ class PacingService:
                               'chapter': scene.get('chapter', ''), 'thread_ids': [scene.get('thread_id') or 'main'],
                               'basis': 'planned', 'quote': '', 'offset': 0})
                 edges.extend({'from': f"{sheet['id']}:{c}", 'to': identity, 'basis': 'author'} for c in scene.get('causal_scene_ids', []))
+                for reference in scene.get('causal_event_refs') or []:
+                    predecessor = WorldScopeService.event_ref(reference)
+                    edge = {'from': f"{predecessor['owner_card_id']}:{predecessor['scene_id']}", 'to': identity, 'basis': 'author'}
+                    if edge not in edges:
+                        edges.append(edge)
         from services.suspense_service import SuspenseService
         suspense = SuspenseService(self.store).snapshot(project, story)
         for thread in suspense['threads']:

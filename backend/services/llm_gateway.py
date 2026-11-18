@@ -148,7 +148,7 @@ class LLMGateway:
         }
         if extra.get('format'):
             payload['response_format'] = {'type': 'json_schema', 'json_schema': {
-                'name': 'pacing', 'strict': True, 'schema': extra['format']}}
+                'name': 'response', 'strict': True, 'schema': extra['format']}}
         timeout = float(extra.get("timeout_s", self.timeout))
         async with httpx.AsyncClient(timeout=timeout, trust_env=not extra.get('local_only', False)) as client:
             async with client.stream("POST", f"{base.rstrip('/')}/v1/chat/completions", headers=headers, json=payload) as resp:

@@ -1,0 +1,65 @@
+name: CHIRON official model weights
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/character-formation, main]
+    paths:
+      - '.github/workflows/chiron-models.yml'
+      - 'scripts/chiron_weights.py'
+
+permissions:
+  contents: write
+concurrency:
+  group: chiron-weights-v1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: chiron-weights-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Publish verified checkpoints in GitHub Release parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if published=$(gh release view "$TAG" --json isDraft --jq '.isDraft'); then
+            if [[ "$published" == false ]]; then exit 0; fi
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title 'CHIRON · 官方模型权重' \
+              --notes 'Official Mistral-7B-Instruct-v0.2 and CHIRON character-sheet verifier. Use scripts/setup_chiron.sh to check and restore the model cache. Upstream model cards and available licenses are included.'
+          fi
+          python -m pip install 'huggingface_hub>=0.30,<1'
+          mkdir -p parts
+          cd parts
+          python ../scripts/chiron_weights.py | split -b 1536M -d -a 3 --filter='
+            set -eu
+            cat > "$FILE"
+            sha256sum "$FILE" >> SHA256SUMS
+            gh release upload "$TAG" "$FILE" --clobber
+            rm "$FILE"
+          ' - chiron.tar.part-
+          gh release upload "$TAG" SHA256SUMS --clobber
+          gh release edit "$TAG" --draft=false --latest=false
+      - name: Attach the matching spaCy language model
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel=en_core_web_lg-3.7.1-py3-none-any.whl
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')
+          gh release download "$TAG" --pattern SHA256SUMS
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --paginate \
+            --jq '.[] | select(.name | startswith("chiron.tar.part-")) | [.digest[7:], .name] | join("  ")' | sort -k2 > uploaded
+          diff SHA256SUMS uploaded
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fx "$wheel.sha256" > /dev/null; then
+            gh release download en_core_web_lg-3.7.1 --repo explosion/spacy-models --pattern "$wheel"
+            sha256sum "$wheel" > "$wheel.sha256"
+            gh release upload "$TAG" "$wheel" "$wheel.sha256" --clobber
+          fi
+          gh release edit "$TAG" --notes "人物卡 CHIRON 官方生成与核验权重，另含英文分句模型。下载及验证请参阅[本版安装说明](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/CHARACTER_FORMATION.md)或[下载含安装程序的本版源码](https://github.com/$GITHUB_REPOSITORY/archive/$GITHUB_SHA.zip)。"
