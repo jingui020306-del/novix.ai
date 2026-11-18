@@ -199,6 +199,11 @@ class JobManager:
         project_default = project.get("default_llm_profile_id", "mock_default")
         req_id = req_profile_id or assignment_profile_id or project_default
 
+        if payload.get("require_configured_profile"):
+            if req_id not in profiles:
+                raise ValueError("所选模型尚未配置，请在人物卡另选模型或到设置中补全。")
+            if req_id == "novix_local" and profiles[req_id].get("provider") != "llama_cpp":
+                raise ValueError("本地 Qwen 配置无效，请在人物卡选择已配置的模型。")
         selected = profiles.get(req_id, profiles.get("mock_default", self.llm_gateway.env_defaults()))
         fallback = profiles.get("mock_default", {"provider": "mock", "model": "mock-writer-v1", "stream": True})
         return req_id, selected, fallback

@@ -3,7 +3,7 @@ import { CharacterPortrait } from './CharacterPortrait'
 import { api } from '../api/client'
 import { pointerLocked } from './AuthorControls'
 import { Button } from './ui/Button'
-import { Input, Textarea } from './ui/Fields'
+import { Input, Select, Textarea } from './ui/Fields'
 
 const labels = {
   experience: '成长经历', expectation: '当时的预期', core_motivation: '动机',
@@ -16,9 +16,18 @@ const fields = Object.keys(labels) as Field[]
 const cardFields: Partial<Record<Field, string>> = { experience: 'family_background', core_motivation: 'core_motivation', personality_traits: 'personality_traits' }
 const sectionId = (field: Field) => 'formation_' + field
 
-export function CharacterFormation({ project, card, storyId, lockedPaths, onChange }: {
-  project: string; card: any; storyId?: string; lockedPaths: string[]; onChange: (card: any) => void
+export function CharacterFormation({ project, card, storyId, models, lockedPaths, onChange }: {
+  project: string; card: any; storyId?: string; models: { id: string; label: string }[]; lockedPaths: string[]; onChange: (card: any) => void
 }) {
+  const [profileId, setProfileId] = useState('novix_local')
+  const modelPicker = <label className="block text-sm">整理模型
+    <Select value={profileId} onChange={e => setProfileId(e.target.value)}>
+      <option value="novix_local">Qwen3-1.7B · 本地</option>
+      {models.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+      {profileId !== 'novix_local' && !models.some(m => m.id === profileId) &&
+        <option disabled value={profileId}>所选模型配置不可用</option>}
+    </Select>
+  </label>
   const [observation, setObservation] = useState('')
   const [selected, setSelected] = useState<Field[]>([])
   const [compare, setCompare] = useState(false)
@@ -41,7 +50,7 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
       pointerLocked(lockedPaths, '/payload/detail_sections/@' + sectionId(field), true)
   }
   const requested = fields.filter(f => selected.includes(f) && !unavailable(f))
-  const signature = JSON.stringify([project, card, storyId, lockedPaths, observation, requested, compare])
+  const signature = JSON.stringify([project, card, storyId, lockedPaths, observation, requested, compare, profileId])
   const current = useRef(signature)
   current.current = signature
   const baseline = useRef('')
@@ -53,7 +62,7 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
     setBusy(true); setMessage(''); setProposal(null)
     try {
       const result = await api.post(`/api/projects/${encodeURIComponent(project)}/cards/character-formation`, {
-        card, story_card_id: storyId, fields: requested, observation, compare_glucose: compare,
+        card, story_card_id: storyId, fields: requested, observation, compare_glucose: compare, llm_profile_id: profileId,
       })
       if (result.detail) throw new Error(typeof result.detail === 'string' ? result.detail : '请检查所选空项。')
       if (before !== current.current) throw new Error('依据已修改，请重新生成。')
@@ -106,6 +115,7 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
             onChange={e => setSelected(e.target.checked ? [...selected, f] : selected.filter(k => k !== f))} />{labels[f]}
         </label>)}</div>
       </fieldset>
+      {modelPicker}
       <label className="flex gap-2 text-xs text-muted"><input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />对照 GLUCOSE 事件解释</label>
       <Button disabled={busy || !requested.length} onClick={generate}>{busy ? '生成中…' : '生成候选'}</Button>
       {active && candidate && <div className="space-y-2">
@@ -124,5 +134,5 @@ export function CharacterFormation({ project, card, storyId, lockedPaths, onChan
       </div>}
       {message && <p role="status" className="text-sm text-muted">{message}</p>}
     </div>
-  </details><CharacterPortrait key={project + card.id} {...{ project, card, storyId, lockedPaths, onChange }} /></>
+  </details><CharacterPortrait key={project + card.id} {...{ project, card, storyId, lockedPaths, onChange, profileId, modelPicker }} /></>
 }

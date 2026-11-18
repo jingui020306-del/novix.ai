@@ -441,6 +441,11 @@ export default function App() {
 
   const projectProfiles = projectInfo?.llm_profiles || {}
   const profiles = { ...(globalProfiles?.profiles || {}), ...projectProfiles }
+  const characterModels = Object.keys(profiles).filter(id => {
+    const p = profiles[id]
+    return id !== 'novix_local' && p?.model && p.base_url &&
+      (['llama_cpp', 'ollama'].includes(p.provider) || (p.provider === 'openai_compat' && p.api_key))
+  }).map(id => ({ id, label: profileLabel(id, profiles[id]) }))
   const providerPresets = ((providersMeta?.providers || []) as ProviderMeta[])
   const selectedPreset = providerPresets.find((x) => x.provider_id === selectedPresetId)
   const { data: selectedMemoryPack } = useSWR(
@@ -3869,7 +3874,7 @@ export default function App() {
           </details>
           <CharacterReferenceImage key={`${project}:${characterForm.id}`} project={project} characterId={characterForm.id} value={payload.reference_image} appearance={payload.appearance || ''} profileId={useAgentAssignments ? undefined : llmProfileId} onImageChange={(image) => setCharacterForm((current: any) => { if (current.id !== characterForm.id) return current; const next = { ...current.payload }; if (image) next.reference_image = image; else delete next.reference_image; return { ...current, payload: next } })} onApplyAppearance={(appearance) => setCharacterForm((current: any) => current.id === characterForm.id ? { ...current, payload: { ...current.payload, appearance, field_provenance: { ...current.payload?.field_provenance, appearance: 'ai_addition' } } } : current)} onOpenSettings={() => { setActiveActivity('settings'); setView('settings') }} />
           <SchemaForm storyId={storyForm.id} nameWorldContext={payload.world_context || storyForm.payload?.world_context} lockedPaths={characterLockedPaths} hiddenFields={['detail_sections', 'age', 'initial_age', 'initial_age_time', 'birth_date', 'role', 'relationships']} schema={charSchema} value={characterForm} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} projectId={project} profileId={useAgentAssignments ? undefined : llmProfileId} references={Array.isArray(chars) ? chars : []} onOpenMaterial={openMaterial} onChange={(next) => setCharacterForm({ ...next, title: next.payload?.name || next.payload?.identity || '未命名人物' })} />
-          <CharacterFormation key={`${project}:${characterForm.id}:formation`} project={project} card={characterForm} storyId={storyForm.id} lockedPaths={characterLockedPaths} onChange={setCharacterForm} />
+          <CharacterFormation key={`${project}:${characterForm.id}:formation`} project={project} card={characterForm} storyId={storyForm.id} models={characterModels} lockedPaths={characterLockedPaths} onChange={setCharacterForm} />
           <CharacterDetails key={`${project}:${characterForm.id}:details`} focusRequest={materialFocusRequest?.id === characterForm.id ? materialFocusRequest : null} project={project} characterId={characterForm.id} value={payload.detail_sections || []} lockedPaths={characterLockedPaths} onChange={(detail_sections) => setCharacterForm({ ...characterForm, payload: { ...payload, detail_sections, field_provenance: { ...payload.field_provenance, detail_sections: 'author_edit' } } })} />
           <div className='space-y-2'><Button variant='primary' disabled={cardSaveState[`${project}:${characterForm.id}`] === '保存中…'} onClick={saveCurrentCharacter}>保存人物</Button><p role='status' className='text-xs text-muted'>{cardSaveState[`${project}:${characterForm.id}`]?.startsWith('保存失败') || cardSaveState[`${project}:${characterForm.id}`] === '保存中…' ? cardSaveState[`${project}:${characterForm.id}`] : characterLocal.dirty ? '有未保存的修改' : cardSaveState[`${project}:${characterForm.id}`] || ''}</p></div>
           {characterForm.id !== 'character_new' && <><AuthorControls key={`${project}:${characterForm.id}:lock`} project={project} target={`cards/${characterForm.id}.yaml`} label='人物' value={characterForm} revision={characterForm._revision} dirty={characterLocal.dirty} onChanged={(value, result) => { const next = { ...value, _revision: result.base_revision }; setCharacterForm(next); characterLocal.markSaved(characterForm, next); refreshSharedMaterials() }} /><InformationPanel key={`${project}:${characterForm.id}:information`} project={project} characterId={characterForm.id} storyId={storyForm.id} title='经历中的关键信息与认知变化' value={payload.information_ids || []} onChange={(information_ids) => setCharacterForm({ ...characterForm, payload: { ...payload, information_ids } })} /></>}
@@ -5043,7 +5048,7 @@ export default function App() {
     sideSearch,
     settings,
     llmStatus,
-    globalProfiles,
+    globalProfiles, projectInfo?.llm_profiles,
     globalAssignments,
     providerPresets,
     selectedPreset,

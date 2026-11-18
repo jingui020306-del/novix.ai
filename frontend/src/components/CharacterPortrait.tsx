@@ -1,47 +1,56 @@
-import { useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { pointerLocked } from './AuthorControls'
 import { Button } from './ui/Button'
-import { Input, Select, Textarea } from './ui/Fields'
+import { Input, Textarea } from './ui/Fields'
 
 const layers = { personal: '个人自我', social: '社会自我', core: '核心自我', extended: '衍生自我', protected: '保护自我', fading: '消失自我', hidden: '隐藏自我' }
 type Layer = keyof typeof layers
 type Evidence = { source_id: string; label: string; quote: string; chiron_claims?: string[] }
 type Candidate = { section_id: string; layer: Layer; content: string; situation: string; response: string; sources: Evidence[]; desirability?: number }
-type Props = { project: string; card: any; storyId?: string; lockedPaths: string[]; onChange: (card: any) => void }
+type Props = { project: string; card: any; storyId?: string; lockedPaths: string[]; profileId: string; modelPicker: ReactNode; onChange: (card: any) => void }
 
-export function CharacterPortrait({ project, card, storyId, lockedPaths, onChange }: Props) {
-  const [mode, setMode] = useState('qwen')
+export function CharacterPortrait({ project, card, storyId, lockedPaths, profileId, modelPicker, onChange }: Props) {
+  const [verify, setVerify] = useState(false)
   const [selected, setSelected] = useState<Layer[]>(['personal'])
   const [material, setMaterial] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [failed, setFailed] = useState<Layer[]>([])
+  const [empty, setEmpty] = useState<Layer[]>([])
   const [kept, setKept] = useState<Layer[]>([])
   const scope = useRef({})
   const generation = useRef('')
   const locked = (key: Layer) => pointerLocked(lockedPaths, '/payload/detail_sections/@self_' + key, true)
   const fields = selected.filter(key => !locked(key))
-  const signature = JSON.stringify([project, storyId, card, fields, material, mode, lockedPaths])
+  const signature = JSON.stringify([project, storyId, card, fields, material, verify, profileId, lockedPaths])
   const current = useRef(signature)
   current.current = signature
-  const visible = generation.current === signature ? candidates : []
+  const fresh = generation.current === signature
+  const visible = fresh ? candidates : []
   const sections = card.payload.detail_sections || []
 
-  async function generate() {
+  async function generate(retry = false) {
     const before = signature
-    setBusy(true); setNote(''); setCandidates([])
+    const requested = retry ? failed : fields
+    setBusy(true); setNote('')
+    if (!retry) {
+      setCandidates([]); setFailed([]); setEmpty([]); setKept([])
+    }
     try {
       const answer = await api.post('/api/projects/' + encodeURIComponent(project) + '/cards/character-portrait',
-        { card, story_card_id: storyId, fields, material, mode })
+        { card, story_card_id: storyId, fields: requested, material, mode: verify ? 'chiron' : 'direct', llm_profile_id: profileId })
       if (answer.detail) throw new Error(typeof answer.detail === 'string' ? answer.detail : '请核对本次材料。')
       if (before !== current.current) return
       generation.current = before
       scope.current = answer.scope || {}
-      setCandidates(answer.candidates.map((row: Candidate) => ({ ...row,
-        desirability: sections.find((s: any) => s.id === row.section_id)?.desirability })))
-      setKept(answer.candidates.map((item: Candidate) => item.layer))
-      if (answer.empty.length) setNote('依据不足，暂留空：' + answer.empty.map((key: Layer) => layers[key]).join('、'))
+      const received = answer.candidates.map((row: Candidate) => ({ ...row,
+        desirability: sections.find((s: any) => s.id === row.section_id)?.desirability }))
+      setCandidates(rows => [...(retry ? rows : []), ...received].sort((a, b) => fields.indexOf(a.layer) - fields.indexOf(b.layer)))
+      setKept(previous => [...(retry ? previous : []), ...received.map((row: Candidate) => row.layer)])
+      setEmpty(previous => [...(retry ? previous : []), ...answer.empty])
+      setFailed(answer.failed)
     } catch (e) { if (before === current.current) setNote(e instanceof Error ? e.message : '分析失败。') }
     finally { setBusy(false) }
   }
@@ -82,10 +91,15 @@ export function CharacterPortrait({ project, card, storyId, lockedPaths, onChang
         <details className="mt-2"><summary className="cursor-pointer text-xs text-muted">细分核心自我</summary>
           <div className="mt-2 flex flex-wrap gap-3">{(['extended', 'protected', 'fading'] as Layer[]).map(choice)}</div></details>
       </fieldset>
-      <Select aria-label="人物分析模型" value={mode} onChange={e => setMode(e.target.value)}>
-        <option value="qwen">Qwen · 本地中文分析</option><option value="chiron">CHIRON · 原文核验后用中文整理</option>
-      </Select>
-      <Button disabled={busy || !fields.length} onClick={generate}>{busy ? '分析中…' : '生成所选部分'}</Button>
+      {modelPicker}
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={verify}
+        onChange={e => setVerify(e.target.checked)} />使用 CHIRON 核验原文</label>
+      <Button disabled={busy || !fields.length} onClick={() => generate()}>{busy ? '分析中…' : '生成所选部分'}</Button>
+      {fresh && empty.length > 0 && <p className="text-sm text-muted">依据不足，暂留空：{empty.map(key => layers[key]).join('、')}</p>}
+      {fresh && failed.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span>未生成：{failed.map(key => layers[key]).join('、')}</span>
+        <Button disabled={busy} onClick={() => generate(true)}>重试未生成部分</Button>
+      </div>}
       {visible.map(row => <fieldset key={row.layer} className="space-y-2">
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={kept.includes(row.layer)} onChange={e =>
           setKept(e.target.checked ? [...kept, row.layer] : kept.filter(k => k !== row.layer))} />采用{layers[row.layer]}</label>
@@ -101,7 +115,7 @@ export function CharacterPortrait({ project, card, storyId, lockedPaths, onChang
               if (!e.target.value || Number.isInteger(n) && Math.abs(n) <= 10) edit(row.layer, { desirability: e.target.value ? n : undefined })
             }} /></label></details>
       </fieldset>)}
-      {!!visible.length && <Button disabled={!visible.some(row => kept.includes(row.layer) && row.content.trim())} onClick={adopt}>采用到人物草稿</Button>}
+      {!!visible.length && <Button disabled={busy || !visible.some(row => kept.includes(row.layer) && row.content.trim())} onClick={adopt}>采用到人物草稿</Button>}
       {note && <p role="status" className="text-sm text-muted">{note}</p>}
     </div></details>
 }
