@@ -266,7 +266,7 @@ async def character_portrait(project_id: str, body: PortraitRequest, svc: Author
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(502, '人物分析未完成，请检查本地模型连接。') from exc
+        raise HTTPException(502, '人物分析未完成，请检查所选模型的连接。') from exc
 
 
 @router.post('/cards/character-formation')
@@ -276,7 +276,7 @@ async def character_formation(project_id: str, body: FormationRequest, svc: Auth
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(502, '本地人物模型未完成生成，请检查模型连接。') from exc
+        raise HTTPException(502, '人物候选生成失败，请检查所选模型的连接。') from exc
 
 
 @router.post('/cards/generate-field')

@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
+from time import perf_counter
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,7 @@ from services.author_control_service import AuthorControlService
 from services.author_data_service import AuthorDataService
 from services.character_detail_service import strip_author_only
 from services.character_formation import parse_object
+from services.token_usage import summarize_usage
 from services.world_scope_service import entity_id
 
 Layer = Literal['personal', 'social', 'core', 'extended', 'protected', 'fading', 'hidden']
@@ -37,7 +39,8 @@ class PortraitRequest(BaseModel):
     card: dict
     fields: list[Layer] = Field(min_length=1, max_length=7)
     material: str = Field(default='', max_length=12000)
-    mode: Literal['chiron', 'qwen'] = 'qwen'
+    mode: Literal['direct', 'chiron', 'qwen'] = 'direct'
+    llm_profile_id: str = Field(default='novix_local', min_length=1)
     story_card_id: str | None = Field(default=None, pattern=r'^[\w-]+$')
 
 
@@ -121,7 +124,7 @@ def official_claims(name, passages):
     home = Path(os.environ.get('NOVIX_CHIRON_HOME', ROOT / 'models/chiron')).resolve()
     python = Path(os.environ.get('NOVIX_CHIRON_PYTHON', home / 'env/bin/python'))
     if not python.is_file():
-        raise ValueError('尚未安装 CHIRON。请运行 bash scripts/setup_chiron.sh，或选择本地中文基线。')
+        raise ValueError('尚未安装 CHIRON。请运行 bash scripts/setup_chiron.sh，或取消原文核验。')
     with CHIRON_LOCK, TemporaryDirectory(prefix='novix-chiron-') as tmp:
         work = Path(tmp)
         snippets = [[row['quote'], row['quote']] for row in passages]
@@ -162,43 +165,66 @@ async def propose_portrait(service, project, request):
     name = str(request.card['payload'].get('name') or request.card.get('title') or '').strip()
     if not name:
         raise ValueError('请填写用于辨认原文的姓名或称谓。')
-    profile_id = {'llm_profile_id': 'novix_local'}
-    _, profile, _ = service.manager._resolve_profile(project, profile_id, 'setup_character')
-    if profile.get('provider') != 'llama_cpp':
-        raise ValueError('请启用本地中文模型。')
-    claims = await asyncio.to_thread(official_claims, name, rows) if request.mode == 'chiron' else None
-    material = {f'S{i+1}': row for i, row in enumerate(rows) if claims is None or i in claims}
-    result = {'mode': request.mode, 'candidates': [], 'empty': [], 'scope': scope}
     fields = list(dict.fromkeys(request.fields))
+    started = perf_counter()
+    claims = await asyncio.to_thread(official_claims, name, rows) if request.mode == 'chiron' else None
+    verification_ms = round((perf_counter() - started) * 1000) if claims is not None else 0
+    material = {f'S{i+1}': row for i, row in enumerate(rows) if claims is None or claims.get(i)}
+    calls = []
+    result = {'mode': request.mode, 'llm_profile_id': request.llm_profile_id, 'scope': scope,
+              'candidates': [], 'empty': [], 'failed': [], 'usage': summarize_usage(calls),
+              'verification_ms': verification_ms, 'generation_ms': 0, 'generation_calls': 0}
     if not material:
         return {**result, 'empty': fields}
-    refs = list(material)
     text = {'type': 'string'}
-    schema = {'type': 'object', 'properties': {
-        'content': {'type': 'string', 'maxLength': 100}, 'situation': text, 'response': text,
-        'references': {'type': 'array', 'items': {'type': 'string', 'enum': refs}, 'maxItems': 4}},
+    item = {'type': 'object', 'properties': {
+        'content': {'type': 'string', 'minLength': 1, 'maxLength': 100}, 'situation': text, 'response': text,
+        'references': {'type': 'array', 'items': {'type': 'string', 'enum': list(material)}, 'minItems': 1, 'maxItems': 4}},
         'required': ['content', 'situation', 'response', 'references'], 'additionalProperties': False}
+    layer_value = {'anyOf': [item, {'type': 'null'}]}
+    schema = {'type': 'object', 'properties': dict.fromkeys(fields, layer_value),
+              'required': fields, 'additionalProperties': False}
     evidence = {}
     for ref, row in material.items():
         evidence[ref] = [row['label'], row['quote']]
         if claims is not None:
             evidence[ref].extend(claims[int(ref[1:]) - 1])
     if sum(len(s) for values in evidence.values() for s in values) > 12500:
-        raise ValueError('核验材料超出本地模型的上下文，请分段分析。')
+        raise ValueError('核验材料超出单次分析范围，请分段分析。')
+    prompt = {'人物': name, '分析角度': {key: LAYERS[key] for key in fields}, '原文材料': evidence,
+              '输出格式示例（每个所选角度一项）': {
+                  fields[0]: {'content': '有依据的一句人物解读', 'situation': '', 'response': '',
+                              'references': [next(iter(material))]}}}
+    started = perf_counter()
+    answer = await service.complete(project, {'llm_profile_id': request.llm_profile_id, 'require_configured_profile': True},
+        'setup_character',
+        '仅输出 JSON 对象。以分析角度给出的英文键为顶层键，每个键的值含 content、situation、response 字符串和 references 数组。'
+        '针对每个角度各写一句中文人物理解，六十字内。以“可能”表达推测。区分谁说、谁做、谁知道，考虑成长环境、持续关系、重复及反例。'
+        '单凭关系称谓不能推断性格；不得断言未写明的想法、归属或他人态度，不从单次经历断定性格，不续写。'
+        'references 只填原文材料已有的 S 编号。每条判断至少列出一个编号。没有依据的角度直接填 null。'
+        'situation 和 response 可留空，只有原文描述过的具体处境和可见行动才填。',
+        json.dumps(prompt, ensure_ascii=False), max_tokens=300 * len(fields) + 32, prepare_memory=False,
+        usage_callback=calls.append, response_schema=schema)
+    result.update(usage=summarize_usage(calls), generation_calls=len(calls),
+                  generation_ms=round((perf_counter() - started) * 1000))
+    values = parse_object(answer)
     for layer in fields:
-        prompt = {'人物': name, '分析角度': LAYERS[layer], '原文材料': evidence}
-        answer = await service.complete(project, profile_id, 'setup_character',
-            '只根据原文写一条可供作者修改的人物理解。content 只写一句简短中文，以“可能”表达推测，不超过六十字。'
-            '区分谁说、谁做、谁知道，考虑成长环境、持续关系、重复及反例。单凭关系称谓不能推断性格；不得断言未写明的想法、归属或他人态度，不从单次经历断定性格，不续写。'
-            'references 列出支撑这条判断的材料编号。缺少依据就返回空字符串和空数组。'
-            'situation 和 response 可留空；只有原文描述过的具体处境和可见行动才填。仅输出 JSON。',
-            json.dumps(prompt, ensure_ascii=False), max_tokens=300, prepare_memory=False, response_schema=schema)
-        value = parse_object(answer)
+        value = values.get(layer)
+        if layer in values and value is None:
+            result['empty'].append(layer)
+            continue
+        if not isinstance(value, dict) or not all(isinstance(value.get(k), str) for k in ('content', 'situation', 'response')):
+            result['failed'].append(layer)
+            continue
         references = value.get('references')
-        if not isinstance(references, list) or not all(isinstance(ref, str) and ref in material for ref in references):
-            raise ValueError('候选引用的原文编号无效，请重试。')
-        content = value.get('content')
-        if not references or not isinstance(content, str) or not content.strip():
+        content = value['content'].strip()
+        if (not isinstance(references, list) or len(references) > 4 or len(content) > 100
+                or not all(isinstance(ref, str) and ref in material for ref in references)
+                or bool(content) != bool(references)
+                or (not content and (value['situation'].strip() or value['response'].strip()))):
+            result['failed'].append(layer)
+            continue
+        if not content:
             result['empty'].append(layer)
             continue
         sources = []
@@ -207,7 +233,7 @@ async def propose_portrait(service, project, request):
             if claims is not None:
                 source['chiron_claims'] = claims[int(ref[1:]) - 1]
             sources.append(source)
-        result['candidates'].append({'layer': layer, 'section_id': targets[layer], 'content': content.strip(),
-            'situation': str(value.get('situation') or '')[:120], 'response': str(value.get('response') or '')[:120],
+        result['candidates'].append({'layer': layer, 'section_id': targets[layer], 'content': content,
+            'situation': value['situation'].strip()[:120], 'response': value['response'].strip()[:120],
             'sources': sources})
     return result

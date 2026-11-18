@@ -33,6 +33,7 @@ class FormationRequest(BaseModel):
     observation: str = Field(default='', max_length=2000)
     story_card_id: str | None = Field(default=None, pattern=r'^[\w-]+$')
     compare_glucose: bool = False
+    llm_profile_id: str = Field(default='novix_local', min_length=1)
 
 
 def parse_object(text):
@@ -136,10 +137,7 @@ def _inputs(service, project, request):
 
 async def propose(service, project, request):
     anchors = _inputs(service, project, request)
-    profile_id = {'llm_profile_id': 'novix_local'}
-    _, profile, _ = service.manager._resolve_profile(project, profile_id, 'setup_character')
-    if profile.get('provider') != 'llama_cpp':
-        raise ValueError('请通过启动器启用本地人物模型。')
+    model_choice = {'llm_profile_id': request.llm_profile_id, 'require_configured_profile': True}
     fields = list(dict.fromkeys(request.fields))
     notices, specialist, calls = [], {}, []
     engines = (['comet'] if 'core_motivation' in fields else []) + (['glucose'] if request.compare_glucose else [])
@@ -151,13 +149,13 @@ async def propose(service, project, request):
         return {'type': 'object', 'properties': {key: {'type': 'string'} for key in keys},
                 'required': list(keys), 'additionalProperties': False}
 
-    async def local(system, data, tokens, schema=None):
-        return await service.complete(project, profile_id, 'setup_character', system,
+    async def generate(system, data, tokens, schema=None):
+        return await service.complete(project, model_choice, 'setup_character', system,
                                       json.dumps(data, ensure_ascii=False), max_tokens=tokens, prepare_memory=False, usage_callback=calls.append, response_schema=schema)
 
     if ready:
         try:
-            english = parse_object(await local(
+            english = parse_object(await generate(
                 'Translate only supplied material into English. Return JSON {"event":"PersonX ...","context":"..."}. '
                 'Keep who acted, who was helped, and who received the action distinct. event is one supplied behavior using PersonX for the actor; context is its background. Use an empty event if none is supplied.',
                 anchors, 200, text_fields(['event', 'context'])))
@@ -194,7 +192,7 @@ async def propose(service, project, request):
     output = {'type': 'object', 'properties': {'candidates': {
         'type': 'array', 'minItems': 2, 'maxItems': 2, 'items': item_schema}},
         'required': ['candidates'], 'additionalProperties': False}
-    text = await local(
+    text = await generate(
         '为小说人物补写两种不同的性格来由候选。只返回指定JSON。每个值限一句具体的中文短句，约十五至三十字。'
         '按处境→预期→行动→反馈思考，正向经验、挫折、主动选择都可以。两案应在人物理解或得到的反馈上有实质差别。'
         '把作者给出的行为、责任归属和实际反馈当作固定前提。没有写明谁造成的事，就不要补写归责。'
@@ -227,7 +225,7 @@ async def propose(service, project, request):
         raise ValueError('模型没有填写所选空项，请重试。')
     if 'glucose' in specialist:
         try:
-            comparison = await local('Translate the supplied alternative event explanations into concise Chinese. '
+            comparison = await generate('Translate the supplied alternative event explanations into concise Chinese. '
                                  'Keep each alternative separate and do not add facts.', specialist['glucose'], 240)
             specialist['glucose'] = [comparison, *specialist['glucose']]
         except (ValueError, RuntimeError, HTTPError):
