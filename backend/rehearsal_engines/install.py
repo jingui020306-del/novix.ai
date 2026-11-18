@@ -59,7 +59,9 @@ def install_pacing():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('engines', choices=['sabre', 'fatima', 'pacing', 'all'], nargs='?', default='all')
-    choice = parser.parse_args().engines
+    parser.add_argument('--skip-pacing', action='store_true', help='Use the model managed by the launcher.')
+    args = parser.parse_args()
+    choice = args.engines
     if choice in ('all', 'fatima') and not shutil.which('dotnet'):
         sys.exit('本地组件未就绪：请先安装 .NET 8 SDK，再运行安装程序。')
     root = engine_dir()
@@ -85,7 +87,7 @@ if __name__ == '__main__':
         missing = [name for name, ready in availability().items() if not ready]
         if missing:
             sys.exit('未就绪的必需排演组件：' + '、'.join(missing) + '。请检查 Node 20+、Java 21+、.NET 8。')
-    if choice in ('pacing', 'all'):
+    if choice in ('pacing', 'all') and not args.skip_pacing:
         try:
             install_pacing()
         except (OSError, RuntimeError, ValueError) as exc:

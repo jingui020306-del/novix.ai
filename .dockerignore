@@ -5,6 +5,7 @@
 !backend/**
 !models/
 !models/default.json
+!models/pacing.json
 frontend/node_modules
 frontend/dist
 backend/static_dist

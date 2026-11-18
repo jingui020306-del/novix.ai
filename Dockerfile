@@ -26,7 +26,7 @@ COPY --from=build /opt/novix/engines /opt/novix/engines
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ backend/
-COPY models/default.json models/default.json
+COPY models/default.json models/pacing.json models/
 COPY --from=frontend /frontend/dist backend/static_dist
 WORKDIR /app/backend
 CMD ["sh", "-ec", "python rehearsal_engines/install.py && exec python -m uvicorn main:app --host 0.0.0.0 --port 8000"]

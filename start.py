@@ -10,9 +10,9 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.error
 import urllib.request
 import webbrowser
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -32,21 +32,34 @@ def find_available_port(start_port: int) -> int:
         port += 1
 
 
+LOCAL_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def is_ready(url: str, timeout: float) -> bool:
+    try:
+        with LOCAL_HTTP.open(url, timeout=timeout) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
 def poll_backend_ready(base_url: str, timeout_seconds: int = 60) -> bool:
     deadline = time.time() + timeout_seconds
     health_url = f"{base_url}/api/health"
     while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(health_url, timeout=2) as response:
-                if response.status == 200:
-                    return True
-        except (urllib.error.URLError, TimeoutError):
-            time.sleep(0.5)
+        if is_ready(health_url, timeout=2):
+            return True
+        time.sleep(0.5)
     return False
 
 
-def stream_reader(process: subprocess.Popen) -> int:
-    return process.wait()
+@dataclass
+class ManagedModel:
+    name: str
+    port: int
+    log: Path
+    command: list[str]
+    process: subprocess.Popen | None = None
 
 
 def terminate_process(process: subprocess.Popen) -> None:
@@ -73,7 +86,10 @@ def main() -> int:
     parser.add_argument("--no-local-model", action="store_true", help="Start the app using externally managed models")
     args = parser.parse_args()
 
-    setup = subprocess.run([sys.executable, str(BACKEND_DIR / "rehearsal_engines" / "install.py")])
+    engine_setup = [sys.executable, str(BACKEND_DIR / "rehearsal_engines" / "install.py")]
+    if args.no_local_model or os.environ.get("NOVIX_PACING_MODEL_URL") or model_path("pacing").is_file():
+        engine_setup.append("--skip-pacing")
+    setup = subprocess.run(engine_setup)
     if setup.returncode:
         print("[backend] Local analysis setup incomplete. See installer output.", file=sys.stderr)
 
@@ -98,8 +114,8 @@ def main() -> int:
     ]
     backend_proc: subprocess.Popen | None = None
     frontend_proc: subprocess.Popen | None = None
-    model_proc: subprocess.Popen | None = None
-    model_log = None
+    models: list[ManagedModel] = []
+    loading: ManagedModel | None = None
 
     def handle_signal(_signum: int, _frame: object) -> None:
         raise KeyboardInterrupt
@@ -108,15 +124,23 @@ def main() -> int:
     signal.signal(signal.SIGTERM, handle_signal)
 
     try:
-        if not args.no_local_model and model_path().exists():
-            port = find_available_port(model_spec()['port'])
-            env['NOVIX_LOCAL_MODEL_URL'] = f'http://127.0.0.1:{port}'
+        for name, url_key, log_name in (
+            ('default', 'NOVIX_LOCAL_MODEL_URL', 'llama-server.log'),
+            ('pacing', 'NOVIX_PACING_MODEL_URL', 'pacing-server.log'),
+        ):
+            if args.no_local_model or not model_path(name).exists():
+                continue
+            if name == 'pacing' and env.get(url_key):
+                continue
+            spec = model_spec(name)
+            port = find_available_port(max(spec['port'], models[-1].port + 1) if models else spec['port'])
             try:
-                command = runtime_command(port)
-                model_log = (model_path().parent / 'llama-server.log').open('w', encoding='utf-8')
-                model_proc = subprocess.Popen(command, stdout=model_log, stderr=subprocess.STDOUT)
-                provision_profile(env['NOVIX_LOCAL_MODEL_URL'])
-                print('[launcher] 正在加载本地模型…', flush=True)
+                command = runtime_command(port, name)
+                url = f'http://127.0.0.1:{port}'
+                if name == 'default':
+                    provision_profile(url)
+                models.append(ManagedModel(spec['name'], port, model_path(name).parent / log_name, command))
+                env[url_key] = url
             except (OSError, ValueError, RuntimeError) as error:
                 print(f'[launcher] {error}', file=sys.stderr, flush=True)
         backend_proc = subprocess.Popen(backend_cmd, cwd=BACKEND_DIR, env=env)
@@ -138,21 +162,28 @@ def main() -> int:
         if not args.no_browser:
             webbrowser.open(target_url)
 
-        model_ready = False
-        model_failed = False
+        # Each runtime sizes its GPU allocation using the memory left by the previous one.
+        pending = iter(models)
         while True:
-            if model_proc and not model_failed:
-                if model_proc.poll() is not None:
-                    model_failed = True
-                    print('[launcher] 本地模型启动失败，请查看模型设置与 models/llama-server.log。', file=sys.stderr, flush=True)
-                elif not model_ready:
+            if loading is None:
+                model = next(pending, None)
+                if model is not None:
                     try:
-                        with urllib.request.urlopen(env['NOVIX_LOCAL_MODEL_URL'] + '/health', timeout=0.5) as response:
-                            model_ready = response.status == 200
-                        if model_ready:
-                            print('[launcher] 本地模型已就绪。', flush=True)
-                    except (OSError, TimeoutError):
-                        pass
+                        with model.log.open('w', encoding='utf-8') as log:
+                            model.process = subprocess.Popen(model.command, stdout=log, stderr=subprocess.STDOUT)
+                        loading = model
+                        print(f'[launcher] 正在加载 {model.name}…', flush=True)
+                    except OSError as error:
+                        print(f'[launcher] {error}', file=sys.stderr, flush=True)
+            for model in models:
+                if model.process and model.process.poll() is not None:
+                    print(f'[launcher] 模型进程已退出，请查看 {model.log}。', file=sys.stderr, flush=True)
+                    model.process = None
+                    if model is loading:
+                        loading = None
+                elif model is loading and is_ready(f'http://127.0.0.1:{model.port}/health', timeout=0.5):
+                    print(f'[launcher] {model.name} 已就绪。', flush=True)
+                    loading = None
             if backend_proc.poll() is not None:
                 return backend_proc.returncode or 0
             if frontend_proc and frontend_proc.poll() is not None:
@@ -165,10 +196,9 @@ def main() -> int:
             terminate_process(frontend_proc)
         if backend_proc:
             terminate_process(backend_proc)
-        if model_proc:
-            terminate_process(model_proc)
-        if model_log:
-            model_log.close()
+        for model in models:
+            if model.process:
+                terminate_process(model.process)
 
 
 if __name__ == "__main__":

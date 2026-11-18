@@ -49,8 +49,8 @@ class AuthoringService:
         messages = [{'role': 'system', 'content': system + CHARACTER_PORTRAYAL_GUIDANCE}, {'role': 'user', 'content': prompt}]
         if prepared_messages is not None:
             messages = copy.deepcopy(prepared_messages)
-        if response_schema is not None:
-            profile = {**profile, '_response_schema': response_schema}
+        if response_schema is not None and profile.get('provider') == 'llama_cpp':
+            profile = {**profile, 'format': response_schema}
         reported, result = {}, {}
         try:
             result = await self.manager.llm_gateway.chat_complete(

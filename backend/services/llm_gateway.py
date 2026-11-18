@@ -107,7 +107,7 @@ class LLMGateway:
         payload = {
             "model": model,
             "messages": normalized,
-            "stream": True,
+            "stream": extra.get("stream", True),
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
         if extra.get('format'):
@@ -135,7 +135,7 @@ class LLMGateway:
             base = extra.get("base_url") or os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080")
         else:
             base = extra.get("base_url") or os.getenv("OPENAI_COMPAT_BASE_URL", "http://127.0.0.1:8001")
-        api_key = extra.get("api_key") or os.getenv("OPENAI_COMPAT_API_KEY", "")
+        api_key = extra.get("api_key") or ("" if extra.get("local_only") else os.getenv("OPENAI_COMPAT_API_KEY", ""))
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -144,14 +144,23 @@ class LLMGateway:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "stream": True,
+            "stream": extra.get("stream", True),
         }
-        if provider == 'llama_cpp' and extra.get('_response_schema'):
-            payload['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'proposal', 'schema': extra['_response_schema']}}
+        if extra.get('format'):
+            payload['response_format'] = {'type': 'json_schema', 'json_schema': {
+                'name': 'response', 'strict': True, 'schema': extra['format']}}
         timeout = float(extra.get("timeout_s", self.timeout))
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=not extra.get('local_only', False)) as client:
             async with client.stream("POST", f"{base.rstrip('/')}/v1/chat/completions", headers=headers, json=payload) as resp:
                 resp.raise_for_status()
+                if not payload["stream"]:
+                    await resp.aread()
+                    result = resp.json()
+                    callback = extra.get('_report_usage')
+                    if callable(callback) and isinstance(result.get('usage'), dict):
+                        callback(result['usage'])
+                    yield result['choices'][0]['message']['content']
+                    return
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data:"):
                         continue

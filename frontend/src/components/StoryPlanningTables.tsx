@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { NarrativePacing } from './NarrativePacing'
 import useSWR from 'swr'
 import { api } from '../api/client'
 import { canonicalEvents } from '../lib/materialScope'
@@ -58,6 +59,7 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
   const [hasSaved, setHasSaved] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [section, setSection] = useState('时间线')
+  const [pacingView, setPacingView] = useState(true)
   const [storylineEditor, setStorylineEditor] = useState('')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -410,7 +412,7 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
         <div className="event-placement">
           {COLUMNS.important_scenes.filter(column => column.kind === 'chapter' || column.kind === 'thread').map(column =>
             <label key={column.key}><span>{column.label}</span>{fieldEditor(column, event[column.key], value => editCell('important_scenes', event.id, column.key, value), column.label)}</label>)}
-          {!unplacedReason(event, chapters, threads) && <button className="planning-link focus-ring" onClick={() => { setMatrixTarget(event.id); setActiveTab(5); setSection('章节编排') }}>在章节编排中查看</button>}
+          {!unplacedReason(event, chapters, threads) && <button className="planning-link focus-ring" onClick={() => { setMatrixTarget(event.id); setPacingView(false); setActiveTab(5); setSection('章节编排') }}>在章节编排中查看</button>}
         </div>
         {isStoredEvent(event.id) && eventLinks(event, form.id)}{sourceControls(event)}<InformationPanel key={`${scope}:${event.id}:info`} project={project} storyId={storyCard.id} chapterId={event.chapter} eventRef={event.canonical_event_ref || (hasSaved ? { owner_card_id: form.id, scene_id: event.id } : undefined)} value={event.information_ids || []} onChange={event.canonical_event_ref ? undefined : (ids) => editCell('important_scenes', event.id, 'information_ids', ids)} /><fieldset disabled={Boolean(event.canonical_event_ref)} className="min-w-0 space-y-4"><details><summary>时间与情绪</summary><div className="timeline-core-fields mt-3">
           {[['time','在故事中的时间'], ['emotion','情绪怎样承接']].map(([key,label]) => <label key={key}>{label}<Textarea value={event[key] || ''} onChange={e => editCell('important_scenes', event.id, key, e.target.value)} /></label>)}
@@ -428,6 +430,8 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
     {pendingRehearsal && <section id='planning-rehearsal-open' className='space-y-3 border-y border-border py-4' aria-label='保存工作表后打开推演'><p className='text-sm leading-7'>当前工作表有未保存内容。推演会联动保存版，请先保存后打开，或留在表内继续编辑。</p><div className='flex flex-wrap gap-2'><Button variant='primary' disabled={Boolean(busy)} onClick={saveAndOpenRehearsal}>{busy === 'save' ? '保存中…' : '保存并打开这一场'}</Button><Button disabled={Boolean(busy)} onClick={() => setPendingRehearsal(null)}>继续编辑工作表</Button></div></section>}
     {localDraft.recovery && <div className='space-y-2 border-y border-border py-3'><p className='text-sm'>找到这份工作表的本地草稿，恢复后可继续核对。</p><div className='flex gap-2'><Button onClick={localDraft.restore}>恢复草稿</Button><Button variant='ghost' onClick={localDraft.dismiss}>保留保存版</Button></div></div>}
     <nav className='story-task-nav' aria-label='故事安排'>{['时间线','故事线','章节编排'].map(label => <button key={label} aria-current={section === label ? 'page' : undefined} onClick={() => {setMatrixTarget('');setSection(label);setActiveTab(label === '章节编排' ? 5 : label === '故事线' ? 2 : 0)}}>{label}</button>)}</nav>
+    {section === '章节编排' && <><div className='flex gap-2'><Button aria-pressed={pacingView} onClick={() => setPacingView(true)}>线路与正文</Button><Button aria-pressed={!pacingView} onClick={() => setPacingView(false)}>章节与线索表</Button></div>{pacingView && <NarrativePacing key={scope} project={project} story={storyCard.id} draftCache={draftCache} />}</>}
+    <div hidden={section === '章节编排' && pacingView}>
     {section === '时间线' && <>
     <section className='space-y-4 border-y border-border py-5' aria-label='故事事件时间线'>
       <div className='flex flex-wrap items-center justify-between gap-3'><h2 className='text-lg font-semibold'>事件时间线</h2><Button onClick={addTimelineEvent}>添加事件</Button></div>
@@ -532,5 +536,6 @@ export function StoryPlanningTables({ project, storyCard, characters, chapters, 
     {hasSaved && <MaterialBacklinks project={project} targetId={form.id} onOpen={onOpenMaterial} />}
     {busy && !['save', 'export'].includes(busy) && <p role='status' className='text-sm text-muted'>正在整理候选，原表内容仍可编辑…</p>}
     {message && <p role='status' className='text-sm leading-6 text-muted'>{message}</p>}
+    </div>
   </div>
 }

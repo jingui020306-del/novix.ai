@@ -8,7 +8,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from rehearsal_engines.pacing_model import OLLAMA_URL, PACING_MODEL
+from rehearsal_engines.pacing_model import pacing_profile
 from services.llm_gateway import LLMGateway
 from services.world_scope_service import WorldScopeService
 
@@ -64,19 +64,19 @@ def source_blocks(store, project, story_id, chapter_id, outline):
 
 
 async def annotate(source, previous, text):
-    digest = hashlib.sha256(json.dumps([source, previous, text], ensure_ascii=False).encode()).digest()
+    profile = pacing_profile()
+    digest = hashlib.sha256(json.dumps([profile, source, previous, text], ensure_ascii=False).encode()).digest()
     if digest in _cache:
         _cache.move_to_end(digest)
         return _cache[digest]
     messages = [{'role': 'system', 'content': _prompt},
                 {'role': 'user', 'content': json.dumps({'前文': previous, '本段': text}, ensure_ascii=False)}]
     try:
-        reply = await LLMGateway().chat_complete(messages, PACING_MODEL, 0, 1100, {
-            'provider': 'ollama', 'base_url': OLLAMA_URL, 'timeout_s': 180,
-            'format': Marks.model_json_schema(), 'local_only': True})
+        reply = await LLMGateway().chat_complete(messages, profile['model'], 0, 1100,
+            {**profile, 'format': Marks.model_json_schema()})
         marks = Marks.model_validate_json(reply['text']).marks
     except httpx.HTTPError as exc:
-        raise RuntimeError(f'本地节奏模型 {PACING_MODEL} 不可用，请检查 Ollama 与安装状态。') from exc
+        raise RuntimeError(f"本地节奏模型 {profile['model']} 不可用，请检查本机服务状态。") from exc
     except (ValidationError, ValueError) as exc:
         raise RuntimeError('本地模型返回的标注格式有误，请重试。') from exc
     result = []
@@ -96,6 +96,7 @@ async def annotate(source, previous, text):
 
 
 async def analyze(store, project, story_id, chapter_id, outline, disconnected):
+    model = pacing_profile()['model']
     rows = []
     count = 0
     for source, content in source_blocks(store, project, story_id, chapter_id, outline):
@@ -105,7 +106,7 @@ async def analyze(store, project, story_id, chapter_id, outline, disconnected):
                 continue
             for offset in range(0, len(block.group()), 1200):
                 if await disconnected():
-                    return {'model': PACING_MODEL, 'blocks': count, 'marks': rows}
+                    return {'model': model, 'blocks': count, 'marks': rows}
                 text = block.group()[offset:offset + 1200]
                 marks = await annotate((project, story_id, source), previous, text)
                 for kind, quote, start, prior in marks:
@@ -113,4 +114,4 @@ async def analyze(store, project, story_id, chapter_id, outline, disconnected):
                                  'offset': block.start() + offset + start, 'prior_quote': prior})
                 previous = text[-240:]
                 count += 1
-    return {'model': PACING_MODEL, 'blocks': count, 'marks': rows}
+    return {'model': model, 'blocks': count, 'marks': rows}

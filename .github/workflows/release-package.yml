@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'models/default.json'
+      - 'models/pacing.json'
       - 'scripts/setup_local_model.py'
       - 'scripts/setup_chiron.sh'
       - 'scripts/setup_env.py'
@@ -42,13 +43,14 @@ jobs:
           mkdir -p release/novix
           git archive HEAD | tar -x -C release/novix
           cp -r backend/static_dist release/novix/backend/
-          cp models/*.gguf models/MODEL-LICENSE release/novix/models/
+          mv models/*.gguf models/*LICENSE release/novix/models/
           cd release
-          zip -0qr novix-local.zip novix
+          7z a -t7z -mx=0 -v1800m novix-local.7z novix
+          7z t novix-local.7z.001
       - uses: actions/upload-artifact@v4
         with:
           name: novix-local
-          path: release/novix-local.zip
+          path: 'release/novix-local.7z.*'
           compression-level: 0
       - name: Attach full package to release
         env:
@@ -59,7 +61,7 @@ jobs:
             release_tag="local-${GITHUB_SHA:0:7}"
           fi
           if gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release upload "$release_tag" release/novix-local.zip --clobber
+            gh release upload "$release_tag" release/novix-local.7z.* --clobber
           else
-            gh release create "$release_tag" release/novix-local.zip --target "${GITHUB_SHA}" --title "Novix 本地模型版 · $release_tag" --generate-notes
+            gh release create "$release_tag" release/novix-local.7z.* --target "${GITHUB_SHA}" --title "Novix 本地模型版 · $release_tag" --generate-notes
           fi

@@ -65,4 +65,5 @@ coverage/
 /models/.novix-model-*
 /data/_global/local_model.json
 
+/models/novix_pacing-LICENSE
 /models/chiron/
